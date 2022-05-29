@@ -1,0 +1,12 @@
+[Unit]
+Description=ev2_server_js
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /home/franek/c/evades2/server/main_js.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
