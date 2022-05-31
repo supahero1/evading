@@ -7,7 +7,7 @@ prepare:
 	apt install npm nodejs net-tools
 	npm i n -g
 	n latest
-	ufw enable
+	echo "y" | ufw enable
 	ufw allow 443
 	ufw allow 80
 
