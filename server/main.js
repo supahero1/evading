@@ -63,7 +63,8 @@ socket.on("end", function() {
 
 const uWS = require("uWebSockets.js");
 uWS.SSLApp({
-  
+  cert_file_name: "/etc/letsencrypt/live/amsterdam.shadam.xyz/fullchain.pem",
+  key_file_name: "/etc/letsencrypt/live/amsterdam.shadam.xyz/privkey.pem"
 }).ws("/*", {
   compression: uWS.DISABLED,
   maxPayloadLength: 15,
