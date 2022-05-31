@@ -10,7 +10,7 @@ const style_css = fs.readFileSync("../client/style.css");
 const options = {
   key: fs.readFileSync("./key.pem"),
   cert: fs.readFileSync("./cert.pem"),
-  dhparam: fs.readFileSync("./dhparam.pem")
+  dhparam: fs.readFileSync("./dhparams.pem")
 };
 
 const servers = {};
