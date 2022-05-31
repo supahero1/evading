@@ -4,7 +4,7 @@ Description=ev2_website
 [Service]
 Type=simple
 User=root
-ExecStart=/bin/bash /home/franek/c/evades2/website/main.sh
+ExecStart=/bin/bash /evading/website/main.sh
 Restart=always
 RestartSec=3
 
