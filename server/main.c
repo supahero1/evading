@@ -187,11 +187,7 @@ static void execute_ball_info_on_area_id(const struct ball_info* const info, con
       for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
         for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
           const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[cell_x * grid->cells_y + cell_y];
-          if(tile_type == tile_safe || tile_type == tile_teleport) {
-            ok = 0;
-            goto out;
-          }
-          if(tile_type == tile_wall && !info->allow_walls) {
+          if(tile_type != tile_normal && (!info->allow_walls || tile_type != tile_wall)) {
             ok = 0;
             goto out;
           }
@@ -204,7 +200,7 @@ static void execute_ball_info_on_area_id(const struct ball_info* const info, con
   if(info->fixed_speed) {
     balls[idx].vx = info->vx;
     balls[idx].vy = info->vy;
-  } else {
+  } else if(info->speed != 0) {
     const float angle = randf() * 10.0f;
     balls[idx].vx = cosf(angle) * info->speed;
     balls[idx].vy = sinf(angle) * info->speed;
@@ -328,11 +324,10 @@ static void add_client_to_area(const uint8_t client_id, const uint16_t area_info
  * =================================== TICK ===================================
  */
 
-static int ball_tick(struct grid* g, struct grid_entity* entity) {
+static int ball_tick(struct grid* ball_grid, struct grid_entity* entity) {
   struct ball* const ball = balls + entity->ref;
   struct area* const area = areas + ball->area_id;
   const struct tile_info* const info = area_infos[area->area_info_id].tile_info;
-  struct grid* const ball_grid = &area->balls;
   
   if(ball->updated_removed) {
     const uint32_t ball_idx = entity->ref;
@@ -398,6 +393,10 @@ static int ball_tick(struct grid* g, struct grid_entity* entity) {
           break;
         }
         default: continue;
+      }
+      if(ball->die_on_collision) {
+        grid_remove(ball_grid, ball->entity_id);
+        return 0;
       }
       float x = (uint32_t) cell_x * cell_size;
       float y = (uint32_t) cell_y * cell_size;
@@ -498,6 +497,18 @@ static int ball_tick(struct grid* g, struct grid_entity* entity) {
   
   grid_recalculate(ball_grid, entity);
   
+  const float angle = atan2f(ball->vy, ball->vx);
+  
+  switch(ball->type) {
+    case ball_grey: break;
+    case ball_pink: {
+      ball->vx = cosf(ball->angle) * sinf(ball->tick) * time_scale;
+      ball->vy = sinf(ball->angle) * sinf(ball->tick) * time_scale;
+      break;
+    }
+    default: assert(0);
+  }
+  
   updated.x = entity->x != save_x;
   updated.y = entity->y != save_y;
   updated.r = entity->r != save_r;
@@ -518,11 +529,10 @@ static int ball_tick(struct grid* g, struct grid_entity* entity) {
   return 0;
 }
 
-static int player_tick(struct grid* g, struct grid_entity* entity) {
+static int player_tick(struct grid* player_grid, struct grid_entity* entity) {
   struct client* const client = clients + entity->ref;
   const struct area* const area = areas + client->area_id;
   const struct tile_info* const info = area_infos[area->area_info_id].tile_info;
-  const struct grid* const player_grid = &area->players;
   
   if(current_tick % send_interval == 0) {
     client->updated_x = 0;

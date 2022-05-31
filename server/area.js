@@ -16,5 +16,5 @@ function create_area(w, h) {
     }
     str = str.substring(0, str.length - 1);
     str += `\n${m}  }\n};`;
-    return str;
+    console.log(str);
 }

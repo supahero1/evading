@@ -20,7 +20,8 @@ enum game_const {
 enum ball_type {
   ball_invalid,
   
-  ball_grey
+  ball_grey,
+  ball_pink
 };
 
 enum game_tile {
@@ -74,11 +75,5 @@ struct teleport_dest {
 extern struct teleport_dest dereference_teleport(const uint16_t, const uint32_t, const uint32_t);
 
 extern struct area_info area_infos[];
-
-extern struct tile_info tiles_50x8;
-
-extern struct tile_info test_tiles;
-
-extern struct tile_info test_lol;
 
 #endif // game_consts_h

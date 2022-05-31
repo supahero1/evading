@@ -9,8 +9,8 @@ let bg_ctx = background.getContext("2d");
 let light_background = document.createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
-let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fed758"];
-let ball_colors = ["#808080"];
+let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
+let ball_colors = ["#808080", "#fc46aa"];
 let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
@@ -372,6 +372,9 @@ function game2(ws) {
   function lerp(num, to, by) {
     return num + (to - num) * by;
   }
+  function darken(hex) {
+    return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0");
+  }
   function send_movement() {
     if(!movement.mouse) {
       if(movement.up || movement.left || movement.right || movement.bottom) {
@@ -568,7 +571,7 @@ function game2(ws) {
         ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = "#b53737";
+        ctx.fillStyle = "#f00";
         ctx.fillText(player.death_counter, player.x, player.y);
       }
     }
@@ -580,14 +583,15 @@ function game2(ws) {
       ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
       ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
       ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r/* - 2*/, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r/* - 2*/, 0, Math.PI * 2);
+      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
+      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
     }
-    //ctx.lineWidth = 4;
+    ctx.lineWidth = 4;
     //ctx.strokeStyle = "#333";
     ctx.beginPath();
     for(let i = 0; i < ball_paths.length; ++i) {
-      //ctx.stroke(ball_paths[i]);
+      ctx.strokeStyle = darken(ball_colors[i]);
+      ctx.stroke(ball_paths[i]);
       ctx.fillStyle = ball_colors[i];
       ctx.fill(ball_paths[i]);
     }
