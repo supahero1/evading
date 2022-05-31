@@ -1,0 +1,12 @@
+#!/bin/bash
+echo "#!/usr/bin/sed -f" > $DIR_TOP/.sed.temp
+echo "s/%SERVERNAME%/$SERVERNAME/" >> $DIR_TOP/.sed.temp
+echo "s/%SERVERNAME%/$SERVERNAME/" >> $DIR_TOP/.sed.temp
+chmod u+x $DIR_TOP/.sed.temp
+result=$(find $DIR_TOP -name "*.in" -not -path "$DIR_TOP/.git/*")
+for file in $result
+do
+  short=${file: : -3}
+  $DIR_TOP/.sed.temp $file > $short
+done
+rm -f $DIR_TOP/.sed.temp

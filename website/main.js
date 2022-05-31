@@ -32,7 +32,7 @@ setInterval(function() {
   if(ok) {
     servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
   }
-}, 1000);
+}, 10000);
 
 const app = express();
 app.use(express.json());

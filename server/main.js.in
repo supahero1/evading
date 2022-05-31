@@ -63,8 +63,8 @@ socket.on("end", function() {
 
 const uWS = require("uWebSockets.js");
 uWS.SSLApp({
-  cert_file_name: "/etc/letsencrypt/live/amsterdam.shadam.xyz/fullchain.pem",
-  key_file_name: "/etc/letsencrypt/live/amsterdam.shadam.xyz/privkey.pem"
+  cert_file_name: "/etc/letsencrypt/live/%SERVERNAME%/fullchain.pem",
+  key_file_name: "/etc/letsencrypt/live/%SERVERNAME%/privkey.pem"
 }).ws("/*", {
   compression: uWS.DISABLED,
   maxPayloadLength: 15,
@@ -94,18 +94,18 @@ uWS.SSLApp({
       socket.write(new Uint8Array([1, ws.game_id]));
     }
   }
-}).listen(34567, function(token) {
+}).listen(443, function(token) {
   if(token) {
     function register_self() {
       let req = https.request({
-        host: "shadam.xyz",
+        host: "%WEBSITENAME%",
         path: "/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78",
         port: 443,
         method: "POST",
         headers: { "Content-Type": "application/json" }
       }, function(){});
       req.on("error", function(){});
-      req.write(JSON.stringify({ ip: "wss://amsterdam.shadam.xyz", players: clients.length }));
+      req.write(JSON.stringify({ ip: "wss://%SERVERNAME%", players: clients.length }));
       req.end();
     }
     setInterval(register_self, 5000);
