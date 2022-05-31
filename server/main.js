@@ -1,6 +1,6 @@
 "use strict";
 
-const http = require("http");
+const https = require("https");
 
 const game_client_close = 0;
 const game_client_data = 1;
@@ -62,7 +62,9 @@ socket.on("end", function() {
 });
 
 const uWS = require("uWebSockets.js");
-uWS.App({}).ws("/*", {
+uWS.SSLApp({
+  
+}).ws("/*", {
   compression: uWS.DISABLED,
   maxPayloadLength: 15,
   idleTimeout: 0,
@@ -94,18 +96,18 @@ uWS.App({}).ws("/*", {
 }).listen(34567, function(token) {
   if(token) {
     function register_self() {
-      let req = http.request({
-        host: "localhost",
+      let req = https.request({
+        host: "shadam.xyz",
         path: "/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78",
-        port: 80,
+        port: 443,
         method: "POST",
         headers: { "Content-Type": "application/json" }
       }, function(){});
       req.on("error", function(){});
-      req.write(JSON.stringify({ ip: "ws://localhost:34567", players: clients.length }));
+      req.write(JSON.stringify({ ip: "wss://amsterdam.shadam.xyz", players: clients.length }));
       req.end();
     }
-    setInterval(register_self, 1000);
+    setInterval(register_self, 5000);
     register_self();
   } else {
     console.log("server couldn't start");

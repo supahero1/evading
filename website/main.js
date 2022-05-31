@@ -1,11 +1,17 @@
 const fs = require("fs");
+const https = require("https");
 const express = require("express");
-const compress = require("compression");
 
 const index_html = fs.readFileSync("../client/index.html");
 const favicon = fs.readFileSync("../client/favicon.ico");
 const main_js = fs.readFileSync("../client/main.min2.js");
 const style_css = fs.readFileSync("../client/style.css");
+
+const options = {
+  key: fs.readFileSync("./key.pem"),
+  cert: fs.readFileSync("./cert.pem"),
+  dhparam: fs.readFileSync("./dhparam.pem")
+};
 
 const servers = {};
 let servers_str = "[]";
@@ -29,7 +35,6 @@ setInterval(function() {
 }, 1000);
 
 const app = express();
-app.use(compress());
 app.use(express.json());
 
 app.get(["/", "/index.html"], function(req, res) {
@@ -66,4 +71,4 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
   }
 });
 
-app.listen(80,function(){});
+https.createServer(options, app).listen(443);

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/franek/c/evades2/server
+cd /evading/server
 for((;;))
 do
   ./main

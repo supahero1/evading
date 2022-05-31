@@ -1,7 +1,7 @@
 #!/bin/bash
 
-cd /home/franek/c/evades2/server
+cd /evading/server
 npm i yarn
 yarn add uWebSockets.js@uNetworking/uWebSockets.js\#v20.10.0
-iptables -A INPUT -p tcp --syn --dport 80 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
  
