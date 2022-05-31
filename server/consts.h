@@ -13,7 +13,8 @@ enum game_const {
 };
 
 #define base_tick_interval (40.0f)
-#define base_player_speed (15.0f * (tick_interval / base_tick_interval))
+#define time_scale (tick_interval / base_tick_interval)
+#define base_player_speed (15.0f * time_scale)
 #define half_cell_size (cell_size * 0.5f)
 
 enum ball_type {
@@ -31,6 +32,8 @@ enum game_tile {
 
 struct ball_info {
   uint8_t type;
+  uint8_t fixed_pos:1;
+  uint8_t fixed_speed:1;
   uint8_t allow_walls:1;
   uint8_t die_on_collision:1;
   uint16_t count;
@@ -41,7 +44,6 @@ struct ball_info {
   float r;
   float vx;
   float vy;
-  float shooting_speed;
 };
 
 struct tile_info {
@@ -76,5 +78,7 @@ extern struct area_info area_infos[];
 extern struct tile_info tiles_50x8;
 
 extern struct tile_info test_tiles;
+
+extern struct tile_info test_lol;
 
 #endif // game_consts_h

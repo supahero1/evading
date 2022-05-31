@@ -28,27 +28,24 @@ void grid_free(struct grid* const grid) {
   free(grid->cells);
   free(grid->entities);
   free(grid->node_entities);
+  
+  memset(grid, 0, sizeof(*grid));
 }
 
 #define DEF(name, names) \
-static void grid_resize_##names (struct grid* const grid, const uint16_t new_size) { \
+static void grid_resize_##names (struct grid* const grid, const uint32_t new_size) { \
   grid-> names = shnet_realloc(grid-> names , sizeof(*grid-> names ) * new_size); \
   assert(grid-> names ); \
   grid-> names##_size = new_size; \
 } \
  \
-static uint16_t grid_get_##name (struct grid* const grid) { \
+static uint32_t grid_get_##name (struct grid* const grid) { \
   if(grid-> free_##name != 0) { \
-    const uint16_t ret = grid-> free_##name ; \
+    const uint32_t ret = grid-> free_##name ; \
     grid-> free_##name = grid-> names [ret].ref; \
     return ret; \
   } \
   while(grid-> names##_used >= grid-> names##_size ) { \
-    assert(grid-> names##_used != UINT16_MAX); \
-    if(grid-> names##_size >= 32768) { \
-      grid_resize_##names (grid, UINT16_MAX); \
-      break; \
-    } \
     grid_resize_##names (grid, grid-> names##_size << 1); \
   } \
   ++grid-> names##_used ; \
@@ -65,7 +62,6 @@ static uint16_t clamp(const float x, const float min, const float max) {
 uint16_t grid_insert(struct grid* const grid, const struct grid_entity* const entity) {
   const uint16_t id = grid_get_entity(grid);
   grid->entities[id].ref = entity->ref;
-  grid->entities[id].unused = 0;
   grid->entities[id].x = entity->x;
   grid->entities[id].y = entity->y;
   grid->entities[id].r = entity->r;
@@ -77,7 +73,7 @@ uint16_t grid_insert(struct grid* const grid, const struct grid_entity* const en
   
   for(uint16_t x = grid->entities[id].min_x; x <= grid->entities[id].max_x; ++x) {
     for(uint16_t y = grid->entities[id].min_y; y <= grid->entities[id].max_y; ++y) {
-      const uint16_t idx = grid_get_node_entity(grid);
+      const uint32_t idx = grid_get_node_entity(grid);
       grid->node_entities[idx].ref = id;
       grid->node_entities[idx].next = grid->cells[x * grid->cells_y + y];
       grid->cells[x * grid->cells_y + y] = idx;
@@ -87,9 +83,10 @@ uint16_t grid_insert(struct grid* const grid, const struct grid_entity* const en
   return id;
 }
 
-static void grid_remove_raw(struct grid* const grid, const uint16_t id) {
-  for(uint16_t x = grid->entities[id].min_x; x <= grid->entities[id].max_x; ++x) {
-    for(uint16_t y = grid->entities[id].min_y; y <= grid->entities[id].max_y; ++y) {
+static void grid_remove_raw(struct grid* const grid, const uint16_t id, uint16_t x, uint16_t y, const uint16_t max_x, const uint16_t max_y) {
+  const uint16_t y_save = y;
+  for(; x <= max_x; ++x) {
+    for(y = y_save; y <= max_y; ++y) {
       for(uint16_t i = grid->cells[(uint32_t) x * grid->cells_y + y], prev = 0; i != 0; prev = i, i = grid->node_entities[i].next) {
         if(grid->node_entities[i].ref != id) {
           continue;
@@ -108,14 +105,10 @@ static void grid_remove_raw(struct grid* const grid, const uint16_t id) {
 }
 
 void grid_remove(struct grid* const grid, const uint16_t id) {
-  grid_remove_raw(grid, id);
-  grid->entities[id].unused = 1;
+  grid_remove_raw(grid, id, grid->entities[id].min_x, grid->entities[id].min_y, grid->entities[id].max_x, grid->entities[id].max_y);
+  grid->entities[id].max_x = UINT16_MAX;
   grid->entities[id].ref = grid->free_entity;
   grid->free_entity = id;
-}
-
-uint16_t grid_get_idx(const struct grid* const grid, const struct grid_entity* const entity) {
-  return ((uintptr_t) entity - (uintptr_t) grid->entities) / sizeof(*grid->entities);
 }
 
 void grid_recalculate(const struct grid* const grid, struct grid_entity* const entity) {
@@ -126,60 +119,25 @@ void grid_recalculate(const struct grid* const grid, struct grid_entity* const e
 }
 
 void grid_update(struct grid* const grid) {
-  for(uint16_t i = 1; i < grid->entities_used; ++i) {
-    if(grid->entities[i].unused) continue;
-    struct grid_entity* const entity = grid->entities + i;
-    const uint16_t min_x = clamp((entity->x - entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
-    const uint16_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
-    const uint16_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
-    const uint16_t max_y = clamp((entity->y + entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
-    if(grid->update(grid, grid->entities + i) == 0) {
-      continue;
-    }
-    if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
-      grid_remove_raw(grid, i);
-      for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
-        for(uint16_t y = entity->min_y; y <= entity->max_y; ++y) {
-          const uint16_t idx = grid_get_node_entity(grid);
-          grid->node_entities[idx].ref = i;
-          grid->node_entities[idx].next = grid->cells[(uint32_t) x * grid->cells_y + y];
-          grid->cells[(uint32_t) x * grid->cells_y + y] = idx;
-        }
+  GRID_FOR(grid, i);
+  struct grid_entity* const entity = grid->entities + i;
+  const uint16_t min_x = clamp((entity->x - entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
+  const uint16_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
+  const uint16_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
+  const uint16_t max_y = clamp((entity->y + entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
+  if(grid->update(grid, grid->entities + i) == 0) {
+    continue;
+  }
+  if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
+    grid_remove_raw(grid, i, min_x, min_y, max_x, max_y);
+    for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
+      for(uint16_t y = entity->min_y; y <= entity->max_y; ++y) {
+        const uint32_t idx = grid_get_node_entity(grid);
+        grid->node_entities[idx].ref = i;
+        grid->node_entities[idx].next = grid->cells[(uint32_t) x * grid->cells_y + y];
+        grid->cells[(uint32_t) x * grid->cells_y + y] = idx;
       }
     }
   }
-}
-
-void grid_collide(struct grid* const grid) {
-  for(uint16_t x = 0; x < grid->cells_x; ++x) {
-    for(uint16_t y = 0; y < grid->cells_y; ++y) {
-      for(uint16_t i = grid->cells[(uint32_t) x * grid->cells_y + y]; i != 0; i = grid->node_entities[i].next) {
-        struct grid_entity* const entity = grid->entities + grid->node_entities[i].ref;
-        for(uint16_t j = grid->node_entities[i].next; j != 0; j = grid->node_entities[j].next) {
-          struct grid_entity* const e = grid->entities + grid->node_entities[j].ref;
-          const float dist_sq = (entity->x - e->x) * (entity->x - e->x) + (entity->y - e->y) * (entity->y - e->y);
-          if(dist_sq < (e->r + entity->r) * (e->r + entity->r)) {
-            grid->collide(grid, entity, e);
-          }
-        }
-      }
-    }
-  }
-}
-
-void grid_crosscollide(struct grid* const grid, struct grid* const grid2) {
-  for(uint16_t x = 0; x < grid->cells_x; ++x) {
-    for(uint16_t y = 0; y < grid->cells_y; ++y) {
-      for(uint16_t i = grid->cells[(uint32_t) x * grid->cells_y + y]; i != 0; i = grid->node_entities[i].next) {
-        struct grid_entity* const entity = grid->entities + grid->node_entities[i].ref;
-        for(uint16_t j = grid2->cells[(uint32_t) x * grid->cells_y + y]; j != 0; j = grid2->node_entities[j].next) {
-          struct grid_entity* const e = grid2->entities + grid2->node_entities[j].ref;
-          const float dist_sq = (entity->x - e->x) * (entity->x - e->x) + (entity->y - e->y) * (entity->y - e->y);
-          if(dist_sq < (e->r + entity->r) * (e->r + entity->r)) {
-            grid->collide(grid, entity, e);
-          }
-        }
-      }
-    }
-  }
+  GRID_ROF();
 }

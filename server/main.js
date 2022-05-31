@@ -36,6 +36,7 @@ socket.on("data", function(data) {
     const id = buffer[3];
     if(typeof clients[id] == "object" && clients[id].game_ready == 1) {
       if(len == 4) {
+        clients[id].game_close = 1;
         clients[id].end();
         return_client_id(id);
       } else {
@@ -62,20 +63,19 @@ socket.on("end", function() {
 
 const uWS = require("uWebSockets.js");
 uWS.App({}).ws("/*", {
-  compression: uWS.DEDICATED_COMPRESSOR_256KB | uWS.SHARED_DECOMPRESSOR,
-  maxPayloadLength: 8,
+  compression: uWS.DISABLED,
+  maxPayloadLength: 15,
   idleTimeout: 0,
   open: function(ws) {
     if(free == -1 && clients.length >= 255) {
-      ws.end();
+      return ws.end();
     }
     ws.game_id = get_client_id();
+    ws.game_close = 0;
     clients[ws.game_id] = ws;
   },
   message: function(ws, message, is_binary) {
-    if(message.byteLength > 6) {
-      return ws.end();
-    }
+    if(ws.game_close) return;
     if(message.byteLength == 0) {
       return ws.send(new Uint8Array(0), true, false);
     }
@@ -84,6 +84,8 @@ uWS.App({}).ws("/*", {
     socket.write(new Uint8Array([message.byteLength + 1, ws.game_id, ...message]));
   },
   close: function(ws, code, message) {
+    if(ws.game_close) return;
+    ws.game_close = 1;
     return_client_id(ws.game_id);
     if(ws.game_ready) {
       socket.write(new Uint8Array([1, ws.game_id]));

@@ -9,7 +9,9 @@ let bg_ctx = background.getContext("2d");
 let light_background = document.createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
-let area_fills = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
+let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fed758"];
+let ball_colors = ["#808080"];
+let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
 let dpr = 0;
@@ -123,6 +125,12 @@ function ip() {
     player.ip.y1 = player.ip.y2;
     player.ip.r1 = player.ip.r2;
   }
+  for(let ball of balls) {
+    if(!ball) continue;
+    ball.ip.x1 = ball.ip.x2;
+    ball.ip.y1 = ball.ip.y2;
+    ball.ip.r1 = ball.ip.r2;
+  }
 }
 function game(ws) {
   loading.innerHTML = "Enter your name<br>";
@@ -143,6 +151,8 @@ function game(ws) {
     window.onbeforeunload = function(){};
     canvas.parentElement.removeChild(canvas);
     loading.innerHTML = "Disconnected";
+    sub.innerHTML = "";
+    name.style.display = "none";
     reload();
   };
   window.onkeydown = function(x) {
@@ -150,18 +160,21 @@ function game(ws) {
       loading.innerHTML = "Spawning...";
       sub.innerHTML = "";
       name.style.display = "none";
-      ws.send(new Uint8Array([0, ...new TextEncoder().encode(name.value), 0]));
+      let token = window.localStorage.getItem("token");
+      token = token ? token.split(",").map(r => +r) : [];
+      ws.send(new Uint8Array([0, ...new TextEncoder().encode(name.value), 0, ...token, 0]));
       game2(ws);
     }
   };
 }
 function game2(ws) {
   function onmessage({ data }) {
+    //console.log("onmessage", updates[0].toFixed(1), updates[1].toFixed(1), performance.now().toFixed(1));
     u8.set(new Uint8Array(data));
     len = data.byteLength;
     let idx = 1;
     updates[0] = updates[1];
-    updates[1] = performance.now();
+    updates[1] += 40;
     ip();
     if(idx == len) {
       return;
@@ -170,6 +183,7 @@ function game2(ws) {
       /* Arena */
       ++idx;
       reset = 1;
+      balls = [];
       self_id = u8[idx++];
       bg_data.area_id = u8[idx] | (u8[idx + 1] << 8);
       idx += 2;
@@ -206,11 +220,11 @@ function game2(ws) {
       light_background.height = 50 * bg_data.height * settings.max_fov;
       for(let i = 0; i < 256; ++i) {
         if(!bg_data.fills[i]) continue;
-        bg_ctx.fillStyle = area_fills[i] + "b0";
+        bg_ctx.fillStyle = tile_colors[i] + "b0";
         bg_ctx.fill(bg_data.strokes[i]);
-        bg_ctx.fillStyle = area_fills[i];
+        bg_ctx.fillStyle = tile_colors[i];
         bg_ctx.fill(bg_data.fills[i]);
-        lbg_ctx.fillStyle = area_fills[i];
+        lbg_ctx.fillStyle = tile_colors[i];
         lbg_ctx.fill(bg_data.strokes[i]);
       }
       start_drawing();
@@ -225,19 +239,24 @@ function game2(ws) {
       for(let i = 0; i < count; ++i) {
         let id = u8[idx++];
         if(!players[id]) {
-          let x = view.getFloat32(idx, true);
+          let x2 = view.getFloat32(idx, true);
           idx += 4;
-          let y = view.getFloat32(idx, true);
+          let y2 = view.getFloat32(idx, true);
           idx += 4;
-          let r = view.getFloat32(idx, true);
+          let r2 = view.getFloat32(idx, true);
           idx += 4;
           let name_len = u8[idx++];
           let name = new TextDecoder().decode(u8.subarray(idx, idx + name_len));
           idx += name_len;
-          players[id] = { x: 0, y: 0, r: 0, ip: { x1: 0, x2: x, y1: 0, y2: y, r1: 0, r2: r }, name };
+          let dead = u8[idx++];
+          let death_counter = 0;
+          if(dead) {
+            death_counter = u8[idx++];
+          }
+          players[id] = { x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 }, name, dead, death_counter };
           if(self_id == id) {
-            us.ip.x2 = x;
-            us.ip.y2 = y;
+            us.ip.x2 = x2;
+            us.ip.y2 = y2;
           }
         } else {
           let field = u8[idx++];
@@ -265,6 +284,13 @@ function game2(ws) {
                 idx += 4;
                 break;
               }
+              case 4: {
+                players[id].dead = u8[idx++];
+                if(players[id].dead) {
+                  players[id].death_counter = u8[idx++];
+                }
+                break;
+              }
             }
             field = u8[idx++];
           }
@@ -280,7 +306,48 @@ function game2(ws) {
     if(u8[idx] == 2) {
       /* Balls */
       ++idx;
-      
+      let count = u8[idx] | (u8[idx + 1] << 8);
+      idx += 2;
+      for(let i = 0; i < count; ++i) {
+        let id = u8[idx] | (u8[idx + 1] << 8);
+        idx += 2;
+        if(!balls[id]) {
+          let type = u8[idx++];
+          let x2 = view.getFloat32(idx, true);
+          idx += 4;
+          let y2 = view.getFloat32(idx, true);
+          idx += 4;
+          let r2 = view.getFloat32(idx, true);
+          idx += 4;
+          balls[id] = { type, x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 } };
+        } else {
+          let field = u8[idx++];
+          const save_idx = idx;
+          while(field) {
+            switch(field) {
+              case 1: {
+                balls[id].ip.x2 = view.getFloat32(idx, true);
+                idx += 4;
+                break;
+              }
+              case 2: {
+                balls[id].ip.y2 = view.getFloat32(idx, true);
+                idx += 4;
+                break;
+              }
+              case 3: {
+                balls[id].ip.r2 = view.getFloat32(idx, true);
+                idx += 4;
+                break;
+              }
+            }
+            field = u8[idx++];
+          }
+          if(save_idx == idx) {
+            balls[id] = undefined;
+          }
+        }
+      }
     }
   };
   ws.onmessage = function(x) {
@@ -459,6 +526,7 @@ function game2(ws) {
     } else {
       by = (now - updates[0]) / (updates[1] - updates[0]);
     }
+    //console.log(updates[0].toFixed(1), updates[1].toFixed(1), now.toFixed(1), by.toFixed(3), performance.now().toFixed(1));
     now += 16.66666;
     us.x = lerp(us.ip.x1, us.ip.x2, by);
     us.y = lerp(us.ip.y1, us.ip.y2, by);
@@ -489,13 +557,39 @@ function game2(ws) {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#00000080";
         if(fov > 1) {
-          target_name_y = 10 + fov;
-        } else {
           target_name_y = player.r * 0.5;
+        } else {
+          target_name_y = player.r * 0.5 + (2 / (fov * fov));
         }
         name_y = lerp(name_y, target_name_y, 0.1);
         ctx.fillText(player.name, player.x, player.y - player.r - name_y);
       }
+      if(player.dead) {
+        ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#b53737";
+        ctx.fillText(player.death_counter, player.x, player.y);
+      }
+    }
+    for(let i = 0; i < ball_paths.length; ++i) {
+      ball_paths[i] = new Path2D();
+    }
+    for(let ball of balls) {
+      if(!ball) continue;
+      ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
+      ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
+      ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
+      ball_paths[ball.type].moveTo(ball.x + ball.r/* - 2*/, ball.y);
+      ball_paths[ball.type].arc(ball.x, ball.y, ball.r/* - 2*/, 0, Math.PI * 2);
+    }
+    //ctx.lineWidth = 4;
+    //ctx.strokeStyle = "#333";
+    ctx.beginPath();
+    for(let i = 0; i < ball_paths.length; ++i) {
+      //ctx.stroke(ball_paths[i]);
+      ctx.fillStyle = ball_colors[i];
+      ctx.fill(ball_paths[i]);
     }
     requestAnimationFrame(draw);
   }
