@@ -4,7 +4,7 @@ DIR_TOP = $(shell pwd)
 
 .PHONY: prepare
 prepare:
-	apt install npm nodejs net-tools
+	apt install npm nodejs net-tools -y
 	npm i n -g
 	n latest
 	echo "y" | ufw enable
@@ -18,16 +18,25 @@ website: prepare
 	npm i express
 	$(MAKE) -C $(DIR_TOP)/website
 
+ifndef SERVERNAME
+
+.PHONY: server
+server:
+	@echo "SERVERNAME is not present"
+	exit 1
+
+else
+ifndef WEBSITENAME
+
+.PHONY: server
+server:
+	@echo "WEBSITENAME is not present"
+	exit 1
+
+else
+
 .PHONY: server
 server: prepare
-	ifndef SERVERNAME
-	@echo "SERVERNAME is not present"
-	@exit 1
-	endif
-	ifndef WEBSITENAME
-	@echo "WEBSITENAME is not present"
-	@exit 1
-	endif
 	$(DIR_TOP)/sed_in
 	ufw allow 80
 	cd /tmp; \
@@ -43,3 +52,6 @@ server: prepare
 	echo "$(SERVERNAME)" | certbot certonly -m balcerakfranciszek@gmail.com --agree-tos --standalone
 	iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	$(MAKE) -C $(DIR_TOP)/server
+
+endif
+endif
