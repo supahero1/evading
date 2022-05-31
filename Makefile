@@ -1,13 +1,3 @@
-ifndef SERVERNAME
-@echo "SERVERNAME is not present"
-@exit 1
-endif
-
-ifndef WEBSITENAME
-@echo "WEBSITENAME is not present"
-@exit 1
-endif
-
 DIR_TOP = $(shell pwd)
 
 .EXPORT_ALL_VARIABLES:
@@ -20,7 +10,6 @@ prepare:
 	ufw enable
 	ufw allow 443
 	ufw allow 80
-	$(DIR_TOP)/sed_in
 
 .PHONY: website
 website: prepare
@@ -31,6 +20,15 @@ website: prepare
 
 .PHONY: server
 server: prepare
+	ifndef SERVERNAME
+	@echo "SERVERNAME is not present"
+	@exit 1
+	endif
+	ifndef WEBSITENAME
+	@echo "WEBSITENAME is not present"
+	@exit 1
+	endif
+	$(DIR_TOP)/sed_in
 	cd /tmp; \
 	git clone https://github.com/supahero1/shnet
 	$(MAKE) -C /tmp/shnet install DEBUG=1
