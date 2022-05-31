@@ -51,6 +51,7 @@ server: prepare
 	ln -s /snap/bin/certbot /usr/bin/certbot
 	echo "$(SERVERNAME)" | certbot certonly -m balcerakfranciszek@gmail.com --agree-tos --standalone
 	iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+	ufw deny 80
 	$(MAKE) -C $(DIR_TOP)/server
 
 endif
