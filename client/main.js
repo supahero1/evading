@@ -10,7 +10,7 @@ let light_background = document.createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
-let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06"];
+let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#d2b48c"];
 let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
@@ -42,6 +42,7 @@ let bg_data = {
   area_id: 0,
   width: 0,
   height: 0,
+  cell_size: 0,
   fills: [],
   strokes: []
 };
@@ -191,6 +192,7 @@ function game2(ws) {
       idx += 2;
       bg_data.height = u8[idx] | (u8[idx + 1] << 8);
       idx += 2;
+      bg_data.cell_size = u8[idx++];
       bg_data.fills = new Array(256);
       bg_data.strokes = new Array(256);
       for(let x = 0; x < bg_data.width; ++x) {
@@ -200,24 +202,24 @@ function game2(ws) {
             bg_data.strokes[u8[idx]] = new Path2D();
           }
           bg_data.fills[u8[idx]].rect(
-            (1.5 + x * 40) * settings.max_fov,
-            (1.5 + y * 40) * settings.max_fov,
-            37 * settings.max_fov,
-            37 * settings.max_fov
+            (1.5 + x * bg_data.cell_size) * settings.max_fov,
+            (1.5 + y * bg_data.cell_size) * settings.max_fov,
+            (bg_data.cell_size - 1.5 * 2) * settings.max_fov,
+            (bg_data.cell_size - 1.5 * 2) * settings.max_fov
           );
           bg_data.strokes[u8[idx]].rect(
-            x * 40 * settings.max_fov,
-            y * 40 * settings.max_fov,
-            40 * settings.max_fov,
-            40 * settings.max_fov
+            x * bg_data.cell_size * settings.max_fov,
+            y * bg_data.cell_size * settings.max_fov,
+            bg_data.cell_size * settings.max_fov,
+            bg_data.cell_size * settings.max_fov
           );
           ++idx;
         }
       }
-      background.width = 50 * bg_data.width * settings.max_fov;
-      background.height = 50 * bg_data.height * settings.max_fov;
-      light_background.width = 50 * bg_data.width * settings.max_fov;
-      light_background.height = 50 * bg_data.height * settings.max_fov;
+      background.width = bg_data.cell_size * bg_data.width * settings.max_fov;
+      background.height = bg_data.cell_size * bg_data.height * settings.max_fov;
+      light_background.width = bg_data.cell_size * bg_data.width * settings.max_fov;
+      light_background.height = bg_data.cell_size * bg_data.height * settings.max_fov;
       for(let i = 0; i < 256; ++i) {
         if(!bg_data.fills[i]) continue;
         bg_ctx.fillStyle = tile_colors[i] + "b0";
@@ -545,6 +547,26 @@ function game2(ws) {
       ctx.drawImage(light_background, 0, 0, background.width / settings.max_fov, background.height / settings.max_fov);
       ctx.globalAlpha = 1;
     }
+    for(let i = 0; i < ball_paths.length; ++i) {
+      ball_paths[i] = new Path2D();
+    }
+    for(let ball of balls) {
+      if(!ball) continue;
+      ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
+      ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
+      ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
+      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
+      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
+    }
+    ctx.lineWidth = 4;
+    //ctx.strokeStyle = "#333";
+    ctx.beginPath();
+    for(let i = 0; i < ball_paths.length; ++i) {
+      ctx.strokeStyle = darken(ball_colors[i]);
+      ctx.stroke(ball_paths[i]);
+      ctx.fillStyle = ball_colors[i];
+      ctx.fill(ball_paths[i]);
+    }
     for(let player of players) {
       if(!player) continue;
       player.x = lerp(player.ip.x1, player.ip.x2, by);
@@ -574,26 +596,6 @@ function game2(ws) {
         ctx.fillStyle = "#f00";
         ctx.fillText(player.death_counter, player.x, player.y);
       }
-    }
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ball_paths[i] = new Path2D();
-    }
-    for(let ball of balls) {
-      if(!ball) continue;
-      ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
-      ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
-      ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
-    }
-    ctx.lineWidth = 4;
-    //ctx.strokeStyle = "#333";
-    ctx.beginPath();
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ctx.strokeStyle = darken(ball_colors[i]);
-      ctx.stroke(ball_paths[i]);
-      ctx.fillStyle = ball_colors[i];
-      ctx.fill(ball_paths[i]);
     }
     requestAnimationFrame(draw);
   }

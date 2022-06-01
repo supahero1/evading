@@ -1,5 +1,5 @@
 build:
-	gcc *.c -o main -Og -g3 -lm -march=native -flto -pthread -lshnet
+	gcc *.c -o main -Og -g3 -lm -march=native -ffast-math -flto -pthread -lshnet
 	rm -f /etc/systemd/system/ev2_server.service
 	install ev2_server.service /etc/systemd/system/
 	systemctl enable ev2_server

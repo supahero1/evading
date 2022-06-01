@@ -66,7 +66,6 @@ prepare:
 	n latest
 	echo "y" | ufw enable
 	ufw allow 22
-	ufw allow 443
 
 .PHONY: website
 website: prepare
@@ -80,6 +79,7 @@ website: prepare
 server: prepare
 	$(DIR_TOP)/sed_in
 	ufw allow 80
+	ufw allow 443
 	cd /tmp; \
 	git clone https://github.com/supahero1/shnet
 	$(MAKE) -C /tmp/shnet install DEBUG=1
@@ -89,10 +89,12 @@ server: prepare
 	snap install core
 	snap refresh core
 	snap install --classic certbot
-	ln -s /snap/bin/certbot /usr/bin/certbot
-	echo "$(SERVERNAME)" | certbot certonly -m balcerakfranciszek@gmail.com --agree-tos --standalone
-	iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+	ln -sf /snap/bin/certbot /usr/bin/certbot
+	echo "$(SERVER_NAME)" | certbot certonly -m balcerakfranciszek@gmail.com --agree-tos --standalone
 	ufw deny 80
+	ufw deny 443
+	ufw allow 8191
+	iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	$(MAKE) -C $(DIR_TOP)/server
 
 endif

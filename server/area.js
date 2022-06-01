@@ -1,5 +1,5 @@
 function create_area(w, h) {
-    let str = `struct tile_info name = { ${w}, ${h}, (uint8_t[]){\n`;
+    let str = `struct tile_info name = { ${w}, ${h}, 40, (uint8_t[]){\n`;
     let m = "/*       ";
     for(let i = 0; i < h; ++i) {
         m += i.toString().padStart(3, " ") + " ";

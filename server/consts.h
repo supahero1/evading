@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 enum game_const {
-  cell_size = 40,
   send_interval = 4,
   tick_interval = 40 / send_interval,
   player_radius = 19,
@@ -14,14 +13,46 @@ enum game_const {
 #define base_tick_interval (40.0f)
 #define time_scale (tick_interval / base_tick_interval)
 #define base_player_speed (15.0f * time_scale)
-#define half_cell_size (cell_size * 0.5f)
 
 enum ball_type {
   ball_invalid,
   
   ball_grey,
   ball_pink,
-  ball_teal
+  ball_teal,
+  ball_sandy
+};
+
+enum radius_type {
+  radius_fixed,
+  radius_random,
+  radius_relative,
+  radius_relative_random
+};
+
+enum position_type {
+  position_random,
+  position_fixed,
+  position_tile_fixed,
+  position_relative
+};
+
+enum movement_type {
+  movement_random,
+  movement_velocity,
+  movement_angle,
+  movement_relative_velocity,
+  movement_relative_angle
+};
+
+enum frequency_type {
+  frequency_off,
+  frequency_float_random,
+  frequency_float_fixed,
+  frequency_float_relative,
+  frequency_num_random,
+  frequency_num_fixed,
+  frequency_num_relative
 };
 
 enum game_tile {
@@ -33,27 +64,54 @@ enum game_tile {
 
 struct ball_info {
   uint8_t type;
-  uint8_t fixed_pos:1;
-  uint8_t fixed_speed:1;
+  uint8_t radius_type:2;
+  uint8_t position_type:2;
+  uint8_t movement_type:3;
+  uint8_t frequency_type:3;
   uint8_t allow_walls:1;
   uint8_t die_on_collision:1;
-  uint8_t random_frequency:1;
   uint16_t count;
+  union {
+    struct {
+      uint32_t frequency_num;
+      uint32_t frequency_num_min;
+      uint32_t frequency_num_max;
+    };
+    struct {
+      float frequency_float;
+      float frequency_float_min;
+      float frequency_float_max;
+    };
+  };
   float speed;
-  float frequency;
-  float min_frequency;
-  float max_frequency;
-  float x;
-  float y;
-  float r;
+  float angle;
+  union {
+    struct {
+      float x;
+      float y;
+    };
+    struct {
+      uint16_t tile_x;
+      uint16_t tile_y;
+    };
+  };
+  union {
+    float r;
+    float r_min;
+  };
+  float r_max;
   float vx;
   float vy;
   uint64_t tick;
+  struct ball_info* spawn;
+  uint32_t spawn_len;
+  uint32_t spawn_idx;
 };
 
 struct tile_info {
   uint16_t width;
   uint16_t height;
+  uint16_t cell_size;
   uint8_t* tiles;
 };
 
@@ -76,7 +134,7 @@ struct teleport_dest {
   uint16_t random_spawn:1;
 };
 
-extern struct teleport_dest dereference_teleport(const uint16_t, const uint32_t, const uint32_t);
+extern struct teleport_dest dereference_teleport(const uint16_t, const uint16_t, const uint16_t);
 
 extern struct area_info area_infos[];
 

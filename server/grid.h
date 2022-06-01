@@ -25,16 +25,17 @@ struct grid {
   struct grid_node_entity* node_entities;
   
   int  (*update)(struct grid*, struct grid_entity*);
-  void (*collide)(struct grid*, struct grid_entity*, struct grid_entity*);
   
   uint16_t cells_x;
   uint16_t cells_y;
-  float inverse_cell_size;
   uint16_t cell_size;
   
-  uint32_t free_entity;
-  uint32_t entities_used;
-  uint32_t entities_size;
+  uint16_t free_entity;
+  uint16_t entities_used;
+  uint16_t entities_size;
+
+  float inverse_cell_size;
+  float half_cell_size;
   
   uint32_t free_node_entity;
   uint32_t node_entities_used;
@@ -42,23 +43,20 @@ struct grid {
 };
 
 #define GRID_FOR(grid, i) \
-for(uint32_t i = 1; i < (grid)->entities_used; ++i) { \
+for(uint16_t i = 1; i < (grid)->entities_used; ++i) { \
   if((grid)->entities[i].max_x == UINT16_MAX) continue
 
 #define GRID_ROF() }
 
-#define GRID_NESTED_FOR(grid, i, j) \
-GRID_FOR(grid, i); \
-for(uint32_t j = i + 1; j < (grid)->entities_used; ++j) { \
-  if((grid)->entities[j].max_x == UINT16_MAX) continue
-
-#define GRID_NESTED_ROF() } }
-
 extern void grid_init(struct grid* const);
 
-extern void grid_free(struct grid* const);
+extern void grid_free(const struct grid* const);
 
-extern uint16_t grid_insert(struct grid* const, const struct grid_entity* const);
+extern uint16_t grid_get_entity(struct grid* const);
+
+extern void grid_return_entity(struct grid* const, const uint16_t);
+
+extern void grid_insert(struct grid* const, const uint16_t);
 
 extern void grid_remove(struct grid* const, const uint16_t);
 
