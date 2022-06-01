@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/franek/c/evading/server
+cd __DIR_TOP__/server
 for((;;))
 do
   ./main

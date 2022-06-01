@@ -1,5 +1,5 @@
 build:
-	gcc *.c -o main -Og -g3 -lm -flto -pthread -lshnet
+	gcc *.c -o main -Og -g3 -lm -march=native -flto -pthread -lshnet
 	rm -f /etc/systemd/system/ev2_server.service
 	install ev2_server.service /etc/systemd/system/
 	systemctl enable ev2_server
@@ -8,4 +8,3 @@ build:
 	install ev2_server_js.service /etc/systemd/system/
 	systemctl enable ev2_server_js
 	systemctl restart ev2_server_js
-	

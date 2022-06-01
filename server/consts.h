@@ -1,4 +1,3 @@
-
 #ifndef game_consts_h
 #define game_consts_h 1
 
@@ -21,7 +20,8 @@ enum ball_type {
   ball_invalid,
   
   ball_grey,
-  ball_pink
+  ball_pink,
+  ball_teal
 };
 
 enum game_tile {
@@ -37,14 +37,18 @@ struct ball_info {
   uint8_t fixed_speed:1;
   uint8_t allow_walls:1;
   uint8_t die_on_collision:1;
+  uint8_t random_frequency:1;
   uint16_t count;
-  uint16_t tick;
   float speed;
+  float frequency;
+  float min_frequency;
+  float max_frequency;
   float x;
   float y;
   float r;
   float vx;
   float vy;
+  uint64_t tick;
 };
 
 struct tile_info {

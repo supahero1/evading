@@ -1,10 +1,10 @@
 [Unit]
-Description=ev2_server
+Description=ev2_server_js
 
 [Service]
 Type=simple
 User=root
-ExecStart=/bin/bash /home/franek/c/evading/server/main.sh
+ExecStart=/bin/bash __DIR_TOP__/server/main_js.sh
 Restart=always
 RestartSec=3
 

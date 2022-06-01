@@ -70,7 +70,7 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
   }
 });
 
-if(0) {
+if(__SECURE_WEBSITE__) {
   require("https").createServer(options, app).listen(443);
 } else {
   require("http").createServer(app).listen(80);

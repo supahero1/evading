@@ -4,7 +4,7 @@ Description=ev2_server_js
 [Service]
 Type=simple
 User=root
-ExecStart=/bin/bash /evading/server/main_js.sh
+ExecStart=/bin/bash /home/franek/c/evading/server/main_js.sh
 Restart=always
 RestartSec=3
 

@@ -1,6 +1,63 @@
-DIR_TOP = $(shell pwd)
+DIR_TOP   := $(shell pwd)
+
+ifndef WEBSITE_NAME
+
+.PHONY: first
+first:
+	@echo "WEBSITE_NAME is not present"
+	exit 1
+
+endif
+
+ifndef SERVER_NAME
+
+.PHONY: first
+first:
+	@echo "SERVER_NAME is not present"
+	exit 1
+
+endif
+
+ifndef SECURE_WEBSITE
+
+.PHONY: first
+first:
+	@echo "SECURE_WEBSITE is not present"
+	exit 1
+
+endif
+
+ifndef SECURE_SERVER
+
+.PHONY: first
+first:
+	@echo "SECURE_SERVER is not present"
+	exit 1
+
+endif
+
+ifdef SERVER_NAME
+ifdef WEBSITE_NAME
+ifdef SECURE_WEBSITE
+ifdef SECURE_SERVER
 
 .EXPORT_ALL_VARIABLES:
+
+ifeq ($(SECURE_WEBSITE),1)
+SECURE_WEBSITE_CHAR := s
+else
+SECURE_WEBSITE_CHAR := 
+endif
+
+ifeq ($(SECURE_SERVER),1)
+SECURE_SERVER_CHAR := s
+else
+SECURE_SERVER_CHAR := 
+endif
+
+.PHONY: sed
+sed:
+	$(DIR_TOP)/sed_in
 
 .PHONY: prepare
 prepare:
@@ -14,26 +71,10 @@ prepare:
 .PHONY: website
 website: prepare
 	npm i -g google-closure-compiler
+	$(DIR_TOP)/sed_in
 	cd $(DIR_TOP)/website; \
 	npm i express
 	$(MAKE) -C $(DIR_TOP)/website
-
-ifndef SERVERNAME
-
-.PHONY: server
-server:
-	@echo "SERVERNAME is not present"
-	exit 1
-
-else
-ifndef WEBSITENAME
-
-.PHONY: server
-server:
-	@echo "WEBSITENAME is not present"
-	exit 1
-
-else
 
 .PHONY: server
 server: prepare
@@ -54,5 +95,7 @@ server: prepare
 	ufw deny 80
 	$(MAKE) -C $(DIR_TOP)/server
 
+endif
+endif
 endif
 endif

@@ -49,11 +49,19 @@ struct area_info area_infos[] = {
             .type = ball_grey,
             .count = 1,
             .speed = 1 * time_scale,
-            .r = 5
+            .r = 10
           },
           {
             .type = ball_pink,
             .count = 1,
+            .speed = 20 * time_scale,
+            .frequency = 0.2,
+            .r = 10
+          },
+          {
+            .type = ball_teal,
+            .count = 1,
+            .speed = 5 * time_scale,
             .r = 10
           }, {0}
         }, /* SPAWN POINTS */

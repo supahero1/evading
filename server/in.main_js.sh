@@ -1,9 +1,9 @@
 #!/bin/bash
 
-cd /home/franek/c/evading/server
+cd __DIR_TOP__/server
 for((;;))
 do
-  ./main
+  node main.js
   echo "Restarting in 1 second"
   sleep 1
 done

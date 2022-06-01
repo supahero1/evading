@@ -1,6 +1,14 @@
 "use strict";
 
-const https = require("https");
+let http;
+let port;
+if(__SECURE_WEBSITE__) {
+  http = require("https");
+  port = 443;
+} else {
+  http = require("http");
+  port = 80;
+}
 
 const game_client_close = 0;
 const game_client_data = 1;
@@ -62,10 +70,16 @@ socket.on("end", function() {
 });
 
 const uWS = require("uWebSockets.js");
-uWS.SSLApp({
-  cert_file_name: "/etc/letsencrypt/live/%SERVERNAME%/fullchain.pem",
-  key_file_name: "/etc/letsencrypt/live/%SERVERNAME%/privkey.pem"
-}).ws("/*", {
+let app;
+if(__SECURE_SERVER__) {
+  app = uWS.SSLApp({
+    cert_file_name: "/etc/letsencrypt/live/__SERVER_NAME__/fullchain.pem",
+    key_file_name: "/etc/letsencrypt/live/__SERVER_NAME__/privkey.pem"
+  });
+} else {
+  app = uWS.App({});
+}
+app.ws("/*", {
   compression: uWS.DISABLED,
   maxPayloadLength: 15,
   idleTimeout: 0,
@@ -94,18 +108,18 @@ uWS.SSLApp({
       socket.write(new Uint8Array([1, ws.game_id]));
     }
   }
-}).listen(443, function(token) {
+}).listen(8191, function(token) {
   if(token) {
     function register_self() {
-      let req = https.request({
-        host: "%WEBSITENAME%",
+      let req = http.request({
+        host: "__WEBSITE_NAME__",
         path: "/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78",
-        port: 443,
+        port,
         method: "POST",
         headers: { "Content-Type": "application/json" }
       }, function(){});
       req.on("error", function(){});
-      req.write(JSON.stringify({ ip: "wss://%SERVERNAME%", players: clients.length }));
+      req.write(JSON.stringify({ ip: "ws__SECURE_SERVER_CHAR__://__SERVER_NAME__:8191", players: clients.length }));
       req.end();
     }
     setInterval(register_self, 5000);

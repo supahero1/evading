@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /evading/website
+cd /home/franek/c/evading/website
 for((;;))
 do
   node main.js

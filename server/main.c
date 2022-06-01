@@ -67,24 +67,23 @@ static struct client clients[256] = {0};
 
 struct ball {
   union {
-    struct {
-      uint16_t entity_id;
-      uint16_t tick;
-    };
-    uint32_t   next;
+    float    speed;
+    uint32_t next;
   };
-  uint16_t     area_id;
-  uint8_t      type;
-  uint8_t      allow_walls:1;
-  uint8_t      die_on_collision:1;
-  uint8_t      updated_x:1;
-  uint8_t      updated_y:1;
-  uint8_t      updated_r:1;
-  uint8_t      updated_created:1;
-  uint8_t      updated_removed:1;
-  float        speed;
-  float        vx;
-  float        vy;
+  uint16_t   entity_id;
+  uint16_t   area_id;
+  uint8_t    type;
+  uint8_t    allow_walls:1;
+  uint8_t    die_on_collision:1;
+  uint8_t    updated_x:1;
+  uint8_t    updated_y:1;
+  uint8_t    updated_r:1;
+  uint8_t    updated_created:1;
+  uint8_t    updated_removed:1;
+  float      vx;
+  float      vy;
+  float      frequency;
+  uint64_t   tick;
 };
 
 static uint32_t current_tick = UINT32_MAX;
@@ -204,6 +203,15 @@ static void execute_ball_info_on_area_id(const struct ball_info* const info, con
     const float angle = randf() * 10.0f;
     balls[idx].vx = cosf(angle) * info->speed;
     balls[idx].vy = sinf(angle) * info->speed;
+  }
+  if(info->random_frequency) {
+    balls[idx].frequency = info->min_frequency + randf() * (info->max_frequency - info->min_frequency);
+  } else {
+    if(info->frequency == 0) {
+      balls[idx].frequency = 1;
+    } else {
+      balls[idx].frequency = info->frequency;
+    }
   }
   balls[idx].tick = info->tick;
   balls[idx].area_id = area_id;
@@ -484,11 +492,11 @@ static int ball_tick(struct grid* ball_grid, struct grid_entity* entity) {
       entity->x = postpone_x + cosf(angle) * entity->r;
       entity->y = postpone_y + sinf(angle) * entity->r;
       float dist_sqrt = sqrtf(dist_sq);
-      const float n_x = diff_x / dist_sqrt;
-      const float n_y = diff_y / dist_sqrt;
-      const float p = ball->vx * n_x + ball->vy * n_y;
-      ball->vx -= 2.0f * p * n_x;
-      ball->vy -= 2.0f * p * n_y;
+      const float normal_x = diff_x / dist_sqrt;
+      const float normal_y = diff_y / dist_sqrt;
+      const float dot_p = ball->vx * normal_x + ball->vy * normal_y;
+      ball->vx -= 2.0f * dot_p * normal_x;
+      ball->vy -= 2.0f * dot_p * normal_y;
       dist_sqrt = entity->r - dist_sqrt;
       entity->x += cosf(angle) * dist_sqrt;
       entity->y += sinf(angle) * dist_sqrt;
@@ -497,17 +505,25 @@ static int ball_tick(struct grid* ball_grid, struct grid_entity* entity) {
   
   grid_recalculate(ball_grid, entity);
   
-  const float angle = atan2f(ball->vy, ball->vx);
-  
   switch(ball->type) {
     case ball_grey: break;
     case ball_pink: {
-      ball->vx = cosf(ball->angle) * sinf(ball->tick) * time_scale;
-      ball->vy = sinf(ball->angle) * sinf(ball->tick) * time_scale;
+      const float angle = atan2f(ball->vy, ball->vx);
+      const float sf = sinf(ball->tick * 0.1f * ball->frequency);
+      ball->vx = cosf(angle) * (sf * sf + 0.001f) * ball->speed;
+      ball->vy = sinf(angle) * (sf * sf + 0.001f) * ball->speed;
+      break;
+    }
+    case ball_teal: {
+      const float angle = atan2f(ball->vy, ball->vx);
+      ball->vx = cosf(angle + ball->frequency * 0.1f) * ball->speed;
+      ball->vy = sinf(angle + ball->frequency * 0.1f) * ball->speed;
       break;
     }
     default: assert(0);
   }
+  
+  ++ball->tick;
   
   updated.x = entity->x != save_x;
   updated.y = entity->y != save_y;
