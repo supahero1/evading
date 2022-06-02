@@ -315,6 +315,10 @@ function game2(ws) {
         idx += 2;
         if(!balls[id]) {
           let type = u8[idx++];
+          if(type == 0) {
+            continue;
+          }
+          --type;
           let x2 = view.getFloat32(idx, true);
           idx += 4;
           let y2 = view.getFloat32(idx, true);

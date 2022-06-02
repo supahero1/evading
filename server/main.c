@@ -435,7 +435,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
     ball->updated_created = 0;
     if(ball->updated_removed) {
       const uint32_t ball_idx = entity->ref;
-      grid_remove(grid, ball->entity_id);
+      grid_remove(grid, entity_id);
       return_ball_idx(ball_idx);
       return 0;
     }
@@ -639,7 +639,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
           .vy = ball->vy * 0.5f,
           .x = entity->x,
           .y = entity->y,
-          .relative_entity_id = ball->entity_id
+          .relative_entity_id = entity_id
         }), ball->area_id);
         entity = grid->entities + entity_id;
         ball = balls + entity->ref;
@@ -1003,7 +1003,7 @@ void send_balls(const uint8_t client_id) {
     ++updated;
   } else if(ball->updated_created || !clients[client_id].sent_balls) {
     /* CREATE */
-    buf[buf_len++] = ball->type - 1;
+    buf[buf_len++] = ball->type;
     memcpy(buf + buf_len, &entity->x, sizeof(float));
     buf_len += 4;
     memcpy(buf + buf_len, &entity->y, sizeof(float));
