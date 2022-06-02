@@ -126,7 +126,7 @@ void grid_recalculate(const struct grid* const grid, struct grid_entity* const e
 
 void grid_update(struct grid* const grid) {
   GRID_FOR(grid, i);
-  struct grid_entity* const entity = grid->entities + i;
+  struct grid_entity* entity = grid->entities + i;
   const uint16_t min_x = clamp((entity->x - entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
   const uint16_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
   const uint16_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
@@ -134,6 +134,7 @@ void grid_update(struct grid* const grid) {
   if(grid->update(grid, i) == 0) {
     continue;
   }
+  entity = grid->entities + i;
   if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
     grid_remove_raw(grid, i, min_x, min_y, max_x, max_y);
     for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
