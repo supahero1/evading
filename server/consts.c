@@ -189,18 +189,18 @@ struct area_info area_infos[] = {
             .count = 100,
             .speed = 5 * time_scale,
             .frequency_type = frequency_num_fixed,
-            .frequency_num = 1000000 / tick_interval,
+            .frequency_num = 10000 / tick_interval,
             .radius_type = radius_random,
             .r_min = 6,
             .r_max = 20,
-            .tick = 1000000 / tick_interval,
+            .tick = 10000 / tick_interval,
             .spawn = (struct ball_info[]) {
               {
                 .type = ball_grey,
                 .position_type = position_relative,
                 .speed = 2 * time_scale,
                 .r = 5,
-                .die_on_collision = 1
+                .die_on_collision = 0
               }
             },
             .spawn_len = 1
