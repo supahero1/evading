@@ -168,7 +168,7 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
   ball->area_id = area_id;
   struct grid* const grid = &areas[area_id].grid;
   ball->entity_id = grid_get_entity(grid);
-  ball->updated_created = 1 + (relative != NULL && ball->entity_id > relative->relative_entity_id && current_tick % send_interval == 0);
+  ball->updated_created = 1 + (relative != NULL && ball->entity_id > relative->relative_entity_id);
   struct grid_entity* const entity = grid->entities + ball->entity_id;
   entity->ref = idx;
   switch(info->radius_type) {
@@ -417,13 +417,14 @@ static void add_client_to_area(const uint8_t client_id, const uint16_t area_info
  * =================================== TICK ===================================
  */
 
-static int ball_tick(struct grid* const grid, struct grid_entity* const entity) {
-  struct ball* const ball = balls + entity->ref;
+static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
+  struct grid_entity* entity = grid->entities + entity_id;
+  struct ball* ball = balls + entity->ref;
   struct area* const area = areas + ball->area_id;
   const struct tile_info* const info = area_infos[area->area_info_id].tile_info;
 
   if(ball->updated_created == 2) {
-    --ball->updated_created;
+    ball->updated_created = 1;
     return 0;
   }
 
@@ -640,6 +641,8 @@ static int ball_tick(struct grid* const grid, struct grid_entity* const entity) 
           .y = entity->y,
           .relative_entity_id = ball->entity_id
         }), ball->area_id);
+        entity = grid->entities + entity_id;
+        ball = balls + entity->ref;
         ball->spawn_idx = (ball->spawn_idx + 1) % ball->spawn_len;
       }
       break;
@@ -994,7 +997,11 @@ void send_balls(const uint8_t client_id) {
   buf[buf_len++] = (i >> 8) & 255;
   const struct grid_entity* const entity = area->grid.entities + i;
   const struct ball* const ball = balls + entity->ref;
-  if(ball->updated_created || !clients[client_id].sent_balls) {
+  if(ball->updated_removed) {
+    /* DELETE */
+    buf[buf_len++] = 0;
+    ++updated;
+  } else if(ball->updated_created || !clients[client_id].sent_balls) {
     /* CREATE */
     buf[buf_len++] = ball->type - 1;
     memcpy(buf + buf_len, &entity->x, sizeof(float));
@@ -1003,10 +1010,6 @@ void send_balls(const uint8_t client_id) {
     buf_len += 4;
     memcpy(buf + buf_len, &entity->r, sizeof(float));
     buf_len += 4;
-    ++updated;
-  } else if(ball->updated_removed) {
-    /* DELETE */
-    buf[buf_len++] = 0;
     ++updated;
   } else {
     /* UPDATE */

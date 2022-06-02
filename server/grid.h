@@ -24,7 +24,7 @@ struct grid {
   struct grid_entity* entities;
   struct grid_node_entity* node_entities;
   
-  int  (*update)(struct grid*, struct grid_entity*);
+  int  (*update)(struct grid*, const uint16_t);
   
   uint16_t cells_x;
   uint16_t cells_y;

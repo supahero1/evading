@@ -23,7 +23,7 @@ function add_server(ip, players) {
 setInterval(function() {
   let ok = 0;
   for(const server in servers) {
-    if(new Date().getTime() - servers[server][0] >= 1000 * 3) {
+    if(new Date().getTime() - servers[server][0] >= 1000 * 10) {
       delete servers[server];
       ok = 1;
     }

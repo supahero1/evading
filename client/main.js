@@ -375,7 +375,7 @@ function game2(ws) {
     return num + (to - num) * by;
   }
   function darken(hex) {
-    return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0");
+    return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + hex.substring(7);
   }
   function send_movement() {
     if(!movement.mouse) {
@@ -555,27 +555,35 @@ function game2(ws) {
       ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
       ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
       ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
+      ball_paths[ball.type].moveTo(ball.x + ball.r - 1, ball.y);
+      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 1, 0, Math.PI * 2);
     }
-    ctx.lineWidth = 4;
-    //ctx.strokeStyle = "#333";
     ctx.beginPath();
+    ctx.lineWidth = 2;
     for(let i = 0; i < ball_paths.length; ++i) {
+      ctx.fillStyle = ball_colors[i];
       ctx.strokeStyle = darken(ball_colors[i]);
       ctx.stroke(ball_paths[i]);
-      ctx.fillStyle = ball_colors[i];
       ctx.fill(ball_paths[i]);
     }
+    const players_path = new Path2D();
     for(let player of players) {
       if(!player) continue;
       player.x = lerp(player.ip.x1, player.ip.x2, by);
       player.y = lerp(player.ip.y1, player.ip.y2, by);
       player.r = lerp(player.ip.r1, player.ip.r2, by);
+      players_path.moveTo(player.x + player.r - 1, player.y);
+      players_path.arc(player.x, player.y, player.r - 1, 0, Math.PI * 2);
+    }
+    ctx.beginPath();
+    ctx.fillStyle = "#6f2faf";
+    ctx.strokeStyle = darken("#6f2faf");
+    ctx.lineWidth = 2;
+    ctx.stroke(players_path);
+    ctx.fill(players_path);
+    for(let player of players) {
+      if(!player) continue;
       ctx.beginPath();
-      ctx.fillStyle = "#4f4faf";
-      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
-      ctx.fill();
       if(player.name.length != 0) {
         ctx.font = `700 ${player.r / fov}px Ubuntu`;
         ctx.textAlign = "center";

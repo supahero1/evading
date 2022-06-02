@@ -131,7 +131,7 @@ void grid_update(struct grid* const grid) {
   const uint16_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
   const uint16_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x - 1);
   const uint16_t max_y = clamp((entity->y + entity->r) * grid->inverse_cell_size, 0, grid->cells_y - 1);
-  if(grid->update(grid, grid->entities + i) == 0) {
+  if(grid->update(grid, i) == 0) {
     continue;
   }
   if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
