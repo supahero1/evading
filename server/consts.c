@@ -186,14 +186,13 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_sandy,
-            .count = 100,
+            .count = 1,
             .speed = 5 * time_scale,
             .frequency_type = frequency_num_fixed,
-            .frequency_num = 10000 / tick_interval,
+            .frequency_num = tick_interval / tick_interval,
             .radius_type = radius_random,
             .r_min = 6,
             .r_max = 20,
-            .tick = 10000 / tick_interval,
             .spawn = (struct ball_info[]) {
               {
                 .type = ball_grey,
