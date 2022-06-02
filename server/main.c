@@ -108,7 +108,7 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   { 174, 252, 182,  48, 104,  74,  62,  94 }
 };
 
-static int ball_tick(struct grid* const, struct grid_entity* const);
+static int ball_tick(struct grid* const, const uint16_t);
 
 static void close_client(const uint8_t);
 
