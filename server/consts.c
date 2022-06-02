@@ -154,25 +154,29 @@ struct area_info area_infos[] = {
         (struct ball_info[]){
           {
             .type = ball_grey,
-            .count = 30,
-            .speed = 3 * time_scale,
+            .count = 50,
+            .speed = 5 * time_scale,
             .radius_type = radius_random,
-            .r_min = 5,
+            .r_min = 10,
             .r_max = 20
           },
           {
             .type = ball_pink,
             .count = 30,
             .speed = 8 * time_scale,
-            .frequency_type = frequency_float_fixed,
-            .frequency_float = 0.1,
+            .frequency_type = frequency_float_random,
+            .frequency_float_min = 0.05,
+            .frequency_float_max = 0.5,
             .radius_type = radius_random,
             .r_min = 5,
-            .r_max = 14
+            .r_max = 14,
+            .tick_type = tick_random,
+            .tick_min = 0,
+            .tick_max = 1000
           },
           {
             .type = ball_teal,
-            .count = 30,
+            .count = 20,
             .speed = 5 * time_scale,
             .frequency_type = frequency_float_fixed,
             .frequency_float = 0.5f,
@@ -182,8 +186,8 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_sandy,
-            .count = 30,
-            .speed = 4 * time_scale,
+            .count = 20,
+            .speed = 5 * time_scale,
             .frequency_type = frequency_num_fixed,
             .frequency_num = 1000 / tick_interval,
             .r = 10,
@@ -192,7 +196,7 @@ struct area_info area_infos[] = {
                 .type = ball_grey,
                 .position_type = position_relative,
                 .speed = 2 * time_scale,
-                .r = 7,
+                .r = 5,
                 .die_on_collision = 1
               }
             },

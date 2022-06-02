@@ -26,8 +26,7 @@ enum ball_type {
 enum radius_type {
   radius_fixed,
   radius_random,
-  radius_relative,
-  radius_relative_random
+  radius_relative
 };
 
 enum position_type {
@@ -55,6 +54,12 @@ enum frequency_type {
   frequency_num_relative
 };
 
+enum tick_type {
+  tick_fixed,
+  tick_random,
+  tick_relative
+};
+
 enum game_tile {
   tile_normal,
   tile_safe,
@@ -68,6 +73,7 @@ struct ball_info {
   uint8_t position_type:2;
   uint8_t movement_type:3;
   uint8_t frequency_type:3;
+  uint8_t tick_type:2;
   uint8_t allow_walls:1;
   uint8_t die_on_collision:1;
   uint16_t count;
@@ -103,6 +109,8 @@ struct ball_info {
   float vx;
   float vy;
   uint64_t tick;
+  uint64_t tick_min;
+  uint64_t tick_max;
   struct ball_info* spawn;
   uint32_t spawn_len;
   uint32_t spawn_idx;

@@ -184,10 +184,6 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
       entity->r = info->r + relative->r;
       break;
     }
-    case radius_relative_random: {
-      entity->r = info->r_min + randf() * (info->r_max - info->r_min) + relative->r;
-      break;
-    }
     default: assert(0);
   }
   switch(info->position_type) {
@@ -295,6 +291,21 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
     }
     case frequency_num_relative: {
       ball->frequency_num = info->frequency_num + relative->frequency_num;
+      break;
+    }
+    default: assert(0);
+  }
+  switch(info->tick_type) {
+    case tick_fixed: {
+      ball->tick = info->tick;
+      break;
+    }
+    case tick_random: {
+      ball->tick = info->tick_min + (fast_rand() % (info->tick_max - info->tick_min));
+      break;
+    }
+    case tick_relative: {
+      ball->tick = info->tick + relative->tick;
       break;
     }
     default: assert(0);
@@ -411,13 +422,16 @@ static int ball_tick(struct grid* const grid, struct grid_entity* const entity) 
   struct area* const area = areas + ball->area_id;
   const struct tile_info* const info = area_infos[area->area_info_id].tile_info;
 
+  if(ball->updated_created == 2) {
+    --ball->updated_created;
+    return 0;
+  }
+
   if(current_tick % send_interval == 0) {
     ball->updated_x = 0;
     ball->updated_y = 0;
     ball->updated_r = 0;
-    if(ball->updated_created) {
-      --ball->updated_created;
-    }
+    ball->updated_created = 0;
     if(ball->updated_removed) {
       const uint32_t ball_idx = entity->ref;
       grid_remove(grid, ball->entity_id);
