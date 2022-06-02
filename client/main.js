@@ -262,7 +262,10 @@ function game2(ws) {
           }
         } else {
           let field = u8[idx++];
-          const save_idx = idx;
+          if(!field) {
+            players[id] = undefined;
+            continue;
+          }
           while(field) {
             switch(field) {
               case 1: {
@@ -296,9 +299,6 @@ function game2(ws) {
             }
             field = u8[idx++];
           }
-          if(save_idx == idx) {
-            players[id] = undefined;
-          }
         }
       }
     }
@@ -324,7 +324,10 @@ function game2(ws) {
           balls[id] = { type, x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 } };
         } else {
           let field = u8[idx++];
-          const save_idx = idx;
+          if(!field) {
+            balls[id] = undefined;
+            continue;
+          }
           while(field) {
             switch(field) {
               case 1: {
@@ -344,9 +347,6 @@ function game2(ws) {
               }
             }
             field = u8[idx++];
-          }
-          if(save_idx == idx) {
-            balls[id] = undefined;
           }
         }
       }

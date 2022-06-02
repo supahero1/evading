@@ -99,7 +99,7 @@ int error_handler(int err, int count) {
 
 static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   { 118, 241,  26,  97,  99, 235, 221,  61 }, /* shadam */
-  {  98,  61, 114,  13,  19,  84,  60, 252 },
+  {  98,  61, 114,  13,  19,  84,  60, 252 }, /* inno */
   {   0,  17,  11, 215,  24,  99,  25, 101 },
   { 129, 233, 163, 179,   6, 112, 141,  83 },
   {  38,  33,  21,  78,  33,  93,  68, 193 },
@@ -166,9 +166,9 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
   struct ball* const ball = balls + idx;
   memset(ball, 0, sizeof(*balls));
   ball->area_id = area_id;
-  ball->updated_created = 1 + (current_tick % send_interval == 0);
   struct grid* const grid = &areas[area_id].grid;
   ball->entity_id = grid_get_entity(grid);
+  ball->updated_created = 1 + (relative != NULL && ball->entity_id > relative->relative_entity_id && current_tick % send_interval == 0);
   struct grid_entity* const entity = grid->entities + ball->entity_id;
   entity->ref = idx;
   switch(info->radius_type) {
@@ -623,7 +623,8 @@ static int ball_tick(struct grid* const grid, struct grid_entity* const entity) 
           .vx = ball->vx * 0.5f,
           .vy = ball->vy * 0.5f,
           .x = entity->x,
-          .y = entity->y
+          .y = entity->y,
+          .relative_entity_id = ball->entity_id
         }), ball->area_id);
         ball->spawn_idx = (ball->spawn_idx + 1) % ball->spawn_len;
       }

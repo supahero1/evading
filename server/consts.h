@@ -106,6 +106,7 @@ struct ball_info {
   struct ball_info* spawn;
   uint32_t spawn_len;
   uint32_t spawn_idx;
+  uint32_t relative_entity_id;
 };
 
 struct tile_info {
