@@ -578,13 +578,13 @@ function game2(ws) {
       player.x = lerp(player.ip.x1, player.ip.x2, by);
       player.y = lerp(player.ip.y1, player.ip.y2, by);
       player.r = lerp(player.ip.r1, player.ip.r2, by);
-      players_path.moveTo(player.x + player.r - 1, player.y);
-      players_path.arc(player.x, player.y, player.r - 1, 0, Math.PI * 2);
+      players_path.moveTo(player.x + player.r - 2, player.y);
+      players_path.arc(player.x, player.y, player.r - 2, 0, Math.PI * 2);
     }
     ctx.beginPath();
-    ctx.fillStyle = "#6f2faf";
-    ctx.strokeStyle = darken("#6f2faf");
-    ctx.lineWidth = 2;
+    ctx.fillStyle = "#ebecf0";
+    ctx.strokeStyle = darken("#ebecf0");
+    ctx.lineWidth = 4;
     ctx.stroke(players_path);
     ctx.fill(players_path);
     for(let i = 0; i < ball_paths.length; ++i) {
@@ -595,11 +595,11 @@ function game2(ws) {
       ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
       ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
       ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r - 1, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 1, 0, Math.PI * 2);
+      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
+      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
     }
     ctx.beginPath();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     for(let i = 0; i < ball_paths.length; ++i) {
       ctx.fillStyle = ball_colors[i];
       ctx.strokeStyle = darken(ball_colors[i]);
