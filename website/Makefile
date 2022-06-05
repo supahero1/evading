@@ -1,9 +1,9 @@
 build:
 	$(MAKE) -C ../client/
-	rm -f /etc/systemd/system/ev2_website.service
-	install ev2_website.service /etc/systemd/system/
-	systemctl enable ev2_website
-	systemctl restart ev2_website
+	rm -f /etc/systemd/system/evading_website.service
+	install evading_website.service /etc/systemd/system/
+	systemctl enable evading_website
+	systemctl restart evading_website
 
 light:
-	systemctl restart ev2_website
+	systemctl restart evading_website

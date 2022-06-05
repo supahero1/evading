@@ -15,12 +15,12 @@ struct grid_entity {
 };
 
 struct grid_node_entity {
-  uint16_t ref;
-  uint16_t next;
+  uint32_t ref;
+  uint32_t next;
 };
 
 struct grid {
-  uint16_t* cells;
+  uint32_t* cells;
   struct grid_entity* entities;
   struct grid_node_entity* node_entities;
   

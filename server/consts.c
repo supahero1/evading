@@ -154,51 +154,51 @@ struct area_info area_infos[] = {
         (struct ball_info[]){
           {
             .type = ball_grey,
-            .count = 0,
-            .speed = 5 * time_scale,
+            .count = 20,
+            .speed = 6 * time_scale,
             .radius_type = radius_random,
             .r_min = 10,
             .r_max = 20
           },
           {
             .type = ball_pink,
-            .count = 0,
+            .count = 20,
             .speed = 8 * time_scale,
             .frequency_type = frequency_float_random,
             .frequency_float_min = 0.05,
             .frequency_float_max = 0.5,
             .radius_type = radius_random,
-            .r_min = 5,
-            .r_max = 14,
+            .r_min = 8,
+            .r_max = 20,
             .tick_type = tick_random,
             .tick_min = 0,
             .tick_max = 1000
           },
           {
             .type = ball_teal,
-            .count = 0,
+            .count = 20,
             .speed = 5 * time_scale,
             .frequency_type = frequency_float_fixed,
             .frequency_float = 0.5f,
             .radius_type = radius_random,
-            .r_min = 5,
-            .r_max = 14
+            .r_min = 8,
+            .r_max = 20
           },
           {
             .type = ball_sandy,
-            .count = 500,
+            .count = 20,
             .speed = 5 * time_scale,
             .frequency_type = frequency_num_fixed,
-            .frequency_num = 100 / tick_interval,
+            .frequency_num = 1000 / tick_interval,
             .radius_type = radius_random,
-            .r_min = 6,
+            .r_min = 8,
             .r_max = 20,
             .spawn = (struct ball_info[]) {
               {
                 .type = ball_grey,
                 .position_type = position_relative,
-                .speed = 10 * time_scale,
-                .r = 5,
+                .speed = 3 * time_scale,
+                .r = 4,
                 .die_on_collision = 1
               }
             },

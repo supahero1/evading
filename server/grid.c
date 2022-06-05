@@ -46,6 +46,7 @@ uint16_t grid_get_entity(struct grid* const grid) {
     grid->entities = shnet_realloc(grid->entities, sizeof(*grid->entities) * grid->entities_size);
     assert(grid->entities);
   }
+  printf("entities_used %hu\n", grid->entities_used);
   return grid->entities_used++;
 }
 
@@ -94,8 +95,13 @@ static void grid_remove_raw(struct grid* const grid, const uint16_t id, uint16_t
   const uint16_t y_save = y;
   for(; x <= max_x; ++x) {
     for(y = y_save; y <= max_y; ++y) {
-      uint16_t* const cell = grid->cells + ((uint32_t) x * grid->cells_y + y);
-      for(uint16_t i = *cell, prev = 0; i != 0; prev = i, i = grid->node_entities[i].next) {
+      uint32_t* const cell = grid->cells + ((uint32_t) x * grid->cells_y + y);
+      uint32_t ok = 0;
+      for(uint32_t i = *cell, prev = 0; i != 0; prev = i, i = grid->node_entities[i].next) {
+        if(++ok == 10000) {
+          printf("prolly an infinite loop, sad. i is %u, prev %u, next %u\n", i, prev, grid->node_entities[i].next);
+          assert(0);
+        }
         if(grid->node_entities[i].ref != id) {
           continue;
         }
@@ -140,7 +146,7 @@ void grid_update(struct grid* const grid) {
     for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
       for(uint16_t y = entity->min_y; y <= entity->max_y; ++y) {
         const uint32_t idx = grid_get_node_entity(grid);
-        uint16_t* const cell = grid->cells + ((uint32_t) x * grid->cells_y + y);
+        uint32_t* const cell = grid->cells + ((uint32_t) x * grid->cells_y + y);
         grid->node_entities[idx].ref = i;
         grid->node_entities[idx].next = *cell;
         *cell = idx;

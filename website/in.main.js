@@ -3,7 +3,7 @@ const express = require("express");
 
 const index_html = fs.readFileSync("../client/index.html");
 const favicon = fs.readFileSync("../client/favicon.ico");
-const main_js = `!function(){${fs.readFileSync("../client/main.min2.js")}}.call(this)`;
+const main_js = fs.readFileSync("../client/main.min2.js");
 const style_css = fs.readFileSync("../client/style.css");
 
 const options = {

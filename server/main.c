@@ -196,7 +196,7 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
         ok = 1;
         for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
           for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-            const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[cell_x * grid->cells_y + cell_y];
+            const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[(uint32_t) cell_x * grid->cells_y + cell_y];
             if(tile_type != tile_normal && (!info->allow_walls || tile_type != tile_wall)) {
               ok = 0;
               goto out;
@@ -481,9 +481,11 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
     }
   }
 
-  if(ball->die_on_collision && updated.collided) {
-    ball->updated_removed = 1;
-    return 0;
+  if(updated.collided) {
+    if(ball->die_on_collision) {
+      ball->updated_removed = 1;
+      return 0;
+    }
   } else {
     updated.collided = 0;
   }
@@ -851,8 +853,6 @@ static int player_tick(const uint8_t client_id) {
   
   after_tp:;
   
-  grid_recalculate(grid, entity);
-  
   updated.x = entity->x != save_x;
   updated.y = entity->y != save_y;
   updated.r = entity->r != save_r;
@@ -888,8 +888,9 @@ static void player_collide(const uint8_t client_id1, const uint8_t client_id2) {
 
 static void player_collide_ball(const uint8_t client_id, struct grid_entity* const ball_entity) {
   struct client* const client = clients + client_id;
-  
-  if(!client->dead) {
+  struct ball* const ball = balls + ball_entity->ref;
+
+  if(!client->dead && !ball->updated_removed) {
     client->dead = 1;
     client->death_counter = 60;
     client->died_ticks_ago = 0;
@@ -1003,6 +1004,7 @@ void send_balls(const uint8_t client_id) {
     ++updated;
   } else if(ball->updated_created || !clients[client_id].sent_balls) {
     /* CREATE */
+    //buf[buf_len++] = 1;
     buf[buf_len++] = ball->type;
     memcpy(buf + buf_len, &entity->x, sizeof(float));
     buf_len += 4;
@@ -1010,9 +1012,11 @@ void send_balls(const uint8_t client_id) {
     buf_len += 4;
     memcpy(buf + buf_len, &entity->r, sizeof(float));
     buf_len += 4;
+    assert(entity->r > 1 && entity->r < 21);
     ++updated;
   } else {
     /* UPDATE */
+    //buf[buf_len++] = 2;
     const uint32_t save = buf_len;
     if(ball->updated_x) {
       buf[buf_len++] = 1;
@@ -1028,8 +1032,10 @@ void send_balls(const uint8_t client_id) {
       buf[buf_len++] = 3;
       memcpy(buf + buf_len, &entity->r, sizeof(float));
       buf_len += 4;
+      assert(entity->r > 1 && entity->r < 21);
     }
     if(save == buf_len) {
+      //buf_len -= 3;
       buf_len -= 2;
     } else {
       buf[buf_len++] = 0;
@@ -1049,39 +1055,50 @@ void send_balls(const uint8_t client_id) {
 }
 
 static void tick(void* nil) {
+  puts("pre tick");
   pthread_mutex_lock(&mutex);
+  printf("tick %u ", current_tick);
+  fflush(stdout);
   if(++current_tick % send_interval == 0) {
     uint8_t i = 0;
     tcp_socket_cork_on(&sock);
     do {
-      if(clients[i].exists) {
-        buf[4] = 0;
-        buf_len = 5;
-        send_arena(i);
-        send_players(i);
-        send_balls(i);
-        buf[0] = buf_len & 255;
-        buf[1] = (buf_len >> 8) & 255;
-        buf[2] = (buf_len >> 16) & 255;
-        buf[3] = i;
-        tcp_send(&sock, &((struct data_frame) {
-          .data = (char*) buf,
-          .len = buf_len,
-          .dont_free = 1,
-          .read_only = 0,
-          .free_onerr = 0
-        }));
-      }
+      if(!clients[i].exists) continue;
+      buf[4] = current_tick & 255;
+      buf[5] = (current_tick >> 8) & 255;
+      buf[6] = (current_tick >> 16) & 255;
+      buf[7] = (current_tick >> 24) & 255;
+      buf_len = 8;
+      send_arena(i);
+      send_players(i);
+      send_balls(i);
+      buf[0] = buf_len & 255;
+      buf[1] = (buf_len >> 8) & 255;
+      buf[2] = (buf_len >> 16) & 255;
+      buf[3] = i;
+      tcp_send(&sock, &((struct data_frame) {
+        .data = (char*) buf,
+        .len = buf_len,
+        .dont_free = 1,
+        .read_only = 0,
+        .free_onerr = 0
+      }));
     } while(i++ != 255);
     tcp_socket_cork_off(&sock);
   }
+  printf("1 ");
+  fflush(stdout);
   uint8_t i = 0;
   do {
     if(!clients[i].exists) continue;
+    //printf("2(%hhu) ", i);
+    fflush(stdout);
     struct grid_entity* const entity = &clients[i].entity;
     if(i != 255) {
       uint8_t j = i + 1;
       do {
+        //printf("3(%hhu) ", j);
+        fflush(stdout);
         struct grid_entity* const ent = &clients[j].entity;
         const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
         if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
@@ -1089,6 +1106,8 @@ static void tick(void* nil) {
         }
       } while(j++ != 255);
     }
+    //printf("4 ");
+    fflush(stdout);
     struct area* const area = areas + clients[i].area_id;
     for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
       for(uint16_t y = entity->min_y; y <= entity->max_y; ++y) {
@@ -1101,13 +1120,26 @@ static void tick(void* nil) {
         }
       }
     }
+    //printf("5 ");
+    fflush(stdout);
     player_tick(i);
+    //printf("6 ");
+    fflush(stdout);
   } while(i++ != 255);
+  printf("7 ");
+  fflush(stdout);
   for(uint16_t j = 0; j < areas_used; ++j) {
     if(areas[j].players_len == 0) continue;
+    printf("8(%hu) ", j);
+    fflush(stdout);
     grid_update(&areas[j].grid);
+    printf("9 ");
+    fflush(stdout);
   }
+  printf("10 ");
+  fflush(stdout);
   pthread_mutex_unlock(&mutex);
+  printf("11\n");
 }
 
 static void start_game(void) {
@@ -1259,7 +1291,7 @@ static struct tcp_socket* server_onevent(struct tcp_server* a, struct tcp_socket
 int main() {
   fast_srand(time_get_time());
   assert(!time_timers(&timers));
-  assert(!time_start(&timers));
+  //assert(!time_start(&timers));
   struct async_loop loop = {0};
   assert(!tcp_async_loop(&loop));
   server.loop = &loop;
@@ -1269,6 +1301,8 @@ int main() {
     .port = "23456",
     .backlog = 1
   })));
-  (void) async_loop_thread(&loop);
+  //(void) async_loop_thread(&loop);
+  assert(!async_loop_start(&loop));
+  (void) time_thread(&timers);
   assert(0);
 }

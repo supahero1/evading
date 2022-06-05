@@ -11,7 +11,6 @@ let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
 let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#d2b48c"];
-let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
 let dpr = 0;
@@ -56,6 +55,7 @@ let fov = settings.default_fov;
 let target_fov = fov;
 let updates = [0, 0];
 window["s"].then(r => r.json()).then(r => init(r));
+let to_draw = [];
 function reload() {
   setTimeout(location.reload.bind(location),1000);
 }
@@ -181,7 +181,6 @@ function game2(ws) {
       throw new Error(`tick - last_tick = ${tick - last_tick}`);
     }
     last_tick = tick;
-    //console.log(`onmessage tick ${tick} at ${performance.now()}`);
     let idx = 4;
     updates[0] = updates[1];
     updates[1] += 40;
@@ -243,6 +242,7 @@ function game2(ws) {
     if(idx == len) {
       return;
     }
+    let sort = 0;
     if(u8[idx] == 1) {
       /* Players */
       ++idx;
@@ -269,9 +269,12 @@ function game2(ws) {
             us.ip.x2 = x2;
             us.ip.y2 = y2;
           }
+          to_draw[to_draw.length] = id;
+          sort = 1;
         } else {
           let field = u8[idx++];
           if(!field) {
+            to_draw.splice(to_draw.findIndex(a => a == id), 1);
             players[id] = undefined;
             continue;
           }
@@ -296,6 +299,7 @@ function game2(ws) {
               case 3: {
                 players[id].ip.r2 = view.getFloat32(idx, true);
                 idx += 4;
+                sort = 1;
                 break;
               }
               case 4: {
@@ -340,9 +344,12 @@ function game2(ws) {
             ws.onmessage = function(){};
             throw new Error();
           }
+          to_draw[to_draw.length] = id + 256;
+          sort = 1;
         } else {
           let field = u8[idx++];
           if(!field) {
+            to_draw.splice(to_draw.findIndex(a => a == id + 256), 1);
             balls[id] = undefined;
             continue;
           }
@@ -366,6 +373,7 @@ function game2(ws) {
                   throw new Error();
                 }
                 idx += 4;
+                sort = 1;
                 break;
               }
             }
@@ -374,7 +382,19 @@ function game2(ws) {
         }
       }
     }
-    //console.log(`end of onmessage tick ${tick} at ${performance.now()}`);
+    for(let i = 0; i < to_draw.length; ++i) {
+      let obj = to_draw[i] >= 256 ? balls[to_draw[i] - 256] : players[to_draw[i]];
+      obj.x = lerp(obj.ip.x1, obj.ip.x2, by);
+      obj.y = lerp(obj.ip.y1, obj.ip.y2, by);
+      obj.r = lerp(obj.ip.r1, obj.ip.r2, by);
+    }
+    if(sort) {
+      to_draw.sort(function(a, b) {
+        let obj1 = a >= 256 ? balls[a - 256] : players[a];
+        let obj2 = b >= 256 ? balls[b - 256] : players[b];
+        return obj1.r - obj2.r;
+      });
+    }
   };
   ws.onmessage = function(x) {
     reset = 0;
@@ -572,62 +592,42 @@ function game2(ws) {
       ctx.drawImage(light_background, 0, 0, background.width / settings.max_fov, background.height / settings.max_fov);
       ctx.globalAlpha = 1;
     }
-    const players_path = new Path2D();
-    for(let player of players) {
-      if(!player) continue;
-      player.x = lerp(player.ip.x1, player.ip.x2, by);
-      player.y = lerp(player.ip.y1, player.ip.y2, by);
-      player.r = lerp(player.ip.r1, player.ip.r2, by);
-      players_path.moveTo(player.x + player.r - 1, player.y);
-      players_path.arc(player.x, player.y, player.r - 1, 0, Math.PI * 2);
-    }
-    ctx.beginPath();
-    ctx.fillStyle = "#6f2faf";
-    ctx.strokeStyle = darken("#6f2faf");
-    ctx.lineWidth = 2;
-    ctx.stroke(players_path);
-    ctx.fill(players_path);
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ball_paths[i] = new Path2D();
-    }
-    for(let ball of balls) {
-      if(!ball) continue;
-      ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
-      ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
-      ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r - 1, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 1, 0, Math.PI * 2);
-    }
-    ctx.beginPath();
-    ctx.lineWidth = 2;
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ctx.fillStyle = ball_colors[i];
-      ctx.strokeStyle = darken(ball_colors[i]);
-      ctx.stroke(ball_paths[i]);
-      ctx.fill(ball_paths[i]);
-    }
-    for(let player of players) {
-      if(!player) continue;
-      ctx.beginPath();
-      if(player.name.length != 0) {
-        ctx.font = `700 ${player.r / fov}px Ubuntu`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#00000080";
-        if(fov > 1) {
-          target_name_y = player.r * 0.5;
-        } else {
-          target_name_y = player.r * 0.5 + (2 / (fov * fov));
-        }
-        name_y = lerp(name_y, target_name_y, 0.1);
-        ctx.fillText(player.name, player.x, player.y - player.r - name_y);
+    for(let idx of to_draw) {
+      let is_player = idx < 256;
+      let obj = is_player ? players[idx] : balls[idx - 256];
+      ctx.moveTo(obj.x + obj.r * 0.9, obj.y);
+      ctx.arc(obj.x, obj.y, obj.r * 0.95, 0, Math.PI * 2);
+      if(is_player) {
+        ctx.fillStyle = "#6f2faf";
+        ctx.strokeStyle = darken("#6f2faf");
+      } else {
+        ctx.fillStyle = ball_colors[obj.type];
+        ctx.strokeStyle = darken(ball_colors[obj.type]);
       }
-      if(player.dead) {
-        ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#f00";
-        ctx.fillText(player.death_counter, player.x, player.y);
+      ctx.lineWidth = obj.r * 0.05;
+      ctx.fill();
+      ctx.stroke();
+      if(is_player) {
+        if(obj.name.length != 0) {
+          ctx.font = `700 ${obj.r / fov}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#00000080";
+          if(fov > 1) {
+            target_name_y = obj.r * 0.5;
+          } else {
+            target_name_y = obj.r * 0.5 + (2 / (fov * fov));
+          }
+          name_y = lerp(name_y, target_name_y, 0.1);
+          ctx.fillText(obj.name, obj.x, obj.y - obj.r - name_y);
+        }
+        if(obj.dead) {
+          ctx.font = `700 ${obj.r / Math.min(fov, 1)}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#f00";
+          ctx.fillText(obj.death_counter, obj.x, obj.y);
+        }
       }
     }
     requestAnimationFrame(draw);
