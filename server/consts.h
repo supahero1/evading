@@ -7,7 +7,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   player_radius = 19,
-  default_area_id = 0
+  default_area_id = 2
 };
 
 #define base_tick_interval (40.0f)

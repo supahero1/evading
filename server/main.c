@@ -1055,10 +1055,7 @@ void send_balls(const uint8_t client_id) {
 }
 
 static void tick(void* nil) {
-  puts("pre tick");
   pthread_mutex_lock(&mutex);
-  printf("tick %u ", current_tick);
-  fflush(stdout);
   if(++current_tick % send_interval == 0) {
     uint8_t i = 0;
     tcp_socket_cork_on(&sock);
@@ -1086,19 +1083,13 @@ static void tick(void* nil) {
     } while(i++ != 255);
     tcp_socket_cork_off(&sock);
   }
-  printf("1 ");
-  fflush(stdout);
   uint8_t i = 0;
   do {
     if(!clients[i].exists) continue;
-    //printf("2(%hhu) ", i);
-    fflush(stdout);
     struct grid_entity* const entity = &clients[i].entity;
     if(i != 255) {
       uint8_t j = i + 1;
       do {
-        //printf("3(%hhu) ", j);
-        fflush(stdout);
         struct grid_entity* const ent = &clients[j].entity;
         const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
         if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
@@ -1106,8 +1097,6 @@ static void tick(void* nil) {
         }
       } while(j++ != 255);
     }
-    //printf("4 ");
-    fflush(stdout);
     struct area* const area = areas + clients[i].area_id;
     for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
       for(uint16_t y = entity->min_y; y <= entity->max_y; ++y) {
@@ -1120,26 +1109,13 @@ static void tick(void* nil) {
         }
       }
     }
-    //printf("5 ");
-    fflush(stdout);
     player_tick(i);
-    //printf("6 ");
-    fflush(stdout);
   } while(i++ != 255);
-  printf("7 ");
-  fflush(stdout);
   for(uint16_t j = 0; j < areas_used; ++j) {
     if(areas[j].players_len == 0) continue;
-    printf("8(%hu) ", j);
-    fflush(stdout);
     grid_update(&areas[j].grid);
-    printf("9 ");
-    fflush(stdout);
   }
-  printf("10 ");
-  fflush(stdout);
   pthread_mutex_unlock(&mutex);
-  printf("11\n");
 }
 
 static void start_game(void) {
