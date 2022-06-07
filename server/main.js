@@ -2,20 +2,16 @@
 
 const fs = require("fs");
 
+const client_limit = 128;
+
 let http;
 let port;
-let options;
 if(0) {
   http = require("https");
   port = 443;
-  options = {
-    cert: fs.readFileSync("/etc/letsencrypt/live/localhost/fullchain.pem"),
-    key: fs.readFileSync("/etc/letsencrypt/live/localhost/privkey.pem")
-  };
 } else {
   http = require("http");
   port = 80;
-  options = {};
 }
 
 const game_client_close = 0;
@@ -50,13 +46,14 @@ socket.on("data", function(data) {
   let len = buffer[0] | (buffer[1] << 8) | (buffer[2] << 16);
   while(len <= buffer_at) {
     const id = buffer[3];
-    if(typeof clients[id] == "object" && clients[id].game_ready == 1) {
+    if(typeof clients[id] == "object" && clients[id].game_ready == 1 && clients[id].game_close == 0) {
       if(len == 4) {
         clients[id].game_close = 1;
-        clients[id].close();
+        clearInterval(clients[id].pinging);
+        clients[id].end();
         return_client_id(id);
-      } else {
-        clients[id].send(buffer.subarray(4, len));
+      } else if(clients[id].send(buffer.subarray(4, len), true, false) == 2) {
+        clients[id].close();
       }
     }
     buffer.copyWithin(0, len, buffer_at);
@@ -73,11 +70,11 @@ socket.on("error", function(e) {
   process.exit();
 });
 socket.on("end", function() {
-  console.error("master socket closed");
+  console.log("master socket closed");
   process.exit();
 });
 
-/*const uWS = require("uWebSockets.js");
+const uWS = require("uWebSockets.js");
 let app;
 if(0) {
   app = uWS.SSLApp({
@@ -89,10 +86,12 @@ if(0) {
 }
 app.ws("/*", {
   compression: uWS.DISABLED,
-  maxPayloadLength: 15,
+  maxPayloadLength: 16,
+  maxBackpressure: 1048576,
   idleTimeout: 0,
   open: function(ws) {
-    if(free == -1 && clients.length >= 255) {
+    if(free == -1 && clients.length >= client_limit) {
+      ws.game_close = 1;
       return ws.end();
     }
     ws.game_id = get_client_id();
@@ -100,23 +99,34 @@ app.ws("/*", {
     clients[ws.game_id] = ws;
   },
   message: function(ws, message, is_binary) {
-    if(ws.game_close) return;
+    if(ws.game_close) {
+      return;
+    }
+    if(!is_binary) {
+      return ws.close();
+    }
     if(message.byteLength == 0) {
       return ws.send(new Uint8Array(0), true, false);
     }
-    ws.game_ready = 1;
-    message = new Uint8Array(message);
-    socket.write(new Uint8Array([message.byteLength + 1, ws.game_id, ...message]));
+    if(!ws.game_ready) {
+      ws.game_ready = 1;
+      ws.pinging = setInterval(ws.ping.bind(ws), 1000);
+    }
+    socket.cork();
+    socket.write(new Uint8Array([message.byteLength, ws.game_id]));
+    socket.write(new Uint8Array(message));
+    socket.uncork();
   },
   close: function(ws, code, message) {
     if(ws.game_close) return;
     ws.game_close = 1;
+    clearInterval(ws.pinging);
     return_client_id(ws.game_id);
-    if(ws.game_ready) {
-      socket.write(new Uint8Array([1, ws.game_id]));
+    if(ws.game_ready == 1) {
+      socket.write(new Uint8Array([0, ws.game_id]));
     }
   }
-}).listen(8191, function(token) {
+}).listen("0.0.0.0", 8191, function(token) {
   if(token) {
     function register_self() {
       let req = http.request({
@@ -136,51 +146,4 @@ app.ws("/*", {
     console.log("server couldn't start");
     process.exit();
   }
-});*/
-
-const { WebSocketServer } = require("ws");
-const ws_options = {
-  server: http.createServer(options)
-};
-const server = new WebSocketServer(ws_options);
-server.on("connection", function(ws) {
-  if(free == -1 && clients.length >= 255) {
-    return ws.close();
-  }
-  ws.game_id = get_client_id();
-  ws.game_close = 0;
-  clients[ws.game_id] = ws;
-  ws.on("message", function(message, isBinary) {
-    if(ws.game_close) return;
-    if(!isBinary) return ws.close();
-    if(message.byteLength == 0) return ws.send(new Uint8Array(0), true, false);
-    if(message.byteLength > 15) return ws.close();
-    ws.game_ready = 1;
-    message = new Uint8Array(message);
-    socket.write(new Uint8Array([message.byteLength + 1, ws.game_id, ...message]));
-  });
-  ws.on("error", function(){});
-  ws.on("close", function() {
-    if(ws.game_close) return;
-    ws.game_close = 1;
-    return_client_id(ws.game_id);
-    if(ws.game_ready) {
-      socket.write(new Uint8Array([1, ws.game_id]));
-    }
-  });
 });
-ws_options.server.listen(8191);
-function register_self() {
-  let req = http.request({
-    host: "localhost",
-    path: "/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78",
-    port,
-    method: "POST",
-    headers: { "Content-Type": "application/json" }
-  }, function(){});
-  req.on("error", function(){});
-  req.write(JSON.stringify({ ip: "ws://localhost:8191", players: clients.length }));
-  req.end();
-}
-setInterval(register_self, 5000);
-register_self();

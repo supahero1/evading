@@ -40,7 +40,7 @@ static uint16_t free_area = UINT16_MAX;
 struct client {
   struct grid_entity entity;
   uint16_t area_id;
-  uint8_t  sees_clients[256 >> 3];
+  uint8_t  sees_clients[(max_players + 7) >> 3];
   uint8_t  sent_area:1;
   uint8_t  sent_balls:1;
   uint8_t  exists:1;
@@ -60,7 +60,7 @@ struct client {
   char     name[5];
 };
 
-static struct client clients[256] = {0};
+static struct client clients[max_players] = {0};
 
 struct ball {
   union {
@@ -101,9 +101,9 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   { 118, 241,  26,  97,  99, 235, 221,  61 }, /* shadam */
   {  98,  61, 114,  13,  19,  84,  60, 252 }, /* inno */
   {   1,  17,  11, 215,  24,  99,  25, 101 }, /* spin */
-  { 129, 233, 163, 179,   6, 112, 141,  83 }, 
-  {  38,  33,  21,  78,  33,  93,  68, 193 },
-  { 176,  49,  92, 210, 130, 209,  79, 142 },
+  { 129, 233, 163, 179,   6, 112, 141,  83 }, /* penta */
+  {  38,  33,  21,  78,  33,  93,  68, 193 }, /* nafi */
+  { 176,  49,  92, 210, 130, 209,  79, 142 }, /* dimsi */
   { 149,  59, 209, 117,  50,  40,  58,  86 },
   { 174, 252, 182,  48, 104,  74,  62,  94 }
 };
@@ -903,9 +903,8 @@ static void send_players(const uint8_t client_id) {
   buf[buf_len++] = 1;
   const uint32_t that_idx = buf_len;
   ++buf_len;
-  
-  uint8_t i = 0;
-  do {
+
+  for(uint8_t i = 0; i < max_players; ++i) {
     uint8_t* const sees = clients[client_id].sees_clients + (i >> 3);
     const uint8_t bit = 1 << (i & 7);
     buf[buf_len++] = i;
@@ -977,7 +976,7 @@ static void send_players(const uint8_t client_id) {
     } else {
       --buf_len;
     }
-  } while(i++ != 255);
+  }
   
   if(!updated) {
     buf_len -= 2;
@@ -1057,9 +1056,8 @@ void send_balls(const uint8_t client_id) {
 static void tick(void* nil) {
   pthread_mutex_lock(&mutex);
   if(++current_tick % send_interval == 0) {
-    uint8_t i = 0;
     tcp_socket_cork_on(&sock);
-    do {
+    for(uint8_t i = 0; i < max_players; ++i) {
       if(!clients[i].exists) continue;
       buf[4] = current_tick & 255;
       buf[5] = (current_tick >> 8) & 255;
@@ -1080,22 +1078,19 @@ static void tick(void* nil) {
         .read_only = 0,
         .free_onerr = 0
       }));
-    } while(i++ != 255);
+    }
     tcp_socket_cork_off(&sock);
   }
-  uint8_t i = 0;
-  do {
+  for(uint8_t i = 0; i < max_players; ++i) {
     if(!clients[i].exists) continue;
     struct grid_entity* const entity = &clients[i].entity;
-    if(i != 255) {
-      uint8_t j = i + 1;
-      do {
-        struct grid_entity* const ent = &clients[j].entity;
-        const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
-        if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
-          player_collide(i, j);
-        }
-      } while(j++ != 255);
+    for(uint8_t j = i + 1; j < max_players; ++j) {
+      if(clients[j].area_id != clients[i].area_id) continue;
+      struct grid_entity* const ent = &clients[j].entity;
+      const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
+      if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
+        player_collide(i, j);
+      }
     }
     struct area* const area = areas + clients[i].area_id;
     for(uint16_t x = entity->min_x; x <= entity->max_x; ++x) {
@@ -1109,8 +1104,11 @@ static void tick(void* nil) {
         }
       }
     }
+  }
+  for(uint8_t i = 0; i < max_players; ++i) {
+    if(!clients[i].exists) continue;
     player_tick(i);
-  } while(i++ != 255);
+  }
   for(uint16_t j = 0; j < areas_used; ++j) {
     if(areas[j].players_len == 0) continue;
     grid_update(&areas[j].grid);
@@ -1127,6 +1125,7 @@ static void start_game(void) {
 }
 
 static void close_client(const uint8_t client_id) {
+  puts("close_client()");
   uint8_t deleted_by_above = clients[client_id].deleted_by_above;
   if(clients[client_id].exists) {
     remove_client_from_its_area(client_id);
@@ -1136,7 +1135,7 @@ static void close_client(const uint8_t client_id) {
     uint8_t payload[] = { 4, 0, 0, client_id };
     tcp_send(&sock, &((struct data_frame) {
       .data = (char*) payload,
-      .len = 4,
+      .len = payload[0],
       .read_only = 0,
       .dont_free = 1,
       .free_onerr = 0
@@ -1147,31 +1146,24 @@ static void close_client(const uint8_t client_id) {
 static void parse(void) {
   const uint8_t len = buffer[0];
   const uint8_t client_id = buffer[1];
-  if(len == 1) {
+  if(len == 0) {
     /* Delete the player */
     clients[client_id].deleted_by_above = 1;
     goto close;
   }
   if(!clients[client_id].exists) {
-    if(len < 5 || buffer[len] != 0) {
+    if(sizeof(alpha_tokens[0]) + 1 >= len) {
       goto close;
     }
-    const uint8_t* const name = buffer + 3;
-    const uint32_t name_len = strlen((char*) name);
-    if(name_len > 4) {
+    const uint8_t* const name = buffer + 2;
+    const uint8_t name_len = strnlen((char*) name, 5);
+    if(name_len == 5 || sizeof(alpha_tokens[0]) + name_len + 1 > len) {
       goto close;
     }
     const uint8_t* const token = name + name_len + 1;
-    if(token == buffer + len + 1) {
-      goto close;
-    }
-    const uint32_t token_len = strlen((char*) token);
-    if(token_len < 8) {
-      goto close;
-    }
     uint8_t ok = 0;
-    for(uint8_t i = 0; i < 8; ++i) {
-      if(memcmp(token, alpha_tokens[i], 8) == 0) {
+    for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
+      if(memcmp(token, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
         ok = 1;
         break;
       }
@@ -1182,19 +1174,18 @@ static void parse(void) {
     /* Create the player */
     add_client_to_area(client_id, default_area_id);
     clients[client_id].exists = 1;
+    clients[client_id].entity.r = player_radius;
     set_player_pos_to_area_spawn_tiles(client_id);
     clients[client_id].movement_speed = base_player_speed;
-    memcpy(clients[client_id].name, buffer + 3, len - 1);
-    clients[client_id].entity.r = player_radius;
+    memcpy(clients[client_id].name, name, name_len + 1);
   } else {
-    if(len != 6) {
+    if(len != 5) {
       goto close;
     }
     /* Update the player */
     memcpy(&clients[client_id].angle, buffer + 2, sizeof(float));
     clients[client_id].speed = buffer[6];
   }
-  
   return;
   
   close:;
@@ -1211,9 +1202,9 @@ static void consume_data(void) {
   }
   while(1) {
     const uint8_t len = buffer[0];
-    if(len < buffer_len) {
+    if(len + 2 <= buffer_len) {
       parse();
-      buffer_len -= len + 1;
+      buffer_len -= len + 2;
     } else {
       break;
     }

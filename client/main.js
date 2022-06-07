@@ -138,6 +138,10 @@ function game(ws) {
   loading.innerHTML = "Enter your name<br>";
   sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
   name.style.display = "block";
+  let name_val = window.localStorage.getItem("name");
+  if(name_val) {
+    name.value = name_val;
+  }
   name.onkeypress = name.onblur = name.onpaste = function(e) {
     let new_val = e.target.value + e.key;
     if(new TextEncoder().encode(new_val).byteLength > 4) {
@@ -159,12 +163,13 @@ function game(ws) {
   };
   window.onkeydown = function(x) {
     if((x.keyCode || x.which) == 13) {
+      window.localStorage.setItem("name", name.value);
       loading.innerHTML = "Spawning...";
       sub.innerHTML = "";
       name.style.display = "none";
       let token = window.localStorage.getItem("token");
       token = token ? token.split(",").map(r => +r) : [];
-      ws.send(new Uint8Array([0, ...new TextEncoder().encode(name.value), 0, ...token, 0]));
+      ws.send(new Uint8Array([...new TextEncoder().encode(name.value), 0, ...token]));
       game2(ws);
     }
   };
@@ -172,7 +177,6 @@ function game(ws) {
 function game2(ws) {
   let last_tick = 0;
   function onmessage({ data }) {
-    //console.log("onmessage", updates[0].toFixed(1), updates[1].toFixed(1), performance.now().toFixed(1));
     u8.set(new Uint8Array(data));
     len = data.byteLength;
     let tick = u8[0] | (u8[1] << 8) | (u8[2] << 16) | (u8[3] << 24);
@@ -181,10 +185,9 @@ function game2(ws) {
       throw new Error(`tick - last_tick = ${tick - last_tick}`);
     }
     last_tick = tick;
-    //console.log(`onmessage tick ${tick} at ${performance.now()}`);
     let idx = 4;
     updates[0] = updates[1];
-    updates[1] += 40;
+    updates[1] = performance.now();
     ip();
     if(idx == len) {
       return;
@@ -374,7 +377,6 @@ function game2(ws) {
         }
       }
     }
-    //console.log(`end of onmessage tick ${tick} at ${performance.now()}`);
   };
   ws.onmessage = function(x) {
     reset = 0;
@@ -531,6 +533,10 @@ function game2(ws) {
     e.returnValue = "Are you sure you want to quit?";
     return "Are you sure you want to quit?";
   };
+  canvas.oncontextmenu = function(e) {
+    e.preventDefault();
+    return false;
+  };
   function draw(when) {
     if(updates[0] == 0) {
       requestAnimationFrame(draw);
@@ -555,7 +561,6 @@ function game2(ws) {
     } else {
       by = (now - updates[0]) / (updates[1] - updates[0]);
     }
-    //console.log(updates[0].toFixed(1), updates[1].toFixed(1), now.toFixed(1), by.toFixed(3), performance.now().toFixed(1));
     now += when - last_draw;
     last_draw = when;
     us.x = lerp(us.ip.x1, us.ip.x2, by);

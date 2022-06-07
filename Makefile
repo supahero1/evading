@@ -94,7 +94,7 @@ server: prepare
 	ufw deny 80
 	ufw deny 443
 	ufw allow 8191
-	iptables -A INPUT -p tcp --syn --dport 443 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+	iptables -A INPUT -p tcp --syn --dport 8191 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	$(MAKE) -C $(DIR_TOP)/server
 
 endif

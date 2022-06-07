@@ -46,7 +46,6 @@ uint16_t grid_get_entity(struct grid* const grid) {
     grid->entities = shnet_realloc(grid->entities, sizeof(*grid->entities) * grid->entities_size);
     assert(grid->entities);
   }
-  printf("entities_used %hu\n", grid->entities_used);
   return grid->entities_used++;
 }
 
@@ -99,7 +98,7 @@ static void grid_remove_raw(struct grid* const grid, const uint16_t id, uint16_t
       uint32_t ok = 0;
       for(uint32_t i = *cell, prev = 0; i != 0; prev = i, i = grid->node_entities[i].next) {
         if(++ok == 10000) {
-          printf("prolly an infinite loop, sad. i is %u, prev %u, next %u\n", i, prev, grid->node_entities[i].next);
+          printf("i is %u, prev %u, next %u\n", i, prev, grid->node_entities[i].next);
           assert(0);
         }
         if(grid->node_entities[i].ref != id) {
