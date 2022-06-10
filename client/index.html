@@ -15,14 +15,15 @@
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <script>this["s"]=fetch("/servers.json")</script>
+    <script>window.s=fetch("/servers.json")</script>
+    <canvas id="canvas"></canvas>
     <div id="main">
       <span id="loading">Loading...</span>
       <input id="name" autocomplete="off">
       <span id="sub"></span>
     </div>
-    <canvas id="canvas"></canvas>
-    <div id="settings"></div>
+
+    <div id="settings"><div id="ss"></div></div>
     <script src="main.js"></script>
   </body>
 </html>

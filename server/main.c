@@ -57,6 +57,7 @@ struct client {
   uint8_t  died_ticks_ago;
   float    movement_speed;
   float    angle;
+  uint32_t last_meaningful_movement;
   char     name[5];
 };
 
@@ -385,6 +386,7 @@ static void set_player_pos_to_tile(const uint8_t client_id, const uint16_t tile_
   grid_recalculate(&area->grid, &clients[client_id].entity);
   clients[client_id].updated_x = 1;
   clients[client_id].updated_y = 1;
+  clients[client_id].last_meaningful_movement = current_tick;
 }
 
 static void set_player_pos_to_area_spawn_tiles(const uint8_t client_id) {
@@ -694,6 +696,11 @@ static int player_tick(const uint8_t client_id) {
     uint8_t postponed:1;
   } updated = {0};
   
+  if(current_tick - client->last_meaningful_movement > idle_timeout) {
+    close_client(client_id);
+    return 0;
+  }
+
   const float save_x = entity->x;
   const float save_y = entity->y;
   const float save_r = entity->r;
@@ -868,6 +875,7 @@ static int player_tick(const uint8_t client_id) {
   }
   
   if(updated.x || updated.y || updated.r) {
+    client->last_meaningful_movement = current_tick;
     return 1;
   }
   return 0;

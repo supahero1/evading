@@ -15,25 +15,49 @@ let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
 let dpr = 0;
-let buffer = new ArrayBuffer(524288);
+let buffer = new ArrayBuffer(1048576);
 let u8 = new Uint8Array(buffer);
 let view = new DataView(u8.buffer);
 let len = 0;
 let self_id = 0;
-let players = new Array(256);
+let players = [];
 let balls = [];
 let us = { x: 0, y: 0, ip: { x1: 0, x2: 0, y1: 0, y2: 0 } };
 let mouse = [0, 0];
 let now = null;
+let last_draw = 0;
+let updates = [0, 0];
 let reset = 0;
 let name_y = 0;
 let target_name_y = 0;
-let last_draw = 0;
+let settings_div = document.getElementById("settings");
+let settings_insert = document.getElementById("ss");
+let sees_settings = false;
+let _keybinds = window.localStorage.getItem("keybinds");
+let default_keybinds = {
+  ["settings"]: "Escape",
+  ["up"]: "KeyW",
+  ["left"]: "KeyA",
+  ["right"]: "KeyD",
+  ["down"]: "KeyS",
+  ["slowwalk"]: "ShiftLeft"
+};
+let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
+for(let prop in default_keybinds) {
+  if(keybinds[prop] === undefined) {
+    keybinds[prop] = default_keybinds[prop];
+  }
+}
+for(let prop in keybinds) {
+  if(default_keybinds[prop] === undefined) {
+    delete keybinds[prop];
+  }
+}
 let movement = {
   up: 0,
   left: 0,
   right: 0,
-  bottom: 0,
+  down: 0,
   mult: 1,
   angle: 0,
   mouse: 0,
@@ -47,18 +71,210 @@ let bg_data = {
   fills: [],
   strokes: []
 };
-let settings = {
-  min_fov: 0.25,
-  max_fov: 4,
-  default_fov: 1
+let _settings = window.localStorage.getItem("settings");
+let default_settings = {
+  ["fov"]: {
+    ["min"]: 0.25,
+    ["max"]: 4,
+    ["value"]: 1,
+    ["step"]: 0.05
+  },
+  ["chat_on"]: true,
+  ["chat_position"]: {
+    ["selected"]: "Bottom left",
+    ["options"]: [
+      "Top left",
+      "Top right",
+      "Bottom left",
+      "Bottom right"
+    ]
+  },
+  ["draw_ball_fill"]: true,
+  ["draw_ball_stroke"]: true,
+  ["draw_ball_stroke_bright"]: false,
+  ["ball_stroke"]: {
+    ["min"]: 0,
+    ["max"]: 100,
+    ["value"]: 20,
+    ["step"]: 1
+  },
+  ["draw_player_fill"]: true,
+  ["draw_player_stroke"]: true,
+  ["draw_player_stroke_bright"]: false,
+  ["player_stroke"]: {
+    ["min"]: 0,
+    ["max"]: 100,
+    ["value"]: 10,
+    ["step"]: 1
+  },
+  ["draw_player_name"]: true
 };
-let fov = settings.default_fov;
+let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
+for(let prop in default_settings) {
+  if(settings[prop] === undefined) {
+    settings[prop] = default_settings[prop];
+  }
+}
+for(let prop in settings) {
+  if(default_settings[prop] === undefined) {
+    delete settings[prop];
+  }
+}
+window.localStorage.setItem("settings", JSON.stringify(settings));
+let probing_key = false;
+let probe_key = "";
+let probe_resolve;
+let fov = settings["fov"]["value"];
 let target_fov = fov;
-let updates = [0, 0];
 window["s"].then(r => r.json()).then(r => init(r));
 function reload() {
-  setTimeout(location.reload.bind(location),1000);
+  setTimeout(location.reload.bind(location), 1000);
 }
+function save_settings() {
+  window.localStorage.setItem("settings", JSON.stringify(settings));
+}
+function save_keybinds() {
+  window.localStorage.setItem("keybinds", JSON.stringify(keybinds));
+}
+function show_el(el) {
+  settings_insert.appendChild(el);
+}
+function create_header(content) {
+  let h1 = document.createElement("h1");
+  h1.innerHTML = content;
+  return h1;
+}
+function create_text(content) {
+  let h3 = document.createElement("h3");
+  h3.innerHTML = content;
+  return h3;
+}
+function create_table() {
+  return document.createElement("table");
+}
+function table_insert_el(table, left_el, right_el) {
+  let tr = document.createElement("tr");
+  let td = document.createElement("td");
+  td.appendChild(left_el);
+  tr.appendChild(td);
+  td = document.createElement("td");
+  td.appendChild(right_el);
+  tr.appendChild(td);
+  table.appendChild(tr);
+  return table;
+}
+function create_switch(name) {
+  let btn = document.createElement("button");
+  settings[name] = !settings[name];
+  btn.onclick = function() {
+    settings[name] = !settings[name];
+    if(settings[name] == true) {
+      btn.innerHTML = "ON";
+      btn.style["background-color"] = "#23c552";
+    } else {
+      btn.innerHTML = "OFF";
+      btn.style["background-color"] = "#f84f31";
+    }
+    save_settings();
+  };
+  btn.onclick();
+  return btn;
+}
+function create_list(name) {
+  let select = document.createElement("select");
+  for(let option of settings[name].options) {
+    let opt = document.createElement("option");
+    opt.value = option;
+    if(option == settings[name].selected) {
+      opt.selected = 1;
+    }
+    opt.innerHTML = option;
+    select.appendChild(opt);
+  }
+  select.onchange = save_settings;
+  return select;
+}
+function create_keybind(name) {
+  let btn = document.createElement("button");
+  btn.innerHTML = keybinds[name];
+  btn.onclick = async function() {
+    btn.innerHTML = "...";
+    probing_key = 1;
+    await new Promise(function(resolve) {
+      probe_resolve = resolve;
+    });
+    probing_key = 0;
+    btn.innerHTML = probe_key;
+    keybinds[name] = probe_key;
+    save_keybinds();
+  };
+  return btn;
+}
+function create_slider(name, add="") {
+  let div = document.createElement("div");
+  div.className = "input";
+  let input = document.createElement("input");
+  input.type = "range";
+  input.min = settings[name].min;
+  input.max = settings[name].max;
+  input.step = settings[name].step;
+  input.value = settings[name].value;
+  input.oninput = function() {
+    input.nextElementSibling.innerHTML = input.value + add;
+    settings[name].value = input.valueAsNumber;
+  };
+  input.onchange = save_settings;
+  div.appendChild(input);
+  div.appendChild(create_text(input.value + add));
+  return div;
+}
+function create_button(name, cb) {
+  let btn = document.createElement("button");
+  btn.innerHTML = name;
+  btn.onclick = cb;
+  return btn;
+}
+function create_settings() {
+  settings_insert.innerHTML = "";
+  show_el(create_header("GENERAL"));
+  let table = create_table();
+  table_insert_el(table, create_text("Show chat"), create_switch("chat_on"));
+  table_insert_el(table, create_text("Chat position"), create_list("chat_position"));
+  table_insert_el(table, create_text("Default FOV"), create_slider("fov"));
+  table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
+  table_insert_el(table, create_text("Draw balls' stroke"), create_switch("draw_ball_stroke"));
+  table_insert_el(table, create_text("Draw stroke-only balls with brighter color"), create_switch("draw_ball_stroke_bright"));
+  table_insert_el(table, create_text("Balls' stroke radius percentage"), create_slider("ball_stroke", " %"));
+  table_insert_el(table, create_text("Draw players' fill"), create_switch("draw_player_fill"));
+  table_insert_el(table, create_text("Draw players' stroke"), create_switch("draw_player_stroke"));
+  table_insert_el(table, create_text("Draw stroke-only players with brighter color"), create_switch("draw_player_stroke_bright"));
+  table_insert_el(table, create_text("Players' stroke radius percentage"), create_slider("player_stroke", " %"));
+  table_insert_el(table, create_text("Draw players' name"), create_switch("draw_player_name"));
+  show_el(table);
+  show_el(create_header("KEYBINDS"));
+  table = create_table();
+  table_insert_el(table, create_text("Settings"), create_keybind("settings"));
+  table_insert_el(table, create_text("Move up"), create_keybind("up"));
+  table_insert_el(table, create_text("Move left"), create_keybind("left"));
+  table_insert_el(table, create_text("Move down"), create_keybind("down"));
+  table_insert_el(table, create_text("Move right"), create_keybind("right"));
+  table_insert_el(table, create_text("Move slowly"), create_keybind("slowwalk"));
+  show_el(table);
+  show_el(create_header("RESET"));
+  table = create_table();
+  table_insert_el(table, create_text("Reset settings"), create_button("RESET", function() {
+    settings = default_settings;
+    save_settings();
+    create_settings();
+  }));
+  table_insert_el(table, create_text("Reset keybinds"), create_button("RESET", function() {
+    keybinds = default_keybinds;
+    save_keybinds();
+    create_settings();
+  }));
+  show_el(table);
+}
+create_settings();
 function init(servers) {
   if(servers.length == 0) {
     loading.innerHTML = "No servers found";
@@ -214,24 +430,24 @@ function game2(ws) {
             bg_data.strokes[u8[idx]] = new Path2D();
           }
           bg_data.fills[u8[idx]].rect(
-            (1.5 + x * bg_data.cell_size) * settings.max_fov,
-            (1.5 + y * bg_data.cell_size) * settings.max_fov,
-            (bg_data.cell_size - 1.5 * 2) * settings.max_fov,
-            (bg_data.cell_size - 1.5 * 2) * settings.max_fov
+            (1.5 + x * bg_data.cell_size) * settings["fov"]["max"],
+            (1.5 + y * bg_data.cell_size) * settings["fov"]["max"],
+            (bg_data.cell_size - 1.5 * 2) * settings["fov"]["max"],
+            (bg_data.cell_size - 1.5 * 2) * settings["fov"]["max"]
           );
           bg_data.strokes[u8[idx]].rect(
-            x * bg_data.cell_size * settings.max_fov,
-            y * bg_data.cell_size * settings.max_fov,
-            bg_data.cell_size * settings.max_fov,
-            bg_data.cell_size * settings.max_fov
+            x * bg_data.cell_size * settings["fov"]["max"],
+            y * bg_data.cell_size * settings["fov"]["max"],
+            bg_data.cell_size * settings["fov"]["max"],
+            bg_data.cell_size * settings["fov"]["max"]
           );
           ++idx;
         }
       }
-      background.width = bg_data.cell_size * bg_data.width * settings.max_fov;
-      background.height = bg_data.cell_size * bg_data.height * settings.max_fov;
-      light_background.width = bg_data.cell_size * bg_data.width * settings.max_fov;
-      light_background.height = bg_data.cell_size * bg_data.height * settings.max_fov;
+      background.width = bg_data.cell_size * bg_data.width * settings["fov"]["max"];
+      background.height = bg_data.cell_size * bg_data.height * settings["fov"]["max"];
+      light_background.width = bg_data.cell_size * bg_data.width * settings["fov"]["max"];
+      light_background.height = bg_data.cell_size * bg_data.height * settings["fov"]["max"];
       for(let i = 0; i < 256; ++i) {
         if(!bg_data.fills[i]) continue;
         bg_ctx.fillStyle = tile_colors[i] + "b0";
@@ -405,13 +621,17 @@ function game2(ws) {
   }
   function send_movement() {
     if(!movement.mouse) {
-      if(movement.up || movement.left || movement.right || movement.bottom) {
-        movement.angle = Math.atan2(movement.bottom - movement.up, movement.right - movement.left);
-        movement.distance = 160 * dpr;
-      } else {
+      if(movement.down - movement.up == 0 && movement.right - movement.left == 0) {
         movement.angle = 0;
         movement.distance = 0;
+      } else {
+        movement.angle = Math.atan2(movement.down - movement.up, movement.right - movement.left);
+        movement.distance = 160 * dpr;
       }
+    }
+    if(sees_settings) {
+      ws.send(new Uint8Array([0, 0, 0, 0, 0]));
+      return;
     }
     view.setFloat32(0, movement.angle, true);
     if(movement.distance >= 160 * dpr) {
@@ -422,13 +642,14 @@ function game2(ws) {
     ws.send(u8.subarray(0, 5));
   }
   window.onwheel = function(x) {
+    if(sees_settings) return;
     const add = -Math.sign(x.deltaY) * 0.05;
     if(target_fov > 1) {
       target_fov += add * 3;
     } else {
       target_fov += add;
     }
-    target_fov = Math.min(Math.max(target_fov, settings.min_fov), settings.max_fov);
+    target_fov = Math.min(Math.max(target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
   };
   window.onmousemove = function(x) {
     mouse = [x.clientX * dpr, x.clientY * dpr];
@@ -437,100 +658,115 @@ function game2(ws) {
     send_movement();
   };
   window.onmousedown = function() {
-    movement.mouse = !movement.mouse;
+    if(!sees_settings) {
+      movement.mouse = !movement.mouse;
+    }
     movement.angle = Math.atan2(mouse[1] - canvas.height / 2, mouse[0] - canvas.width / 2);
     movement.distance = Math.hypot(mouse[0] - canvas.width / 2, mouse[1] - canvas.height / 2) / fov;
     send_movement();
   };
   window.onkeydown = function(x) {
-    switch(x.keyCode || x.which) {
-      case 16: {
+    if(x.repeat) return;
+    if(sees_settings) {
+      if(probing_key) {
+        x.preventDefault();
+        probe_key = x.code;
+        probe_resolve();
+      } else if(x.code == keybinds["settings"]) {
+        sees_settings = false;
+        settings_div.style.display = "none";
+      }
+      return;
+    }
+    switch(x.code) {
+      case keybinds["slowwalk"]: {
         if(movement.mult == 1) {
           movement.mult = 0.5;
           send_movement();
         }
         break;
       }
-      case 87:
-      case 38: {
+      case keybinds["up"]: {
         if(!movement.up) {
           movement.up = 1;
           send_movement();
         }
         break;
       }
-      case 65:
-      case 37: {
+      case keybinds["left"]: {
         if(!movement.left) {
           movement.left = 1;
           send_movement();
         }
         break;
       }
-      case 68:
-      case 39: {
+      case keybinds["right"]: {
         if(!movement.right) {
           movement.right = 1;
           send_movement();
         }
         break;
       }
-      case 83:
-      case 40: {
-        if(!movement.bottom) {
-          movement.bottom = 1;
+      case keybinds["down"]: {
+        if(!movement.down) {
+          movement.down = 1;
           send_movement();
         }
         break;
       }
+      case keybinds["settings"]: {
+        sees_settings = !sees_settings;
+        settings_div.style.display = sees_settings ? "block" : "none";
+        break;
+      }
+      default: break;
     }
   };
   window.onkeyup = function(x) {
-    switch(x.keyCode || x.which) {
-      case 16: {
+    if(x.repeat || sees_settings) return;
+    switch(x.code) {
+      case keybinds["slowwalk"]: {
         if(movement.mult == 0.5) {
           movement.mult = 1;
           send_movement();
         }
         break;
       }
-      case 87:
-      case 38: {
+      case keybinds["up"]: {
         if(movement.up) {
           movement.up = 0;
           send_movement();
         }
         break;
       }
-      case 65:
-      case 37: {
+      case keybinds["left"]: {
         if(movement.left) {
           movement.left = 0;
           send_movement();
         }
         break;
       }
-      case 68:
-      case 39: {
+      case keybinds["right"]: {
         if(movement.right) {
           movement.right = 0;
           send_movement();
         }
         break;
       }
-      case 83:
-      case 40: {
-        if(movement.bottom) {
-          movement.bottom = 0;
+      case keybinds["down"]: {
+        if(movement.down) {
+          movement.down = 0;
           send_movement();
         }
         break;
       }
+      default: break;
     }
   };
   window.onbeforeunload = function(e) {
     e.preventDefault();
     e.returnValue = "Are you sure you want to quit?";
+    window.localStorage.setItem("settings", JSON.stringify(settings));
     return "Are you sure you want to quit?";
   };
   canvas.oncontextmenu = function(e) {
@@ -571,68 +807,88 @@ function game2(ws) {
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(fov, fov);
     ctx.translate(-us.x, -us.y);
-    ctx.drawImage(background, 0, 0, background.width / settings.max_fov, background.height / settings.max_fov);
+    ctx.drawImage(background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
     if(fov < 1) {
       ctx.globalAlpha = 1 - fov * fov;
-      ctx.drawImage(light_background, 0, 0, background.width / settings.max_fov, background.height / settings.max_fov);
+      ctx.drawImage(light_background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
       ctx.globalAlpha = 1;
     }
-    const players_path = new Path2D();
-    for(let player of players) {
-      if(!player) continue;
-      player.x = lerp(player.ip.x1, player.ip.x2, by);
-      player.y = lerp(player.ip.y1, player.ip.y2, by);
-      player.r = lerp(player.ip.r1, player.ip.r2, by);
-      players_path.moveTo(player.x + player.r - 2, player.y);
-      players_path.arc(player.x, player.y, player.r - 2, 0, Math.PI * 2);
-    }
-    ctx.beginPath();
-    ctx.fillStyle = "#ebecf0";
-    ctx.strokeStyle = darken("#ebecf0");
-    ctx.lineWidth = 4;
-    ctx.stroke(players_path);
-    ctx.fill(players_path);
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ball_paths[i] = new Path2D();
-    }
-    for(let ball of balls) {
-      if(!ball) continue;
-      ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
-      ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
-      ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-      ball_paths[ball.type].moveTo(ball.x + ball.r - 2, ball.y);
-      ball_paths[ball.type].arc(ball.x, ball.y, ball.r - 2, 0, Math.PI * 2);
-    }
-    ctx.beginPath();
-    ctx.lineWidth = 4;
-    for(let i = 0; i < ball_paths.length; ++i) {
-      ctx.fillStyle = ball_colors[i];
-      ctx.strokeStyle = darken(ball_colors[i]);
-      ctx.stroke(ball_paths[i]);
-      ctx.fill(ball_paths[i]);
-    }
-    for(let player of players) {
-      if(!player) continue;
-      ctx.beginPath();
-      if(player.name.length != 0) {
-        ctx.font = `700 ${player.r / fov}px Ubuntu`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#00000080";
-        if(fov > 1) {
-          target_name_y = player.r * 0.5;
-        } else {
-          target_name_y = player.r * 0.5 + (2 / (fov * fov));
-        }
-        name_y = lerp(name_y, target_name_y, 0.1);
-        ctx.fillText(player.name, player.x, player.y - player.r - name_y);
+    let sorted = [];
+    if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
+      for(let player of players) {
+        if(!player) continue;
+        player.x = lerp(player.ip.x1, player.ip.x2, by);
+        player.y = lerp(player.ip.y1, player.ip.y2, by);
+        player.r = lerp(player.ip.r1, player.ip.r2, by);
+        sorted[sorted.length] = { player };
       }
-      if(player.dead) {
-        ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#f00";
-        ctx.fillText(player.death_counter, player.x, player.y);
+    }
+    if(settings["draw_ball_fill"] || settings["draw_ball_stroke"]) {
+      for(let ball of balls) {
+        if(!ball) continue;
+        ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
+        ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
+        ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
+        sorted[sorted.length] = { ball };
+      }
+    }
+    sorted.sort((a, b) => a.r - b.r);
+    for(let { ball, player } of sorted) {
+      ctx.beginPath();
+      if(player) {
+        let r_sub = player.r * (settings["player_stroke"]["value"] / 200);
+        ctx.moveTo(player.x + player.r - r_sub, player.y);
+        ctx.arc(player.x, player.y, player.r - r_sub, 0, Math.PI * 2);
+        if(settings["draw_player_fill"]) {
+          ctx.fillStyle = "#ebecf0";
+          ctx.fill();
+        }
+        if(settings["draw_player_stroke"]) {
+          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
+            ctx.strokeStyle = "#ebecf0";
+          } else {
+            ctx.strokeStyle = darken("#ebecf0");
+          }
+          ctx.lineWidth = r_sub * 2;
+          ctx.stroke();
+        }
+        if(settings["draw_player_name"] && player.name.length != 0) {
+          ctx.font = `700 ${player.r / fov}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#00000080";
+          if(fov > 1) {
+            target_name_y = player.r * 0.5;
+          } else {
+            target_name_y = player.r * 0.5 + (2 / (fov * fov));
+          }
+          name_y = lerp(name_y, target_name_y, 0.1);
+          ctx.fillText(player.name, player.x, player.y - player.r - name_y);
+        }
+        if(player.dead) {
+          ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#f00";
+          ctx.fillText(player.death_counter, player.x, player.y);
+        }
+      } else {
+        let r_sub = ball.r * (settings["ball_stroke"]["value"] / 200);
+        ctx.moveTo(ball.x + ball.r - r_sub, ball.y);
+        ctx.arc(ball.x, ball.y, ball.r - r_sub, 0, Math.PI * 2);
+        if(settings["draw_ball_fill"]) {
+          ctx.fillStyle = ball_colors[ball.type];
+          ctx.fill();
+        }
+        if(settings["draw_ball_stroke"]) {
+          if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
+            ctx.strokeStyle = ball_colors[ball.type];
+          } else {
+            ctx.strokeStyle = darken(ball_colors[ball.type]);
+          }
+          ctx.lineWidth = r_sub * 2;
+          ctx.stroke();
+        }
       }
     }
     requestAnimationFrame(draw);
