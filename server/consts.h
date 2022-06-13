@@ -6,10 +6,13 @@
 enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
-  player_radius = 19,
+  default_player_radius = 19,
   default_area_id = 2,
+  idle_timeout = (1000 / tick_interval) * 60 * 15,
+  chat_timeout = (1000 / tick_interval) * 1,
   max_players = 100,
-  idle_timeout = (1000 / tick_interval) * 60 * 15
+  max_chat_message_len = 64,
+  max_name_len = 4
 };
 
 #define base_tick_interval (40.0f)

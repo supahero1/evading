@@ -11,7 +11,6 @@ let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
 let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#d2b48c"];
-let ball_paths = new Array(ball_colors.length);
 let width = 0;
 let height = 0;
 let dpr = 0;
@@ -44,12 +43,12 @@ let default_keybinds = {
 };
 let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
 for(let prop in default_keybinds) {
-  if(keybinds[prop] === undefined) {
+  if(keybinds[prop] == undefined) {
     keybinds[prop] = default_keybinds[prop];
   }
 }
 for(let prop in keybinds) {
-  if(default_keybinds[prop] === undefined) {
+  if(default_keybinds[prop] == undefined) {
     delete keybinds[prop];
   }
 }
@@ -80,7 +79,13 @@ let default_settings = {
     ["step"]: 0.05
   },
   ["chat_on"]: true,
-  ["chat_position"]: {
+  ["max_chat_messages"]: {
+    ["min"]: 1,
+    ["max"]: 1000,
+    ["value"]: 100,
+    ["step"]: 1
+  },
+  /*["chat_position"]: {
     ["selected"]: "Bottom left",
     ["options"]: [
       "Top left",
@@ -88,7 +93,7 @@ let default_settings = {
       "Bottom left",
       "Bottom right"
     ]
-  },
+  },*/
   ["draw_ball_fill"]: true,
   ["draw_ball_stroke"]: true,
   ["draw_ball_stroke_bright"]: false,
@@ -111,12 +116,12 @@ let default_settings = {
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
 for(let prop in default_settings) {
-  if(settings[prop] === undefined) {
+  if(settings[prop] == undefined) {
     settings[prop] = default_settings[prop];
   }
 }
 for(let prop in settings) {
-  if(default_settings[prop] === undefined) {
+  if(default_settings[prop] == undefined) {
     delete settings[prop];
   }
 }
@@ -126,6 +131,11 @@ let probe_key = "";
 let probe_resolve;
 let fov = settings["fov"]["value"];
 let target_fov = fov;
+let chat = document.getElementById("chat");
+let messages = document.getElementById("messages");
+let sendmsg = document.getElementById("sendmsg");
+let sees_chat = settings["chat_on"];
+let chat_message_len = 0;
 window["s"].then(r => r.json()).then(r => init(r));
 function reload() {
   setTimeout(location.reload.bind(location), 1000);
@@ -239,7 +249,8 @@ function create_settings() {
   show_el(create_header("GENERAL"));
   let table = create_table();
   table_insert_el(table, create_text("Show chat"), create_switch("chat_on"));
-  table_insert_el(table, create_text("Chat position"), create_list("chat_position"));
+  table_insert_el(table, create_text("Max number of messages"), create_slider("max_chat_messages"));
+  //table_insert_el(table, create_text("Chat position"), create_list("chat_position"));
   table_insert_el(table, create_text("Default FOV"), create_slider("fov"));
   table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
   table_insert_el(table, create_text("Draw balls' stroke"), create_switch("draw_ball_stroke"));
@@ -275,6 +286,14 @@ function create_settings() {
   show_el(table);
 }
 create_settings();
+function display_chat_message(author, msg) {
+  let p = document.createElement("p");
+  p.appendChild(document.createTextNode(author + ": " + msg));
+  messages.insertBefore(p, messages.firstChild);
+  if(++chat_message_len > settings["max_chat_messages"].value) {
+    messages.removeChild(messages.lastChild);
+  }
+}
 function init(servers) {
   if(servers.length == 0) {
     loading.innerHTML = "No servers found";
@@ -350,28 +369,37 @@ function ip() {
     ball.ip.r1 = ball.ip.r2;
   }
 }
-function game(ws) {
-  loading.innerHTML = "Enter your name<br>";
-  sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
-  name.style.display = "block";
-  let name_val = window.localStorage.getItem("name");
-  if(name_val) {
-    name.value = name_val;
-  }
-  name.onkeypress = name.onblur = name.onpaste = function(e) {
+function dont_go_over_limit(n) {
+  return function(e) {
+    if(e.target.val == undefined) {
+      e.target.val = e.target.value;
+    }
     let new_val = e.target.value + e.key;
-    if(new TextEncoder().encode(new_val).byteLength > 4) {
+    if(new TextEncoder().encode(new_val).byteLength > n) {
       e.target.value = e.target.val || "";
     } else {
-      e.target.value = new_val
+      e.target.value = new_val;
       e.target.val = new_val;
     }
     e.preventDefault();
     return false;
   };
+}
+function game(ws) {
+  loading.innerHTML = "Enter your name<br>";
+  sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
+  name.style.display = "block";
+  name.focus();
+  let name_val = window.localStorage.getItem("name");
+  if(name_val) {
+    name.value = name_val;
+  }
+  name.onkeypress = name.onpaste = dont_go_over_limit(4);
   ws.onclose = function() {
     window.onbeforeunload = function(){};
     canvas.parentElement.removeChild(canvas);
+    settings_div.parentElement.removeChild(settings_div);
+    chat.parentElement.removeChild(chat);
     loading.innerHTML = "Disconnected";
     sub.innerHTML = "";
     name.style.display = "none";
@@ -385,12 +413,14 @@ function game(ws) {
       name.style.display = "none";
       let token = window.localStorage.getItem("token");
       token = token ? token.split(",").map(r => +r) : [];
-      ws.send(new Uint8Array([...new TextEncoder().encode(name.value), 0, ...token]));
+      let encoded = new TextEncoder().encode(name.value);
+      ws.send(new Uint8Array([...encoded, ...token]));
       game2(ws);
     }
   };
 }
 function game2(ws) {
+  sees_chat = !settings["chat_on"];
   let last_tick = 0;
   function onmessage({ data }) {
     u8.set(new Uint8Array(data));
@@ -483,6 +513,11 @@ function game2(ws) {
           if(dead) {
             death_counter = u8[idx++];
           }
+          let len = u8[idx++];
+          if(len > 0) {
+            display_chat_message(name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
+            idx += len;
+          }
           players[id] = { x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 }, name, dead, death_counter };
           if(self_id == id) {
             us.ip.x2 = x2;
@@ -522,6 +557,12 @@ function game2(ws) {
                 if(players[id].dead) {
                   players[id].death_counter = u8[idx++];
                 }
+                break;
+              }
+              case 5: {
+                let len = u8[idx++];
+                display_chat_message(players[id].name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
+                idx += len;
                 break;
               }
             }
@@ -593,6 +634,22 @@ function game2(ws) {
         }
       }
     }
+    if(idx == len) {
+      return;
+    }
+    if(u8[idx] == 3) {
+      /* Chat messages */
+      ++idx;
+      let count = u8[idx++];
+      for(let i = 0; i < count; ++i) {
+        let name_len = u8[idx++];
+        let name = new TextDecoder().decode(u8.subarray(idx, idx + name_len));
+        idx += name_len;
+        let len = u8[idx++];
+        display_chat_message(name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
+        idx += len;
+      }
+    }
   };
   ws.onmessage = function(x) {
     reset = 0;
@@ -601,7 +658,33 @@ function game2(ws) {
       loading.innerHTML = "";
       ip();
     }
-  }
+  };
+  sendmsg.onmousedown = function(e) {
+    e.stopPropagation();
+  };
+  sendmsg.onmouseup = function(e) {
+    e.stopPropagation();
+  };
+  sendmsg.onkeydown = function(e) {
+    e.stopPropagation();
+    if(e.code == "Enter") {
+      let encoded = new TextEncoder().encode(sendmsg.value);
+      u8[0] = 1;
+      u8[1] = encoded.length;
+      u8.set(encoded, 2);
+      ws.send(u8.subarray(0, u8[1] + 2));
+      sendmsg.value = "";
+      sendmsg.blur();
+      canvas.focus();
+    }
+  };
+  sendmsg.onkeyup = function(e) {
+    e.stopPropagation();
+  };
+  sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(64);
+  messages.onwheel = function(e) {
+    e.stopPropagation();
+  };
   function resize() {
     if(window.innerWidth != width || window.innerHeight != height || dpr != window.devicePixelRatio) {
       dpr = window.devicePixelRatio;
@@ -630,16 +713,17 @@ function game2(ws) {
       }
     }
     if(sees_settings) {
-      ws.send(new Uint8Array([0, 0, 0, 0, 0]));
+      ws.send(new Uint8Array([0, 0, 0, 0, 0, 0]));
       return;
     }
-    view.setFloat32(0, movement.angle, true);
+    u8[0] = 0;
+    view.setFloat32(1, movement.angle, true);
     if(movement.distance >= 160 * dpr) {
-      view.setUint8(4, (255 * movement.mult) >>> 0);
+      view.setUint8(5, (255 * movement.mult) >>> 0);
     } else {
-      view.setUint8(4, (movement.distance * 1.59375 / dpr * movement.mult) >>> 0);
+      view.setUint8(5, (movement.distance * 1.59375 / dpr * movement.mult) >>> 0);
     }
-    ws.send(u8.subarray(0, 5));
+    ws.send(u8.subarray(0, 6));
   }
   window.onwheel = function(x) {
     if(sees_settings) return;
@@ -679,6 +763,11 @@ function game2(ws) {
       return;
     }
     switch(x.code) {
+      case "Enter": {
+        sendmsg.focus();
+        x.preventDefault();
+        break;
+      }
       case keybinds["slowwalk"]: {
         if(movement.mult == 1) {
           movement.mult = 0.5;
@@ -777,6 +866,14 @@ function game2(ws) {
     if(updates[0] == 0) {
       requestAnimationFrame(draw);
       return;
+    }
+    if(settings["chat_on"] == !sees_chat) {
+      sees_chat = settings["chat_on"];
+      if(sees_chat) {
+        chat.style.display = "block";
+      } else {
+        chat.style.display = "none";
+      }
     }
     if(!now) {
       now = updates[0];

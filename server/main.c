@@ -58,7 +58,10 @@ struct client {
   float    movement_speed;
   float    angle;
   uint32_t last_meaningful_movement;
-  char     name[5];
+  uint8_t  name_len;
+  char     name[4];
+  uint8_t  chat_len;
+  char     chat[max_chat_message_len];
 };
 
 static struct client clients[max_players] = {0};
@@ -687,6 +690,7 @@ static int player_tick(const uint8_t client_id) {
     client->updated_x = 0;
     client->updated_y = 0;
     client->updated_r = 0;
+    client->chat_len = 0;
   }
   struct {
     uint8_t x:1;
@@ -944,6 +948,12 @@ static void send_players(const uint8_t client_id) {
               buf[buf_len++] = clients[i].death_counter;
             }
           }
+          if(clients[i].chat_len) {
+            buf[buf_len++] = 5;
+            buf[buf_len++] = clients[i].chat_len;
+            memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
+            buf_len += clients[i].chat_len;
+          }
           if(save == buf_len) {
             --buf_len;
           } else {
@@ -959,13 +969,16 @@ static void send_players(const uint8_t client_id) {
           buf_len += 4;
           memcpy(buf + buf_len, &entity->r, sizeof(float));
           buf_len += 4;
-          buf[buf_len] = strlen(clients[i].name);
-          memcpy(buf + buf_len + 1, clients[i].name, buf[buf_len]);
-          buf_len += buf[buf_len] + 1;
+          buf[buf_len++] = clients[i].name_len;
+          memcpy(buf + buf_len, clients[i].name, clients[i].name_len);
+          buf_len += clients[i].name_len;
           buf[buf_len++] = clients[i].dead;
           if(clients[i].dead) {
             buf[buf_len++] = clients[i].death_counter;
           }
+          buf[buf_len++] = clients[i].chat_len;
+          memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
+          buf_len += clients[i].chat_len;
           ++updated;
         }
       } else if(*sees & bit) {
@@ -1011,7 +1024,6 @@ void send_balls(const uint8_t client_id) {
     ++updated;
   } else if(ball->updated_created || !clients[client_id].sent_balls) {
     /* CREATE */
-    //buf[buf_len++] = 1;
     buf[buf_len++] = ball->type;
     memcpy(buf + buf_len, &entity->x, sizeof(float));
     buf_len += 4;
@@ -1023,7 +1035,6 @@ void send_balls(const uint8_t client_id) {
     ++updated;
   } else {
     /* UPDATE */
-    //buf[buf_len++] = 2;
     const uint32_t save = buf_len;
     if(ball->updated_x) {
       buf[buf_len++] = 1;
@@ -1042,7 +1053,6 @@ void send_balls(const uint8_t client_id) {
       assert(entity->r > 1 && entity->r < 21);
     }
     if(save == buf_len) {
-      //buf_len -= 3;
       buf_len -= 2;
     } else {
       buf[buf_len++] = 0;
@@ -1061,6 +1071,30 @@ void send_balls(const uint8_t client_id) {
   }
 }
 
+void send_chat(const uint8_t client_id) {
+  uint8_t updated = 0;
+  buf[buf_len++] = 3;
+  const uint32_t that_idx = buf_len;
+  ++buf_len;
+
+  for(uint8_t i = 0; i < max_players; ++i) {
+    if(clients[i].area_id == clients[client_id].area_id || clients[i].chat_len == 0) continue;
+    buf[buf_len++] = clients[i].name_len;
+    memcpy(buf + buf_len, clients[i].name, clients[i].name_len);
+    buf_len += clients[i].name_len;
+    buf[buf_len++] = clients[i].chat_len;
+    memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
+    buf_len += clients[i].chat_len;
+    ++updated;
+  }
+
+  if(!updated) {
+    buf_len -= 2;
+  } else {
+    buf[that_idx] = updated;
+  }
+}
+
 static void tick(void* nil) {
   pthread_mutex_lock(&mutex);
   if(++current_tick % send_interval == 0) {
@@ -1075,6 +1109,7 @@ static void tick(void* nil) {
       send_arena(i);
       send_players(i);
       send_balls(i);
+      send_chat(i);
       buf[0] = buf_len & 255;
       buf[1] = (buf_len >> 8) & 255;
       buf[2] = (buf_len >> 16) & 255;
@@ -1093,7 +1128,7 @@ static void tick(void* nil) {
     if(!clients[i].exists) continue;
     struct grid_entity* const entity = &clients[i].entity;
     for(uint8_t j = i + 1; j < max_players; ++j) {
-      if(clients[j].area_id != clients[i].area_id) continue;
+      if(clients[i].area_id != clients[j].area_id) continue;
       struct grid_entity* const ent = &clients[j].entity;
       const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
       if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
@@ -1160,15 +1195,15 @@ static void parse(void) {
     goto close;
   }
   if(!clients[client_id].exists) {
-    if(sizeof(alpha_tokens[0]) + 1 >= len) {
+    if(sizeof(alpha_tokens[0]) > len) {
+      goto close;
+    }
+    const uint8_t name_len = len - sizeof(alpha_tokens[0]);
+    if(name_len > max_name_len) {
       goto close;
     }
     const uint8_t* const name = buffer + 2;
-    const uint8_t name_len = strnlen((char*) name, 5);
-    if(name_len == 5 || sizeof(alpha_tokens[0]) + name_len + 1 > len) {
-      goto close;
-    }
-    const uint8_t* const token = name + name_len + 1;
+    const uint8_t* const token = name + name_len;
     uint8_t ok = 0;
     for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
       if(memcmp(token, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
@@ -1182,17 +1217,33 @@ static void parse(void) {
     /* Create the player */
     add_client_to_area(client_id, default_area_id);
     clients[client_id].exists = 1;
-    clients[client_id].entity.r = player_radius;
+    clients[client_id].entity.r = default_player_radius;
     set_player_pos_to_area_spawn_tiles(client_id);
     clients[client_id].movement_speed = base_player_speed;
-    memcpy(clients[client_id].name, name, name_len + 1);
+    clients[client_id].name_len = name_len;
+    memcpy(clients[client_id].name, name, name_len);
   } else {
-    if(len != 5) {
+    if(len < 2) {
       goto close;
     }
-    /* Update the player */
-    memcpy(&clients[client_id].angle, buffer + 2, sizeof(float));
-    clients[client_id].speed = buffer[6];
+    switch(buffer[2]) {
+      case 0: {
+        /* Update the player */
+        memcpy(&clients[client_id].angle, buffer + 3, sizeof(float));
+        clients[client_id].speed = buffer[7];
+        break;
+      }
+      case 1: {
+        /* Chat message */
+        if(buffer[3] > max_chat_message_len || 2 + buffer[3] > len) {
+          goto close;
+        }
+        clients[client_id].chat_len = buffer[3];
+        memcpy(clients[client_id].chat, buffer + 4, clients[client_id].chat_len);
+        break;
+      }
+      default: goto close;
+    }
   }
   return;
   
@@ -1224,6 +1275,14 @@ static void socket_onevent(struct tcp_socket* socke, enum tcp_event event) {
     case tcp_open: {
       tcp_socket_nodelay_on(socke);
       tcp_socket_keepalive_on(socke);
+      uint8_t payload[] = { max_players, max_chat_message_len };
+      assert(!tcp_send(socke, &((struct data_frame) {
+        .data = payload,
+        .len = sizeof(payload),
+        .dont_free = 1,
+        .read_only = 0,
+        .free_onerr = 0
+      })));
       start_game();
       break;
     }
