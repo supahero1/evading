@@ -7,6 +7,8 @@
 
 #include <stdio.h>
 
+#include <shnet/error.h>
+
 void grid_init(struct grid* const grid) {
   grid->entities_size = 1;
   grid->entities_used = 1;

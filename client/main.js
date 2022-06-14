@@ -10,7 +10,7 @@ let light_background = document.createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
-let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#d2b48c"];
+let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff"];
 let width = 0;
 let height = 0;
 let dpr = 0;
@@ -451,7 +451,7 @@ function game2(ws) {
       bg_data.height = u8[idx] | (u8[idx + 1] << 8);
       idx += 2;
       bg_data.cell_size = u8[idx++];
-      bg_data.fills = new Array(256);
+      bg_data.fills = new Array(256); // TODO fix max canvas size <https://github.com/jhildenbiddle/canvas-size> or idfk draw only whats visible (performance = dead)
       bg_data.strokes = new Array(256);
       for(let x = 0; x < bg_data.width; ++x) {
         for(let y = 0; y < bg_data.height; ++y) {

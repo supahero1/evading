@@ -25,7 +25,8 @@ enum ball_type {
   ball_grey,
   ball_pink,
   ball_teal,
-  ball_sandy
+  ball_sandy,
+  ball_light_blue
 };
 
 enum radius_type {
@@ -65,11 +66,17 @@ enum tick_type {
   tick_relative
 };
 
-enum game_tile {
-  tile_normal,
-  tile_safe,
-  tile_wall,
-  tile_teleport
+enum spawn_idx_type {
+  spawn_idx_fixed,
+  spawn_idx_random,
+  spawn_idx_relative
+};
+
+enum range_type {
+  range_none,
+  range_fixed,
+  range_random,
+  range_relative
 };
 
 struct ball_info {
@@ -79,6 +86,8 @@ struct ball_info {
   uint8_t movement_type:3;
   uint8_t frequency_type:3;
   uint8_t tick_type:2;
+  uint8_t spawn_idx_type:2;
+  uint8_t range_type:2;
   uint8_t allow_walls:1;
   uint8_t die_on_collision:1;
   uint16_t count;
@@ -117,8 +126,12 @@ struct ball_info {
   uint64_t tick_min;
   uint64_t tick_max;
   struct ball_info* spawn;
-  uint32_t spawn_len;
   uint32_t spawn_idx;
+  uint32_t spawn_idx_min;
+  uint32_t spawn_idx_max;
+  float range;
+  float range_min;
+  float range_max;
   uint32_t relative_entity_id;
 };
 
@@ -132,6 +145,13 @@ struct tile_info {
 struct pos {
   uint16_t tile_x;
   uint16_t tile_y;
+};
+
+enum game_tile {
+  tile_normal,
+  tile_safe,
+  tile_wall,
+  tile_teleport
 };
 
 struct area_info {
