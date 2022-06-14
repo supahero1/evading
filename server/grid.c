@@ -5,8 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <shnet/error.h>
-
 #include <stdio.h>
 
 void grid_init(struct grid* const grid) {

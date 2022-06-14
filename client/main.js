@@ -675,6 +675,10 @@ function game2(ws) {
       ws.send(u8.subarray(0, u8[1] + 2));
       sendmsg.value = "";
       sendmsg.blur();
+      sendmsg.disabled = 1;
+      setTimeout(function() {
+        sendmsg.disabled = 0;
+      }, 1000);
       canvas.focus();
     }
   };

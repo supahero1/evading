@@ -58,6 +58,7 @@ struct client {
   float    movement_speed;
   float    angle;
   uint32_t last_meaningful_movement;
+  uint32_t last_message_at;
   uint8_t  name_len;
   char     name[4];
   uint8_t  chat_len;
@@ -89,7 +90,8 @@ struct ball {
     uint32_t frequency_num;
   };
   uint64_t   tick;
-  struct ball_info* spawn;
+  struct ball_info*
+             spawn;
   uint32_t   spawn_len;
   uint32_t   spawn_idx;
 };
@@ -108,8 +110,11 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   { 129, 233, 163, 179,   6, 112, 141,  83 }, /* penta */
   {  38,  33,  21,  78,  33,  93,  68, 193 }, /* nafi */
   { 176,  49,  92, 210, 130, 209,  79, 142 }, /* dimsi */
-  { 149,  59, 209, 117,  50,  40,  58,  86 },
-  { 174, 252, 182,  48, 104,  74,  62,  94 }
+  { 149,  59, 209, 117,  50,  40,  58,  86 }, /* hydra */
+  { 174, 252, 182,  48, 104,  74,  62,  94 }, /* kirame */
+  { 190,   2, 209, 240, 163,   5, 234, 188 }, /* altanis */
+  {  12,  58,  94,  83, 191,  65,  73, 152 },
+  {  19, 167,  67, 202,  56, 220, 231,  79 }
 };
 
 static int ball_tick(struct grid* const, const uint16_t);
@@ -1168,7 +1173,6 @@ static void start_game(void) {
 }
 
 static void close_client(const uint8_t client_id) {
-  puts("close_client()");
   uint8_t deleted_by_above = clients[client_id].deleted_by_above;
   if(clients[client_id].exists) {
     remove_client_from_its_area(client_id);
@@ -1238,6 +1242,10 @@ static void parse(void) {
         if(buffer[3] > max_chat_message_len || 2 + buffer[3] > len) {
           goto close;
         }
+        if(current_tick - clients[client_id].last_message_at < chat_timeout) {
+          goto close;
+        }
+        clients[client_id].last_message_at = current_tick;
         clients[client_id].chat_len = buffer[3];
         memcpy(clients[client_id].chat, buffer + 4, clients[client_id].chat_len);
         break;
