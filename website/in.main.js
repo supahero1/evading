@@ -71,7 +71,7 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
 });
 
 if(__SECURE_WEBSITE__) {
-  require("https").createServer(options, app).listen(443, "127.0.0.1");
+  require("https").createServer(options, app).listen(443, "0.0.0.0");
 } else {
-  require("http").createServer(app).listen(80, "127.0.0.1");
+  require("http").createServer(app).listen(80, "0.0.0.0");
 }

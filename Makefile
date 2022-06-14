@@ -73,6 +73,11 @@ website: prepare
 	$(DIR_TOP)/sed_in
 	cd $(DIR_TOP)/website; \
 	npm i express
+ifeq ($(SECURE_WEBSITE),1)
+	ufw allow 443
+else
+	ufw allow 80
+endif
 	$(MAKE) -C $(DIR_TOP)/website
 
 .PHONY: server
