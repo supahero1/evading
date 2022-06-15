@@ -50,7 +50,15 @@ for(let prop in default_keybinds) {
 for(let prop in keybinds) {
   if(default_keybinds[prop] == undefined) {
     delete keybinds[prop];
+    continue;
   }
+  if(keybinds[prop].min && keybinds[prop].min != default_keybinds[prop].min) {
+    keybinds[prop].min = default_keybinds[prop].min;
+  }
+  if(keybinds[prop].max && keybinds[prop].max != default_keybinds[prop].max) {
+    keybinds[prop].max = default_keybinds[prop].max;
+  }
+  keybinds[prop].value = Math.max(Math.min(keybinds[prop].value, keybinds[prop].max), keybinds[prop].min);
 }
 let movement = {
   up: 0,
@@ -74,8 +82,8 @@ let _settings = window.localStorage.getItem("settings");
 let default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 4,
-    ["value"]: 1,
+    ["max"]: 1.75,
+    ["value"]: 1.75,
     ["step"]: 0.05
   },
   ["chat_on"]: true,
@@ -451,7 +459,7 @@ function game2(ws) {
       bg_data.height = u8[idx] | (u8[idx + 1] << 8);
       idx += 2;
       bg_data.cell_size = u8[idx++];
-      bg_data.fills = new Array(256); // TODO fix max canvas size <https://github.com/jhildenbiddle/canvas-size> or idfk draw only whats visible (performance = dead)
+      bg_data.fills = new Array(256);
       bg_data.strokes = new Array(256);
       for(let x = 0; x < bg_data.width; ++x) {
         for(let y = 0; y < bg_data.height; ++y) {

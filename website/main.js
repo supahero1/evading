@@ -71,7 +71,7 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
 });
 
 if(0) {
-  require("https").createServer(options, app).listen(443);
+  require("https").createServer(options, app).listen(443, "0.0.0.0");
 } else {
-  require("http").createServer(app).listen(80);
+  require("http").createServer(app).listen(80, "0.0.0.0");
 }
