@@ -8,6 +8,8 @@ let background = document.createElement("canvas");
 let bg_ctx = background.getContext("2d");
 let light_background = document.createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
+let death_arrow = document.createElement("canvas");
+let death_arrow_ctx = death_arrow.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
 let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff"];
@@ -52,13 +54,6 @@ for(let prop in keybinds) {
     delete keybinds[prop];
     continue;
   }
-  if(keybinds[prop].min && keybinds[prop].min != default_keybinds[prop].min) {
-    keybinds[prop].min = default_keybinds[prop].min;
-  }
-  if(keybinds[prop].max && keybinds[prop].max != default_keybinds[prop].max) {
-    keybinds[prop].max = default_keybinds[prop].max;
-  }
-  keybinds[prop].value = Math.max(Math.min(keybinds[prop].value, keybinds[prop].max), keybinds[prop].min);
 }
 let movement = {
   up: 0,
@@ -120,7 +115,14 @@ let default_settings = {
     ["value"]: 10,
     ["step"]: 1
   },
-  ["draw_player_name"]: true
+  ["draw_player_name"]: true,
+  ["draw_death_arrow"]: true,
+  ["death_arrow_size"]: {
+    ["min"]: 10,
+    ["max"]: 100,
+    ["value"]: 40,
+    ["step"]: 1
+  }
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
 for(let prop in default_settings) {
@@ -132,6 +134,13 @@ for(let prop in settings) {
   if(default_settings[prop] == undefined) {
     delete settings[prop];
   }
+  if(settings[prop].min && settings[prop].min != default_settings[prop].min) {
+    settings[prop].min = default_settings[prop].min;
+  }
+  if(settings[prop].max && settings[prop].max != default_settings[prop].max) {
+    settings[prop].max = default_settings[prop].max;
+  }
+  settings[prop].value = Math.max(Math.min(settings[prop].value, settings[prop].max), settings[prop].min);
 }
 window.localStorage.setItem("settings", JSON.stringify(settings));
 let probing_key = false;
@@ -228,7 +237,7 @@ function create_keybind(name) {
   };
   return btn;
 }
-function create_slider(name, add="") {
+function create_slider(name, add="", cb=function(){}) {
   let div = document.createElement("div");
   div.className = "input";
   let input = document.createElement("input");
@@ -240,6 +249,7 @@ function create_slider(name, add="") {
   input.oninput = function() {
     input.nextElementSibling.innerHTML = input.value + add;
     settings[name].value = input.valueAsNumber;
+    cb();
   };
   input.onchange = save_settings;
   div.appendChild(input);
@@ -257,7 +267,7 @@ function create_settings() {
   show_el(create_header("GENERAL"));
   let table = create_table();
   table_insert_el(table, create_text("Show chat"), create_switch("chat_on"));
-  table_insert_el(table, create_text("Max number of messages"), create_slider("max_chat_messages"));
+  table_insert_el(table, create_text("Max number of chat messages"), create_slider("max_chat_messages"));
   //table_insert_el(table, create_text("Chat position"), create_list("chat_position"));
   table_insert_el(table, create_text("Default FOV"), create_slider("fov"));
   table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
@@ -269,6 +279,8 @@ function create_settings() {
   table_insert_el(table, create_text("Draw stroke-only players with brighter color"), create_switch("draw_player_stroke_bright"));
   table_insert_el(table, create_text("Players' stroke radius percentage"), create_slider("player_stroke", " %"));
   table_insert_el(table, create_text("Draw players' name"), create_switch("draw_player_name"));
+  table_insert_el(table, create_text("Draw an arrow towards dead players"), create_switch("draw_death_arrow"));
+  table_insert_el(table, create_text("Death arrow size"), create_slider("death_arrow_size", "px", update_death_arrow_size));
   show_el(table);
   show_el(create_header("KEYBINDS"));
   table = create_table();
@@ -302,6 +314,22 @@ function display_chat_message(author, msg) {
     messages.removeChild(messages.lastChild);
   }
 }
+function update_death_arrow_size() {
+  death_arrow.width = death_arrow.height = settings["death_arrow_size"]["value"];
+  let h = death_arrow.width * 0.5;
+  let k = death_arrow.width;
+  death_arrow_ctx.beginPath();
+  death_arrow_ctx.moveTo(h + k * 0.45, h);
+  death_arrow_ctx.lineTo(h - k * 0.225, h - k * 0.675 / Math.sqrt(3));
+  death_arrow_ctx.lineTo(h - k * 0.225, h + k * 0.675 / Math.sqrt(3));
+  death_arrow_ctx.closePath();
+  death_arrow_ctx.fillStyle = "#bbbbbbb0";
+  death_arrow_ctx.fill();
+  death_arrow_ctx.lineWidth = death_arrow.width * 0.05;
+  death_arrow_ctx.strokeStyle = "#f00";
+  death_arrow_ctx.stroke();
+}
+update_death_arrow_size();
 function init(servers) {
   if(servers.length == 0) {
     loading.innerHTML = "No servers found";
@@ -749,16 +777,16 @@ function game2(ws) {
   };
   window.onmousemove = function(x) {
     mouse = [x.clientX * dpr, x.clientY * dpr];
-    movement.angle = Math.atan2(mouse[1] - canvas.height / 2, mouse[0] - canvas.width / 2);
-    movement.distance = Math.hypot(mouse[0] - canvas.width / 2, mouse[1] - canvas.height / 2) / fov;
+    movement.angle = Math.atan2(mouse[1] - canvas.height  * 0.5, mouse[0] - canvas.width  * 0.5);
+    movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
     send_movement();
   };
   window.onmousedown = function() {
     if(!sees_settings) {
       movement.mouse = !movement.mouse;
     }
-    movement.angle = Math.atan2(mouse[1] - canvas.height / 2, mouse[0] - canvas.width / 2);
-    movement.distance = Math.hypot(mouse[0] - canvas.width / 2, mouse[1] - canvas.height / 2) / fov;
+    movement.angle = Math.atan2(mouse[1] - canvas.height * 0.5, mouse[0] - canvas.width  * 0.5);
+    movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
     send_movement();
   };
   window.onkeydown = function(x) {
@@ -897,7 +925,7 @@ function game2(ws) {
     let old = fov;
     fov = lerp(fov, target_fov, 0.1);
     if(fov != old) {
-      movement.distance = Math.hypot(mouse[0] - canvas.width / 2, mouse[1] - canvas.height / 2) / fov;
+      movement.distance = Math.hypot(mouse[0] - canvas.width * 0.5, mouse[1] - canvas.height * 0.5) / fov;
       send_movement();
     }
     let by;
@@ -913,7 +941,7 @@ function game2(ws) {
     ctx.resetTransform();
     ctx.fillStyle = "#333";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
     ctx.scale(fov, fov);
     ctx.translate(-us.x, -us.y);
     ctx.drawImage(background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
@@ -980,6 +1008,33 @@ function game2(ws) {
           ctx.textBaseline = "middle";
           ctx.fillStyle = "#f00";
           ctx.fillText(player.death_counter, player.x, player.y);
+          if(settings["draw_death_arrow"]) {
+            let s_x = canvas.width * 0.5 + (player.x - us.x) * fov;
+            let s_y = canvas.height * 0.5 + (player.y - us.y) * fov;
+            let k = death_arrow.width * 0.75 * fov;
+            if(s_x < 0 || s_x > canvas.width || s_y < 0 || s_y > canvas.height) {
+              let t_x = Math.max(Math.min(s_x, canvas.width - k), k);
+              let t_y = Math.max(Math.min(s_y, canvas.height - k), k);
+              let angle;
+              if((s_x < k || s_x > canvas.width - k) && (s_y < k || s_y > canvas.height - k)) {
+                angle = Math.atan2(s_y - t_y, s_x - t_x);
+              } else {
+                angle = Math.atan2(s_y < k ? -1 : s_y > canvas.height - k ? 1 : 0, s_x < k ? -1 : s_x > canvas.width - k ? 1 : 0);
+              }
+              let r_x = (t_x - canvas.width * 0.5) / fov + us.x;
+              let r_y = (t_y - canvas.height * 0.5) / fov + us.y;
+              ctx.translate(r_x, r_y);
+              ctx.rotate(angle);
+              ctx.drawImage(death_arrow, -death_arrow.width * 0.5, -death_arrow.width * 0.5);
+              ctx.rotate(-angle);
+              ctx.font = `700 ${death_arrow.width * 0.3}px Ubuntu`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = "#f00";
+              ctx.fillText(player.death_counter, 0, 0);
+              ctx.translate(-r_x, -r_y);
+            }
+          }
         }
       } else {
         let r_sub = ball.r * (settings["ball_stroke"]["value"] / 200);
