@@ -728,7 +728,7 @@ struct area_info area_infos[] = {
             .frequency_float = 0.08f,
             .r = 8,
             .speed = 2 * time_scale,
-            .count = 50,
+            .count = 40,
             .range_type = range_fixed,
             .range = 100.0f
           }, {0}
