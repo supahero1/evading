@@ -6,6 +6,10 @@ const favicon = fs.readFileSync("../client/favicon.ico");
 const main_js = fs.readFileSync("../client/main.min2.js");
 const style_css = fs.readFileSync("../client/style.css");
 
+const map_editor_index_html = fs.readFileSync("../map_editor/index.html");
+const map_editor_main_js = fs.readFileSync("../map_editor/main.min2.js");
+const map_editor_style_css = fs.readFileSync("../map_editor/style.css");
+
 const options = {
   key: fs.readFileSync("./key.pem"),
   cert: fs.readFileSync("./cert.pem"),
@@ -41,7 +45,7 @@ app.get(["/", "/index.html"], function(req, res) {
   res.status(200).end(index_html);
 });
 
-app.get(["/favicon.ico", "/map_editor/favicon.ico"], function(req, res) {
+app.get("/favicon.ico", function(req, res) {
   res.set("Content-Type", "image/vnd.microsoft.icon");
   res.status(200).end(favicon);
 });
@@ -54,6 +58,21 @@ app.get("/main.js", function(req, res) {
 app.get("/style.css", function(req, res) {
   res.set("Content-Type", "text/css");
   res.status(200).end(style_css);
+});
+
+app.get(["/map_editor/", "/map_editor/index.html"], function(req, res) {
+  res.set("Content-Type", "text/html");
+  res.status(200).end(map_editor_index_html);
+});
+
+app.get("/map_editor/main.js", function(req, res) {
+  res.set("Content-Type", "text/javascript");
+  res.status(200).end(map_editor_main_js);
+});
+
+app.get("/map_editor/style.css", function(req, res) {
+  res.set("Content-Type", "text/css");
+  res.status(200).end(map_editor_style_css);
 });
 
 app.get("/servers.json", function(req, res) {
@@ -75,4 +94,3 @@ if(__SECURE_WEBSITE__) {
 } else {
   require("http").createServer(app).listen(80, "0.0.0.0");
 }
-
