@@ -70,6 +70,7 @@ prepare:
 .PHONY: website
 website: prepare
 	npm i -g google-closure-compiler
+	npm install cssnano postcss postcss-cli --save-dev
 	$(DIR_TOP)/sed_in
 	cd $(DIR_TOP)/website; \
 	npm i express
