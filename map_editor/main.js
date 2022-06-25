@@ -31,11 +31,24 @@ let nes = "nextElementSibling";
 let pes = "previousElementSibling";
 let van = "valueAsNumber";
 let ih = "innerHTML";
+let old_w = 0;
+let old_h = 0;
 let u8 = new Uint8Array(0);
 let width = 10;
 let height = 10;
 function gen_map() {
-  u8 = new Uint8Array(width * height);
+  let new_u8 = new Uint8Array(width * height);
+  for(let i = 0; i < old_w; ++i) {
+    if(i >= width) continue;
+    for(let j = 0; j < old_h; ++j) {
+      if(j >= height) continue;
+      new_u8[i * height + j] = u8[i * old_h + j];
+    }
+  }
+  old_w = width;
+  old_h = height;
+  u8 = new_u8;
+  resized = 1;
   paint_bg();
 }
 let c_width = 0;
