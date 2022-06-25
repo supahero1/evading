@@ -48,7 +48,6 @@ function gen_map() {
   old_w = width;
   old_h = height;
   u8 = new_u8;
-  resized = 1;
   paint_bg();
 }
 let c_width = 0;
@@ -75,6 +74,8 @@ let bg_data = {
   strokes: []
 };
 let resized = true;
+let c1 = function(){};
+let c2 = function(){};
 function get_move() {
   if(move.down - move.up == 0 && move.right - move.left == 0) {
     v = [lerp(v[0], 0, 0.1), lerp(v[1], 0, 0.1)];
@@ -199,29 +200,37 @@ function export_tiles() {
 }
 function parse_tiles(config) {
   try {
-    config = atob(config.trim());
+    console.log("1");
+    config = atob(config);
     const reg = config.match(/struct tile_info \w.*? = { (\d+), (\d+), 40, \(uint8_t\[\]\){/);
-    const _w = +reg[1];
-    const _h = +reg[2];
     if(reg == null) {
       return 0;
     }
-    const res = eval(config.replace(reg[0], "[").replace("}\n};", "]"));
-    const a = _w * _h;
-    if(res["length"] != _w * _h) {
+    const _w = +reg[1];
+    const _h = +reg[2];
+    const res = eval(`[${config.substring(reg[0].length, config.length - 4)}]`);
+    if(!(res instanceof Array)) return 0;
+    if(res.length != _w * _h) {
       return 0;
     }
-    u8.set(res);
     width = _w;
     height = _h;
+    console.log("2");
+    c1();
+    c2();
+    console.log("3");
+    u8 = new Uint8Array(_w * _h);
+    u8.set(res);
+    console.log("4");
     paint_bg();
-    resized = true;
     return 1;
   } catch(err) {
+    console.log(err);
     return 0;
   }
 }
 function paint_bg() {
+  console.log("beginning of paint bg");
   bg_data.fills = new Array(tile_colors.length);
   bg_data.strokes = new Array(tile_colors.length);
   let idx = 0;
@@ -259,6 +268,8 @@ function paint_bg() {
     lbg_ctx.fillStyle = tile_colors[i];
     lbg_ctx.fill(bg_data.strokes[i]);
   }
+  console.log("end of paint bg");
+  resized = 1;
 }
 function paint_bg_explicit(idx) {
   const y = idx % height;
@@ -318,20 +329,23 @@ gen_map();
   h.onclick = function() {
     const exported = export_tiles();
     window.navigator.clipboard.writeText(exported);
-    if(this.timeout == -1) {
-      const old = this[ih];
-      this[ih] = "Exported & copied";
-      this.timeout = setTimeout(function() {
-        this[ih] = old;
-        this.timeout = -1;
-      }.bind(this), 500);
+    if(this.timeout != -1) {
+      clearTimeout(this.timeout);
     }
+    this[ih] = "Exported & copied";
+    this.timeout = setTimeout(function() {
+      this[ih] = "Export & copy";
+      this.timeout = -1;
+    }.bind(this), 500);
   }.bind(h);
   tiles["a"](h);
   h = createElement("button");
   h[ih] = "Import";
   h.onclick = function() {
     let answer = prompt("Please paste the config below:");
+    if(!answer) return;
+    answer = answer.trim();
+    if(answer.length == 0) return;
     if(!parse_tiles(answer)) {
       alert("The config is invalid, it won't be loaded.");
     }
@@ -347,10 +361,14 @@ gen_map();
   h.max = 128;
   h.value = 10;
   h.step = 1;
-  h.oninput = function() {
-    width = this[van] || 1;
+  c1 = function() {
+    this.value = width;
     this[nes][ih] = width + postfix;
     this[nes][nes].value = width;
+  }.bind(h);
+  h.oninput = function() {
+    width = this[van] || 1;
+    c1();
     gen_map();
   }.bind(h);
   tiles["a"](h);
@@ -383,10 +401,14 @@ gen_map();
   h.max = 128;
   h.value = 10;
   h.step = 1;
-  h.oninput = function() {
-    height = this[van] || 1;
+  c2 = function() {
+    this.value = height;
     this[nes][ih] = height + postfix;
     this[nes][nes].value = height;
+  }.bind(h);
+  h.oninput = function() {
+    height = this[van] || 1;
+    c2();
     gen_map();
   }.bind(h);
   tiles["a"](h);
