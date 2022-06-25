@@ -7,7 +7,7 @@ const main_js = fs.readFileSync("../client/main.min2.js");
 const style_css = fs.readFileSync("../client/style.min.css");
 
 const map_editor_index_html = fs.readFileSync("../map_editor/index.html");
-const map_editor_main_js = fs.readFileSync("../map_editor/main.min2.js");
+const map_editor_main_js = fs.readFileSync("../map_editor/main.js");
 const map_editor_style_css = fs.readFileSync("../map_editor/style.min.css");
 
 const options = {

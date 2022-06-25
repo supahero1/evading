@@ -207,7 +207,8 @@ function parse_tiles(config) {
       return 0;
     }
     const res = eval(config.replace(reg[0], "[").replace("}\n};", "]"));
-    if(!res.length || res.length != _w * _h) {
+    const a = _w * _h;
+    if(res["length"] != _w * _h) {
       return 0;
     }
     u8.set(res);
