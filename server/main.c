@@ -63,7 +63,9 @@ struct client {
   uint8_t  name_len;
   char     name[4];
   uint8_t  chat_len;
+  uint8_t  chat_timestamp_idx;
   char     chat[max_chat_message_len];
+  uint64_t chat_timestamps[max_chat_timestamps];
 };
 
 static struct client clients[max_players] = {0};
@@ -1270,12 +1272,13 @@ static void close_client(const uint8_t client_id) {
 static void parse(void) {
   const uint8_t len = buffer[0];
   const uint8_t client_id = buffer[1];
+  struct client* const client = clients + client_id;
   if(len == 0) {
     /* Delete the player */
-    clients[client_id].deleted_by_above = 1;
+    client->deleted_by_above = 1;
     goto close;
   }
-  if(!clients[client_id].exists) {
+  if(!client->exists) {
     if(sizeof(alpha_tokens[0]) > len) {
       goto close;
     }
@@ -1297,12 +1300,12 @@ static void parse(void) {
     }
     /* Create the player */
     add_client_to_area(client_id, default_area_id);
-    clients[client_id].exists = 1;
-    clients[client_id].entity.r = default_player_radius;
+    client->exists = 1;
+    client->entity.r = default_player_radius;
     set_player_pos_to_area_spawn_tiles(client_id);
-    clients[client_id].movement_speed = base_player_speed;
-    clients[client_id].name_len = name_len;
-    memcpy(clients[client_id].name, name, name_len);
+    client->movement_speed = base_player_speed;
+    client->name_len = name_len;
+    memcpy(client->name, name, name_len);
   } else {
     if(len < 2) {
       goto close;
@@ -1310,8 +1313,8 @@ static void parse(void) {
     switch(buffer[2]) {
       case 0: {
         /* Update the player */
-        memcpy(&clients[client_id].angle, buffer + 3, sizeof(float));
-        clients[client_id].speed = buffer[7];
+        memcpy(&client->angle, buffer + 3, sizeof(float));
+        client->speed = buffer[7];
         break;
       }
       case 1: {
@@ -1319,9 +1322,14 @@ static void parse(void) {
         if(buffer[3] > max_chat_message_len || 2 + buffer[3] > len) {
           goto close;
         }
-        if(current_tick - clients[client_id].last_message_at < chat_timeout) {
+        client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
+        const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
+        /* Note that at start, the array of timestamps is zeroed, so this will overflow, but
+        the number will then be so huge it will pass this check either way, so we are fine. */
+        if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx] < time_sec_to_ns(1) * (max_chat_timestamps - 1)) {
           goto close;
         }
+        client->chat_timestamp_idx = next_idx;
         clients[client_id].last_message_at = current_tick;
         clients[client_id].chat_len = buffer[3];
         memcpy(clients[client_id].chat, buffer + 4, clients[client_id].chat_len);

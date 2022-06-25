@@ -18,3 +18,4 @@ do
   $DIR_TOP/.sed.temp $file > "${my_dirname}${my_filename}"
 done
 rm -f $DIR_TOP/.sed.temp
+

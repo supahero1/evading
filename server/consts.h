@@ -11,7 +11,8 @@ enum game_const {
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   max_players = 100,
-  max_chat_message_len = 64,
+  max_chat_message_len = 128,
+  max_chat_timestamps = 6,
   max_name_len = 4
 };
 

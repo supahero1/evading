@@ -34,6 +34,7 @@ let target_name_y = 0;
 let settings_div = document.getElementById("settings");
 let settings_insert = document.getElementById("ss");
 let sees_settings = false;
+let chat_timestamps = new Array(5).fill(0);
 let _keybinds = window.localStorage.getItem("keybinds");
 let default_keybinds = {
   ["settings"]: "Escape",
@@ -407,18 +408,24 @@ function ip() {
 }
 function dont_go_over_limit(n) {
   return function(e) {
-    if(e.target.val == undefined) {
-      e.target.val = e.target.value;
+    let clipboard = e instanceof ClipboardEvent;
+    if(clipboard && e.type != "paste") {
+      return true;
     }
-    let new_val = e.target.value + e.key;
+    let new_val = e.target.value + (clipboard ? e.clipboardData.getData("text") : e.key);
     if(new TextEncoder().encode(new_val).byteLength > n) {
-      e.target.value = e.target.val || "";
+      if(e.target.value == "" && clipboard) {
+        const old = e.target.placeholder;
+        e.target.placeholder = "Text too long to paste!";
+        setTimeout(function() {
+          e.target.placeholder = old;
+        }, 1000);
+      }
+      e.preventDefault();
+      return false;
     } else {
-      e.target.value = new_val;
-      e.target.val = new_val;
+      return true;
     }
-    e.preventDefault();
-    return false;
   };
 }
 function game(ws) {
@@ -442,7 +449,7 @@ function game(ws) {
     reload();
   };
   window.onkeydown = function(x) {
-    if((x.keyCode || x.which) == 13) {
+    if(x.code == "Enter") {
       window.localStorage.setItem("name", name.value);
       loading.innerHTML = "Spawning...";
       sub.innerHTML = "";
@@ -695,36 +702,40 @@ function game2(ws) {
       ip();
     }
   };
-  sendmsg.onmousedown = function(e) {
-    e.stopPropagation();
-  };
-  sendmsg.onmouseup = function(e) {
-    e.stopPropagation();
-  };
   sendmsg.onkeydown = function(e) {
     e.stopPropagation();
     if(e.code == "Enter") {
-      let encoded = new TextEncoder().encode(sendmsg.value);
-      u8[0] = 1;
-      u8[1] = encoded.length;
-      u8.set(encoded, 2);
-      ws.send(u8.subarray(0, u8[1] + 2));
+      let encoded = new TextEncoder().encode(sendmsg.value.trim());
+      if(encoded.length > 0) {
+        u8[0] = 1;
+        u8[1] = encoded.length;
+        u8.set(encoded, 2);
+        ws.send(u8.subarray(0, u8[1] + 2));
+        chat_timestamps.pop();
+        /* Note: MUST NOT BE performance.now() !!! */
+        chat_timestamps.unshift(new Date().getTime());
+        const diff = Math.abs(chat_timestamps[chat_timestamps.length - 1] - chat_timestamps[0]);
+        const allowed = 1000 * chat_timestamps.length;
+        if(diff < allowed) {
+          const old = sendmsg.placeholder;
+          sendmsg.placeholder = "You are on cooldown";
+          sendmsg.disabled = 1;
+          setTimeout(function() {
+            sendmsg.disabled = 0;
+            sendmsg.placeholder = old;
+          }, allowed - diff);
+        }
+      }
       sendmsg.value = "";
+      sendmsg.val = "";
       sendmsg.blur();
-      sendmsg.disabled = 1;
-      setTimeout(function() {
-        sendmsg.disabled = 0;
-      }, 1000);
       canvas.focus();
     }
   };
   sendmsg.onkeyup = function(e) {
     e.stopPropagation();
   };
-  sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(64);
-  messages.onwheel = function(e) {
-    e.stopPropagation();
-  };
+  sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(128);
   function resize() {
     if(window.innerWidth != width || window.innerHeight != height || dpr != window.devicePixelRatio) {
       dpr = window.devicePixelRatio;
@@ -765,8 +776,7 @@ function game2(ws) {
     }
     ws.send(u8.subarray(0, 6));
   }
-  window.onwheel = function(x) {
-    if(sees_settings) return;
+  canvas.onwheel = function(x) {
     const add = -Math.sign(x.deltaY) * 0.05;
     if(target_fov > 1) {
       target_fov += add * 3;
@@ -781,10 +791,8 @@ function game2(ws) {
     movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
     send_movement();
   };
-  window.onmousedown = function() {
-    if(!sees_settings) {
-      movement.mouse = !movement.mouse;
-    }
+  canvas.onmousedown = function() {
+    movement.mouse = !movement.mouse;
     movement.angle = Math.atan2(mouse[1] - canvas.height * 0.5, mouse[0] - canvas.width  * 0.5);
     movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
     send_movement();
