@@ -89,6 +89,12 @@ let default_settings = {
     ["value"]: 100,
     ["step"]: 1
   },
+  ["chat_text_scale"]: {
+    ["min"]: 1,
+    ["max"]: 2,
+    ["value"]: 1,
+    ["step"]: 0.05
+  },
   /*["chat_position"]: {
     ["selected"]: "Bottom left",
     ["options"]: [
@@ -135,13 +141,13 @@ for(let prop in settings) {
   if(default_settings[prop] == undefined) {
     delete settings[prop];
   }
-  if(settings[prop].min && settings[prop].min != default_settings[prop].min) {
-    settings[prop].min = default_settings[prop].min;
+  if(settings[prop]["min"] && settings[prop]["min"] != default_settings[prop]["min"]) {
+    settings[prop]["min"] = default_settings[prop]["min"];
   }
-  if(settings[prop].max && settings[prop].max != default_settings[prop].max) {
-    settings[prop].max = default_settings[prop].max;
+  if(settings[prop]["max"] && settings[prop]["max"] != default_settings[prop]["max"]) {
+    settings[prop]["max"] = default_settings[prop]["max"];
   }
-  settings[prop].value = Math.max(Math.min(settings[prop].value, settings[prop].max), settings[prop].min);
+  settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
 window.localStorage.setItem("settings", JSON.stringify(settings));
 let probing_key = false;
@@ -210,10 +216,10 @@ function create_switch(name) {
 }
 function create_list(name) {
   let select = document.createElement("select");
-  for(let option of settings[name].options) {
+  for(let option of settings[name]["options"]) {
     let opt = document.createElement("option");
     opt.value = option;
-    if(option == settings[name].selected) {
+    if(option == settings[name]["selected"]) {
       opt.selected = 1;
     }
     opt.innerHTML = option;
@@ -243,13 +249,13 @@ function create_slider(name, add="", cb=function(){}) {
   div.className = "input";
   let input = document.createElement("input");
   input.type = "range";
-  input.min = settings[name].min;
-  input.max = settings[name].max;
-  input.step = settings[name].step;
-  input.value = settings[name].value;
+  input.min = settings[name]["min"];
+  input.max = settings[name]["max"];
+  input.step = settings[name]["step"];
+  input.value = settings[name]["value"];
   input.oninput = function() {
     input.nextElementSibling.innerHTML = input.value + add;
-    settings[name].value = input.valueAsNumber;
+    settings[name]["value"] = input.valueAsNumber;
     cb();
   };
   input.onchange = save_settings;
@@ -265,11 +271,22 @@ function create_button(name, cb) {
 }
 function create_settings() {
   settings_insert.innerHTML = "";
-  show_el(create_header("GENERAL"));
+  show_el(create_header("CHAT"));
   let table = create_table();
   table_insert_el(table, create_text("Show chat"), create_switch("chat_on"));
-  table_insert_el(table, create_text("Max number of chat messages"), create_slider("max_chat_messages"));
-  //table_insert_el(table, create_text("Chat position"), create_list("chat_position"));
+  table_insert_el(table, create_text("Max number of chat messages"), create_slider("max_chat_messages", "", function() {
+    while(chat_message_len > settings["max_chat_messages"]["value"]) {
+      messages.removeChild(messages.lastChild);
+      --chat_message_len;
+    }
+  }));
+  table_insert_el(table, create_text("Chat text scale"), create_slider("chat_text_scale", "", function() {
+    messages.style["font-size"] = settings["chat_text_scale"]["value"] + "em";
+  }));
+  show_el(table);
+  show_el(create_header("VISUALS"));
+  table = create_table();
+  //table_insert_el(table, create_text("Chat position"), create_list("chat_position")); // usage example of list
   table_insert_el(table, create_text("Default FOV"), create_slider("fov"));
   table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
   table_insert_el(table, create_text("Draw balls' stroke"), create_switch("draw_ball_stroke"));
@@ -311,7 +328,7 @@ function display_chat_message(author, msg) {
   let p = document.createElement("p");
   p.appendChild(document.createTextNode(author + ": " + msg));
   messages.insertBefore(p, messages.firstChild);
-  if(++chat_message_len > settings["max_chat_messages"].value) {
+  if(++chat_message_len > settings["max_chat_messages"]["value"]) {
     messages.removeChild(messages.lastChild);
   }
 }
@@ -718,16 +735,17 @@ function game2(ws) {
         const allowed = 1000 * chat_timestamps.length;
         if(diff < allowed) {
           const old = sendmsg.placeholder;
-          sendmsg.placeholder = "You are on cooldown";
-          sendmsg.disabled = 1;
+          sendmsg.placeholder = "You are on cooldown for sending too many messages too fast";
+          sendmsg.oncooldown = 1;
+          sendmsg.onkeypress = sendmsg.onpaste = null;
           setTimeout(function() {
-            sendmsg.disabled = 0;
+            sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(128);
+            sendmsg.oncooldown = 0;
             sendmsg.placeholder = old;
           }, allowed - diff);
         }
       }
       sendmsg.value = "";
-      sendmsg.val = "";
       sendmsg.blur();
       canvas.focus();
     }
@@ -812,7 +830,9 @@ function game2(ws) {
     }
     switch(x.code) {
       case "Enter": {
-        sendmsg.focus();
+        if(!sendmsg.oncooldown) {
+          sendmsg.focus();
+        }
         x.preventDefault();
         break;
       }
