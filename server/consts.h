@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+extern const uint8_t whitespace_chars[256];
+
 enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
@@ -12,7 +14,7 @@ enum game_const {
   chat_timeout = (1000 / tick_interval) * 1,
   max_players = 100,
   max_chat_message_len = 128,
-  max_chat_timestamps = 6,
+  max_chat_timestamps = 6, /* in main.js this is -1 */
   max_name_len = 4
 };
 

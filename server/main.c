@@ -1330,9 +1330,18 @@ static void parse(void) {
           goto close;
         }
         client->chat_timestamp_idx = next_idx;
-        clients[client_id].last_message_at = current_tick;
-        clients[client_id].chat_len = buffer[3];
-        memcpy(clients[client_id].chat, buffer + 4, clients[client_id].chat_len);
+        client->last_message_at = current_tick;
+        client->chat_len = buffer[3];
+        if(client->chat_len == 0) {
+          goto out;
+        }
+        /* Trim whitespace */
+        uint8_t start = 4;
+        while(whitespace_chars[buffer[start]] && ++start == 4 + client->chat_len) goto out;
+        uint8_t end = 4 + client->chat_len - 1;
+        while(whitespace_chars[buffer[end]] && --end == 3) goto out;
+        memcpy(client->chat, buffer + start, end - start + 1);
+        out:;
         break;
       }
       default: goto close;
