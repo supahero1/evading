@@ -1,18 +1,21 @@
-let loading = document.getElementById("loading");
+const getElementById = document.getElementById.bind(document);
+const createElement = document.createElement.bind(document);
+const { localStorage } = window;
+let loading = getElementById("loading");
 loading.innerHTML = "Fetching servers...";
-let sub = document.getElementById("sub");
-let name = document.getElementById("name");
-let canvas = document.getElementById("canvas");
+let sub = getElementById("sub");
+let name = getElementById("name");
+let canvas = getElementById("canvas");
 let ctx = canvas.getContext("2d");
-let background = document.createElement("canvas");
+let background = createElement("canvas");
 let bg_ctx = background.getContext("2d");
-let light_background = document.createElement("canvas");
+let light_background = createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
-let death_arrow = document.createElement("canvas");
+let death_arrow = createElement("canvas");
 let death_arrow_ctx = death_arrow.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
-let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff"];
+let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#663a82"];
 let width = 0;
 let height = 0;
 let dpr = 0;
@@ -31,11 +34,11 @@ let updates = [0, 0];
 let reset = 0;
 let name_y = 0;
 let target_name_y = 0;
-let settings_div = document.getElementById("settings");
-let settings_insert = document.getElementById("ss");
+let settings_div = getElementById("settings");
+let settings_insert = getElementById("ss");
 let sees_settings = false;
 let chat_timestamps = new Array(5).fill(0);
-let _keybinds = window.localStorage.getItem("keybinds");
+let _keybinds = localStorage.getItem("keybinds");
 let default_keybinds = {
   ["settings"]: "Escape",
   ["up"]: "KeyW",
@@ -74,7 +77,7 @@ let bg_data = {
   fills: [],
   strokes: []
 };
-let _settings = window.localStorage.getItem("settings");
+let _settings = localStorage.getItem("settings");
 let default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
@@ -149,15 +152,15 @@ for(let prop in settings) {
   }
   settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
-window.localStorage.setItem("settings", JSON.stringify(settings));
+localStorage.setItem("settings", JSON.stringify(settings));
 let probing_key = false;
 let probe_key = "";
 let probe_resolve;
 let fov = settings["fov"]["value"];
 let target_fov = fov;
-let chat = document.getElementById("chat");
-let messages = document.getElementById("messages");
-let sendmsg = document.getElementById("sendmsg");
+let chat = getElementById("chat");
+let messages = getElementById("messages");
+let sendmsg = getElementById("sendmsg");
 let sees_chat = settings["chat_on"];
 let chat_message_len = 0;
 window["s"].then(r => r.json()).then(r => init(r));
@@ -165,40 +168,45 @@ function reload() {
   setTimeout(location.reload.bind(location), 1000);
 }
 function save_settings() {
-  window.localStorage.setItem("settings", JSON.stringify(settings));
+  localStorage.setItem("settings", JSON.stringify(settings));
 }
 function save_keybinds() {
-  window.localStorage.setItem("keybinds", JSON.stringify(keybinds));
+  localStorage.setItem("keybinds", JSON.stringify(keybinds));
 }
 function show_el(el) {
   settings_insert.appendChild(el);
 }
 function create_header(content) {
-  let h1 = document.createElement("h1");
+  let h1 = createElement("h1");
   h1.innerHTML = content;
   return h1;
 }
 function create_text(content) {
-  let h3 = document.createElement("h3");
+  let h3 = createElement("h3");
   h3.innerHTML = content;
   return h3;
 }
+function create_comment(content) {
+  let h5 = createElement("h5");
+  h5.innerHTML = content;
+  return h5;
+}
 function create_table() {
-  return document.createElement("table");
+  return createElement("table");
 }
 function table_insert_el(table, left_el, right_el) {
-  let tr = document.createElement("tr");
-  let td = document.createElement("td");
+  let tr = createElement("tr");
+  let td = createElement("td");
   td.appendChild(left_el);
   tr.appendChild(td);
-  td = document.createElement("td");
+  td = createElement("td");
   td.appendChild(right_el);
   tr.appendChild(td);
   table.appendChild(tr);
   return table;
 }
 function create_switch(name) {
-  let btn = document.createElement("button");
+  let btn = createElement("button");
   settings[name] = !settings[name];
   btn.onclick = function() {
     settings[name] = !settings[name];
@@ -215,9 +223,9 @@ function create_switch(name) {
   return btn;
 }
 function create_list(name) {
-  let select = document.createElement("select");
+  let select = createElement("select");
   for(let option of settings[name]["options"]) {
-    let opt = document.createElement("option");
+    let opt = createElement("option");
     opt.value = option;
     if(option == settings[name]["selected"]) {
       opt.selected = 1;
@@ -229,7 +237,7 @@ function create_list(name) {
   return select;
 }
 function create_keybind(name) {
-  let btn = document.createElement("button");
+  let btn = createElement("button");
   btn.innerHTML = keybinds[name];
   btn.onclick = async function() {
     btn.innerHTML = "...";
@@ -245,9 +253,9 @@ function create_keybind(name) {
   return btn;
 }
 function create_slider(name, add="", cb=function(){}) {
-  let div = document.createElement("div");
+  let div = createElement("div");
   div.className = "input";
-  let input = document.createElement("input");
+  let input = createElement("input");
   input.type = "range";
   input.min = settings[name]["min"];
   input.max = settings[name]["max"];
@@ -264,7 +272,7 @@ function create_slider(name, add="", cb=function(){}) {
   return div;
 }
 function create_button(name, cb) {
-  let btn = document.createElement("button");
+  let btn = createElement("button");
   btn.innerHTML = name;
   btn.onclick = cb;
   return btn;
@@ -301,6 +309,7 @@ function create_settings() {
   table_insert_el(table, create_text("Death arrow size"), create_slider("death_arrow_size", "px", update_death_arrow_size));
   show_el(table);
   show_el(create_header("KEYBINDS"));
+  show_el(create_comment("To change, click a button on the right side and then press the key you want to asign to it."));
   table = create_table();
   table_insert_el(table, create_text("Settings"), create_keybind("settings"));
   table_insert_el(table, create_text("Move up"), create_keybind("up"));
@@ -325,7 +334,7 @@ function create_settings() {
 }
 create_settings();
 function display_chat_message(author, msg) {
-  let p = document.createElement("p");
+  let p = createElement("p");
   p.appendChild(document.createTextNode(author + ": " + msg));
   messages.insertBefore(p, messages.firstChild);
   if(++chat_message_len > settings["max_chat_messages"]["value"]) {
@@ -450,7 +459,7 @@ function game(ws) {
   sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
   name.style.display = "block";
   name.focus();
-  let name_val = window.localStorage.getItem("name");
+  let name_val = localStorage.getItem("name");
   if(name_val) {
     name.value = name_val;
   }
@@ -467,11 +476,11 @@ function game(ws) {
   };
   window.onkeydown = function(x) {
     if(x.code == "Enter") {
-      window.localStorage.setItem("name", name.value);
+      localStorage.setItem("name", name.value);
       loading.innerHTML = "Spawning...";
       sub.innerHTML = "";
       name.style.display = "none";
-      let token = window.localStorage.getItem("token");
+      let token = localStorage.getItem("token");
       token = token ? token.split(",").map(r => +r) : [];
       let encoded = new TextEncoder().encode(name.value);
       ws.send(new Uint8Array([...encoded, ...token]));
@@ -923,7 +932,7 @@ function game2(ws) {
   window.onbeforeunload = function(e) {
     e.preventDefault();
     e.returnValue = "Are you sure you want to quit?";
-    window.localStorage.setItem("settings", JSON.stringify(settings));
+    localStorage.setItem("settings", JSON.stringify(settings));
     return "Are you sure you want to quit?";
   };
   canvas.oncontextmenu = function(e) {

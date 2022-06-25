@@ -29,7 +29,8 @@ enum ball_type {
   ball_pink,
   ball_teal,
   ball_sandy,
-  ball_light_blue
+  ball_light_blue,
+  ball_purple
 };
 
 enum radius_type {

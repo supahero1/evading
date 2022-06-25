@@ -180,6 +180,10 @@ static float randf(void) {
   return (float) fast_rand() / FAST_RAND_MAX;
 }
 
+static int angle_diff_turn_dir(const float a, const float b) {
+  return fmodf(a - b + M_PI * 3, M_PI * 2) - M_PI > 0;
+}
+
 static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info, const struct ball_info* const relative, const uint16_t area_id) {
   const uint32_t idx = get_free_ball_idx();
   struct ball* const ball = balls + idx;
@@ -671,6 +675,9 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
     }
     goto past;
   }
+
+#define ANGLE_TO_NEAREST_PLAYER atan2f(clients[ball->closest_client_id].entity.y - entity->y, clients[ball->closest_client_id].entity.x - entity->x)
+
   switch(ball->type) {
     case ball_grey: break;
     case ball_pink: {
@@ -715,7 +722,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
         break;
       }
       ball->tick = UINT64_MAX;
-      const float angle = atan2f(clients[ball->closest_client_id].entity.y - entity->y, clients[ball->closest_client_id].entity.x - entity->x);
+      const float angle = ANGLE_TO_NEAREST_PLAYER;
       execute_ball_info_on_area_id(ball->spawn + ball->spawn_idx, &((struct ball_info) {
         .angle = angle, /* .movement_type = movement_relative_angle */
         .x = entity->x,
@@ -727,6 +734,20 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       if(ball->spawn[++ball->spawn_idx].type == ball_invalid) {
         ball->spawn_idx = 0;
       }
+      break;
+    }
+    case ball_purple: {
+      const float angle = ANGLE_TO_NEAREST_PLAYER;
+      ball->angle = atan2f(ball->vy, ball->vx);
+      const int dir = angle_diff_turn_dir(ball->angle, angle);
+      if(dir) {
+        ball->angle -= ball->frequency_float;
+      } else {
+        ball->angle += ball->frequency_float;
+      }
+      ball->angle = fmodf(ball->angle, M_PI * 2);
+      ball->vx = cos(ball->angle) * ball->speed;
+      ball->vy = sin(ball->angle) * ball->speed;
       break;
     }
     default: assert(0);
@@ -1137,11 +1158,13 @@ void send_balls(const uint8_t client_id) {
     }
   }
   /* Not part of creating a packet */
-  const float dist_sq = (entity->x - clients[client_id].entity.x) * (entity->x - clients[client_id].entity.x) +
-                        (entity->y - clients[client_id].entity.y) * (entity->y - clients[client_id].entity.y);
-  if(dist_sq < ball->closest_client_dist_sq) {
-    ball->closest_client_dist_sq = dist_sq;
-    ball->closest_client_id = client_id;
+  if(!clients[client_id].dead) {
+    const float dist_sq = (entity->x - clients[client_id].entity.x) * (entity->x - clients[client_id].entity.x) +
+                          (entity->y - clients[client_id].entity.y) * (entity->y - clients[client_id].entity.y);
+    if(dist_sq < ball->closest_client_dist_sq) {
+      ball->closest_client_dist_sq = dist_sq;
+      ball->closest_client_id = client_id;
+    }
   }
   GRID_ROF();
   

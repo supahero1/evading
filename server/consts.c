@@ -615,7 +615,7 @@ struct area_info area_infos[] = {
         (struct ball_info[]){
           {
             .type = ball_grey,
-            .count = 4,
+            .count = 0,//4,
             .speed = 3 * time_scale,
             .radius_type = radius_random,
             .r_min = 8,
@@ -623,7 +623,7 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_pink,
-            .count = 4,
+            .count = 0,//4,
             .speed = 3 * time_scale,
             .frequency_type = frequency_float_random,
             .frequency_float_min = 0.05f,
@@ -637,7 +637,7 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_teal,
-            .count = 4,
+            .count = 0,//4,
             .speed = 3 * time_scale,
             .frequency_type = frequency_float_random,
             .frequency_float_min = 0.3f,
@@ -648,7 +648,7 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_sandy,
-            .count = 4,
+            .count = 0,//4,
             .speed = 3 * time_scale,
             .frequency_type = frequency_num_random,
             .frequency_num_min = 1000 / tick_interval,
@@ -671,7 +671,7 @@ struct area_info area_infos[] = {
           },
           {
             .type = ball_light_blue,
-            .count = 4,
+            .count = 0,//4,
             .speed = 3 * time_scale,
             .frequency_type = frequency_num_random,
             .frequency_num_min = 1000 / tick_interval,
@@ -721,6 +721,16 @@ struct area_info area_infos[] = {
             .spawn_idx_type = spawn_idx_random,
             .spawn_idx_min = 0,
             .spawn_idx_max = 2
+          },
+          {
+            .type = ball_purple,
+            .frequency_type = frequency_float_fixed,
+            .frequency_float = 0.08f,
+            .r = 8,
+            .speed = 2 * time_scale,
+            .count = 50,
+            .range_type = range_fixed,
+            .range = 100.0f
           }, {0}
         }, /* SPAWN POINTS */
         (struct pos[]){ { 2, 1 }, { 2, 8 } }, 2
