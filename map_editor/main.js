@@ -175,7 +175,7 @@ window.onkeydown = function(x) {
       }
       break;
     }
-    case 82: {
+    case 69: {
       hidden = 1;
       resized = 1;
       break;
@@ -595,7 +595,7 @@ function draw() {
       draw_text_at("Click on the left to pick what type of tile you want to place", -500, default_y - 40, 0, false, false);
       draw_text_at("Set spawnpoints by clicking LMB and pressing Q at the same time", -500, default_y, 0, false, false);
       draw_text_at("Unset spawnpoints by clicking RMB and pressing Q at the same time", -500, default_y + 40, 0, false, false);
-      draw_text_at("Press R to hide this message", -500, default_y + 80, 0, false, false);
+      draw_text_at("Press E to hide this message", -500, default_y + 80, 0, false, false);
     }
     for(const val of cached_vals) {
       draw_text_at("S", 20 + val[0] * 40, 20 + val[1] * 40, 0, false, false);
