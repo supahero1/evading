@@ -605,12 +605,18 @@ function draw() {
     }
     if(width & 1) {
       draw_text_at("M", 20 + ((width - 1) >> 1) * 40, -20, 40, false, true);
+    } else {
+      draw_text_at("M", 20 + (width >> 1) * 40, -20, 40, false, true);
+      draw_text_at("M", 20 + ((width >> 1) - 1) * 40, -20, 40, false, true);
     }
     for(let i = 0; i < height; ++i) {
       draw_text_at(i.toString(), width * 42 + 20, 20 + i * 40, 20, true, false);
     }
     if(height & 1) {
       draw_text_at("M", width * 40 + 20, 20 + ((height - 1) >> 1) * 40, 40, true, false);
+    } else {
+      draw_text_at("M", width * 40 + 20, 20 + (height >> 1) * 40, 40, true, false);
+      draw_text_at("M", width * 40 + 20, 20 + ((height >> 1) - 1) * 40, 40, true, false);
     }
   }
   requestAnimationFrame(draw);
