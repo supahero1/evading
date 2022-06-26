@@ -45,6 +45,12 @@ function gen_map() {
       new_u8[i * height + j] = u8[i * old_h + j];
     }
   }
+  for(let i = 0; i < cached_vals.length; ++i) {
+    if(cached_vals[i][0] >= width || cached_vals[i][1] >= height) {
+      delete spawns[`${cached_vals[i][0]},${cached_vals[i][1]}`];
+      cached_vals.splice(i--, 1);
+    }
+  }
   old_w = width;
   old_h = height;
   u8 = new_u8;
