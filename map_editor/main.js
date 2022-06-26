@@ -15,6 +15,15 @@ const tile_desc = [
   "Wall",
   "Teleport"
 ];
+const postfix = " tiles";
+const px2 = "2px";
+const mt = "margin-top";
+const mb = "margin-bottom";
+const input = "input";
+const nes = "nextElementSibling";
+const pes = "previousElementSibling";
+const van = "valueAsNumber";
+const ih = "innerHTML";
 let tile_type = 0;
 let hs = [];
 function set_selected() {
@@ -22,20 +31,11 @@ function set_selected() {
     hs[i].style["text-decoration"] = (i == tile_type) ? "underline" : "none";
   }
 }
-let postfix = " tiles";
-let px2 = "2px";
-let mt = "margin-top";
-let mb = "margin-bottom";
-let input = "input";
-let nes = "nextElementSibling";
-let pes = "previousElementSibling";
-let van = "valueAsNumber";
-let ih = "innerHTML";
 let old_w = 0;
 let old_h = 0;
 let u8 = new Uint8Array(0);
-let width = 10;
-let height = 10;
+let width = 9;
+let height = 9;
 function gen_map() {
   let new_u8 = new Uint8Array(width * height);
   for(let i = 0; i < old_w; ++i) {
@@ -57,10 +57,13 @@ let fov_min = 0.2;
 let fov_max = 2;
 let fov = fov_min;
 let target_fov = 1;
+const cell_size = 40;
+const default_y = height * 0.5 * cell_size;
 let x = 0;
-let y = 0;
+let y = default_y;
 let mouse = [0, 0];
 let pressing = 0;
+let counter_pressing = 0;
 let move = {
   left: 0,
   right: 0,
@@ -68,12 +71,16 @@ let move = {
   down: 0
 };
 let v = [0, 0];
-const cell_size = 40;
+let tile_idx;
 let bg_data = {
   fills: [],
   strokes: []
 };
+let spawn = 0;
+let spawns = {};
 let resized = true;
+let cached_vals = [];
+let hidden = 0;
 let c1 = function(){};
 let c2 = function(){};
 function get_move() {
@@ -82,6 +89,17 @@ function get_move() {
   } else {
     const angle = Math.atan2(move.down - move.up, move.right - move.left);
     v = [lerp(v[0], Math.cos(angle) * 10 / fov, 0.1), lerp(v[1], Math.sin(angle) * 10 / fov, 0.1)];
+  }
+}
+function maybe_add_spawn_point() {
+  if(pressing && spawns[tile_idx] == undefined) {
+    spawns[tile_idx] = [(tile_idx / height) | 0, tile_idx % height];
+    draw_text_at("S", 20 + spawns[tile_idx][0] * 40, 20 + spawns[tile_idx][1] * 40, 0, false, false);
+    cached_vals[cached_vals.length] = spawns[tile_idx];
+  } else if(counter_pressing && spawns[tile_idx] != undefined) {
+    delete spawns[tile_idx];
+    paint_bg_explicit(tile_idx);
+    cached_vals = Object.values(spawns);
   }
 }
 function resize() {
@@ -110,16 +128,58 @@ canvas.onwheel = function(x) {
 };
 window.onmousemove = function(x) {
   mouse = [x.clientX * dpr, x.clientY * dpr];
+  tile_idx = get_tile_idx();
+  if(tile_idx != -1) {
+    if(pressing && u8[tile_idx] != tile_type) {
+      u8[tile_idx] = tile_type;
+      paint_bg_explicit(tile_idx);
+    }
+    if(spawn) {
+      maybe_add_spawn_point();
+    }
+  }
 };
 canvas.onmousedown = function(x) {
-  pressing = 1;
+  if(x.button == 0) {
+    pressing = 1;
+    if(tile_idx != -1) {
+      if(u8[tile_idx] != tile_type) {
+        u8[tile_idx] = tile_type;
+        paint_bg_explicit(tile_idx);
+      }
+      if(spawn) {
+        maybe_add_spawn_point();
+      }
+    }
+  } else if(x.button == 2) {
+    counter_pressing = 1;
+    if(spawn) {
+      maybe_add_spawn_point();
+    }
+  }
 };
 canvas.onmouseup = function(x) {
-  pressing = 0;
+  if(x.button == 0) {
+    pressing = 0;
+  } else if(x.button == 2) {
+    counter_pressing = 0;
+  }
 };
 window.onkeydown = function(x) {
   if(x.repeat) return;
   switch(x.keyCode) {
+    case 81: {
+      spawn = 1;
+      if(tile_idx != -1) {
+        maybe_add_spawn_point();
+      }
+      break;
+    }
+    case 82: {
+      hidden = 1;
+      resized = 1;
+      break;
+    }
     case 38:
     case 87: {
       move.up = 1;
@@ -146,6 +206,10 @@ window.onkeydown = function(x) {
 window.onkeyup = function(x) {
   if(x.repeat) return;
   switch(x.keyCode) {
+    case 81: {
+      spawn = 0;
+      break;
+    }
     case 38:
     case 87: {
       move.up = 0;
@@ -179,7 +243,20 @@ canvas.oncontextmenu = function(e) {
   return false;
 };
 function export_tiles() {
-  let str = `struct tile_info name = { ${width}, ${height}, 40, (uint8_t[]){\n`;
+  const sp = cached_vals.length != 0 ? " " : "";
+  let str = `#include "../consts.h"\n
+\n
+static struct tile_info t;\n
+\n
+struct area_info area_000 = {\n
+  &t,\n
+  (struct ball_info[]){\n
+    {0}\n
+  },\n
+  (struct pos[]){${sp}${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")}${sp}}, ${cached_vals.length}\n
+};\n
+\n
+struct tile_info name = { ${width}, ${height}, 40, (uint8_t[]){\n`;
   let m = "/*       ";
   for(let i = 0; i < height; ++i) {
       m += i.toString().padStart(3, " ") + " ";
@@ -195,13 +272,21 @@ function export_tiles() {
     str += "\n\n";
   }
   str = str.substring(0, str.length - 1);
-  str += `\n${m}  }\n};`;
+  str += `\n${m}  }\n};\n`;
   return btoa(str);
 }
 function parse_tiles(config) {
   try {
     config = atob(config);
-    const reg = config.match(/struct tile_info \w.*? = { (\d+), (\d+), 40, \(uint8_t\[\]\){/);
+    let info = config.match(/{ (\d+), (\d+) }/g);
+    if(info == null) {
+      return 0;
+    }
+    info = info.map(r => r.match(/\d+/g).map(t => +t));
+    if(info.length != config.match(/}, (\d+)\n};/)[1]) {
+      return 0;
+    }
+    const reg = config.match(/{ (\d+), (\d+), 40, \(uint8_t\[\]\){/);
     if(reg == null) {
       return 0;
     }
@@ -210,15 +295,23 @@ function parse_tiles(config) {
     if(_w < 1 || _w > 200 || _h < 1 || _h > 200) {
       return 0;
     }
-    const res = eval(`[${config.substring(reg[0].length, config.length - 4)}]`);
+    const res = eval(`[${config.substring(reg.index + reg[0].length, config.length - 5)}]`);
     if(!(res instanceof Array)) return 0;
     if(res.length != _w * _h) {
       return 0;
+    }
+    for(let i = 0; i < info.length; ++i) {
+      if(info[i][0] >= _w || info[i][1] >= _h) return 0;
     }
     width = _w;
     height = _h;
     c1();
     c2();
+    spawns = {};
+    for(let i = 0; i < info.length; ++i) {
+      spawns[info[i][0] * height + info[i][1]] = [info[i][0], info[i][1]];
+    }
+    cached_vals = Object.values(spawns);
     u8 = new Uint8Array(_w * _h);
     u8.set(res);
     paint_bg();
@@ -447,6 +540,35 @@ gen_map();
   }
 }
 set_selected();
+function draw_text_at(text, _x, _y, k, preserve_x, preserve_y) {
+  k *= fov;
+  let s_x = canvas.width * 0.5 + (_x - x) * fov;
+  let s_y = canvas.height * 0.5 + (_y - y) * fov;
+  let t_x;
+  let t_y;
+  if(preserve_x && (s_x < k || s_x > canvas.width - k)) {
+    t_x = Math.max(Math.min(s_x, canvas.width - k), k);
+  } else {
+    t_x = s_x;
+  }
+  if(preserve_y && (s_y < k || s_y > canvas.height - k)) {
+    t_y = Math.max(Math.min(s_y, canvas.height - k), k);
+  } else {
+    t_y = s_y;
+  }
+  let r_x = (t_x - canvas.width * 0.5) / fov + x;
+  let r_y = (t_y - canvas.height * 0.5) / fov + y;
+  ctx.translate(r_x, r_y);
+  ctx.font = `700 20px Ubuntu`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 1;
+  ctx.fillText(text, 0, 0);
+  ctx.strokeText(text, 0, 0);
+  ctx.translate(-r_x, -r_y);
+}
 function draw() {
   let old = fov;
   fov = lerp(fov, target_fov, 0.075);
@@ -468,12 +590,27 @@ function draw() {
       ctx.drawImage(light_background, 0, 0, background.width / fov_max, background.height / fov_max);
       ctx.globalAlpha = 1;
     }
-  }
-  if(pressing) {
-    const idx = get_tile_idx();
-    if(idx != -1 && u8[idx] != tile_type) {
-      u8[idx] = tile_type;
-      paint_bg_explicit(idx);
+    if(!hidden) {
+      draw_text_at("WASD or arrow keys to move around, scroll to zoom", -500, default_y - 80, 0, false, false);
+      draw_text_at("Click on the left to pick what type of tile you want to place", -500, default_y - 40, 0, false, false);
+      draw_text_at("Set spawnpoints by clicking LMB and pressing Q at the same time", -500, default_y, 0, false, false);
+      draw_text_at("Unset spawnpoints by clicking RMB and pressing Q at the same time", -500, default_y + 40, 0, false, false);
+      draw_text_at("Press R to hide this message", -500, default_y + 80, 0, false, false);
+    }
+    for(const val of cached_vals) {
+      draw_text_at("S", 20 + val[0] * 40, 20 + val[1] * 40, 0, false, false);
+    }
+    for(let i = 0; i < width; ++i) {
+      draw_text_at(i.toString(), 20 + i * 40, -40, 20, false, true);
+    }
+    if(width & 1) {
+      draw_text_at("M", 20 + ((width - 1) >> 1) * 40, -20, 40, false, true);
+    }
+    for(let i = 0; i < height; ++i) {
+      draw_text_at(i.toString(), width * 42 + 20, 20 + i * 40, 20, true, false);
+    }
+    if(height & 1) {
+      draw_text_at("M", width * 40 + 20, 20 + ((height - 1) >> 1) * 40, 40, true, false);
     }
   }
   requestAnimationFrame(draw);

@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-extern const uint8_t whitespace_chars[256];
-
 enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
@@ -41,6 +39,10 @@ enum radius_type {
 
 enum position_type {
   position_random,
+  position_random_in_range,
+  position_tile_random,
+  position_tile_random_in_range,
+  position_tile_random_in_range_snap_to_tiles,
   position_fixed,
   position_tile_fixed,
   position_relative
@@ -86,7 +88,7 @@ enum range_type {
 struct ball_info {
   uint8_t type;
   uint8_t radius_type:2;
-  uint8_t position_type:2;
+  uint8_t position_type:3;
   uint8_t movement_type:3;
   uint8_t frequency_type:3;
   uint8_t tick_type:2;
@@ -115,8 +117,20 @@ struct ball_info {
       float y;
     };
     struct {
+      float x_min;
+      float x_max;
+      float y_min;
+      float y_max;
+    };
+    struct {
       uint16_t tile_x;
       uint16_t tile_y;
+    };
+    struct {
+      uint16_t tile_x_min;
+      uint16_t tile_x_max;
+      uint16_t tile_y_min;
+      uint16_t tile_y_max;
     };
   };
   union {
@@ -174,6 +188,18 @@ struct teleport_dest {
 
 extern struct teleport_dest dereference_teleport(const uint16_t, const uint16_t, const uint16_t);
 
+extern struct area_info area_001;
+/*extern struct area_info area_002;
+extern struct area_info area_003;
+extern struct area_info area_004;
+extern struct area_info area_005;
+extern struct area_info area_006;
+extern struct area_info area_007;
+extern struct area_info area_008;
+extern struct area_info area_009;*/
+
 extern struct area_info area_infos[];
+
+extern const uint8_t whitespace_chars[256];
 
 #endif // game_consts_h

@@ -1,5 +1,5 @@
 build:
-	gcc *.c -o main -Og -g3 -ggdb -lm -march=native -ffast-math -flto -pthread -lshnet
+	gcc *.c areas/*.c -o main -Og -g3 -ggdb -lm -march=native -ffast-math -flto -pthread -lshnet
 	rm -f /etc/systemd/system/evading_server.service
 	install evading_server.service /etc/systemd/system/
 	systemctl enable evading_server

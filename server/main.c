@@ -210,30 +210,63 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
     }
     default: assert(0);
   }
+#define RANDOM_POS(num, x, y) \
+uint8_t ok; \
+do { \
+  entity->x = x; \
+  entity->y = y; \
+  grid_recalculate(grid, entity); \
+  ok = 1; \
+  for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) { \
+    for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) { \
+      const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[(uint32_t) cell_x * grid->cells_y + cell_y]; \
+      if(tile_type != tile_path && (!info->allow_walls || tile_type != tile_wall)) { \
+        ok = 0; \
+        goto out##num; \
+      } \
+    } \
+  } \
+  out##num:; \
+  if(!ok && info->die_on_collision) { \
+    grid_return_entity(grid, ball->entity_id); \
+    return_ball_idx(idx); \
+    return UINT32_MAX; \
+  } \
+} while(!ok)
   switch(info->position_type) {
     case position_random: {
-      uint8_t ok;
-      do {
-        entity->x = info->r + randf() * ((uint32_t) grid->cells_x * grid->cell_size - info->r * 2.0f);
-        entity->y = info->r + randf() * ((uint32_t) grid->cells_y * grid->cell_size - info->r * 2.0f);
-        grid_recalculate(grid, entity);
-        ok = 1;
-        for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
-          for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-            const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[(uint32_t) cell_x * grid->cells_y + cell_y];
-            if(tile_type != tile_path && (!info->allow_walls || tile_type != tile_wall)) {
-              ok = 0;
-              goto out;
-            }
-          }
-        }
-        out:;
-        if(!ok && info->die_on_collision) {
-          grid_return_entity(grid, ball->entity_id);
-          return_ball_idx(idx);
-          return UINT32_MAX;
-        }
-      } while(!ok);
+      RANDOM_POS(0,
+        info->r + randf() * ((uint32_t) grid->cells_x * grid->cell_size - info->r * 2.0f),
+        info->r + randf() * ((uint32_t) grid->cells_y * grid->cell_size - info->r * 2.0f)
+      );
+      break;
+    }
+    case position_random_in_range: {
+      RANDOM_POS(1,
+        info->x_min + randf() * (info->x_max - info->x_min),
+        info->y_min + randf() * (info->y_max - info->y_min)
+      );
+      break;
+    }
+    case position_tile_random: {
+      RANDOM_POS(2,
+        grid->half_cell_size + (fast_rand() % grid->cells_x) * grid->cell_size,
+        grid->half_cell_size + (fast_rand() % grid->cells_y) * grid->cell_size
+      );
+      break;
+    }
+    case position_tile_random_in_range: {
+      RANDOM_POS(3,
+        grid->half_cell_size + (info->tile_x_min + randf() * (info->tile_x_max - info->tile_x_min)) * grid->cell_size,
+        grid->half_cell_size + (info->tile_y_min + randf() * (info->tile_y_max - info->tile_y_min)) * grid->cell_size,
+      );
+      break;
+    }
+    case position_tile_random_in_range_snap_to_tiles: {
+      RANDOM_POS(4,
+        grid->half_cell_size + (info->tile_x_min + (fast_rand() % (info->tile_x_max - info->tile_x_min))) * grid->cell_size,
+        grid->half_cell_size + (info->tile_y_min + (fast_rand() % (info->tile_y_max - info->tile_y_min))) * grid->cell_size,
+      );
       break;
     }
     case position_fixed: {
