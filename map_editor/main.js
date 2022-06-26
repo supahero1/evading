@@ -68,7 +68,7 @@ let move = {
   down: 0
 };
 let v = [0, 0];
-const cell_size = 50;
+const cell_size = 40;
 let bg_data = {
   fills: [],
   strokes: []
@@ -200,7 +200,6 @@ function export_tiles() {
 }
 function parse_tiles(config) {
   try {
-    console.log("1");
     config = atob(config);
     const reg = config.match(/struct tile_info \w.*? = { (\d+), (\d+), 40, \(uint8_t\[\]\){/);
     if(reg == null) {
@@ -208,6 +207,9 @@ function parse_tiles(config) {
     }
     const _w = +reg[1];
     const _h = +reg[2];
+    if(_w < 1 || _w > 200 || _h < 1 || _h > 200) {
+      return 0;
+    }
     const res = eval(`[${config.substring(reg[0].length, config.length - 4)}]`);
     if(!(res instanceof Array)) return 0;
     if(res.length != _w * _h) {
@@ -215,22 +217,17 @@ function parse_tiles(config) {
     }
     width = _w;
     height = _h;
-    console.log("2");
     c1();
     c2();
-    console.log("3");
     u8 = new Uint8Array(_w * _h);
     u8.set(res);
-    console.log("4");
     paint_bg();
     return 1;
   } catch(err) {
-    console.log(err);
     return 0;
   }
 }
 function paint_bg() {
-  console.log("beginning of paint bg");
   bg_data.fills = new Array(tile_colors.length);
   bg_data.strokes = new Array(tile_colors.length);
   let idx = 0;
@@ -268,7 +265,6 @@ function paint_bg() {
     lbg_ctx.fillStyle = tile_colors[i];
     lbg_ctx.fill(bg_data.strokes[i]);
   }
-  console.log("end of paint bg");
   resized = 1;
 }
 function paint_bg_explicit(idx) {
@@ -358,7 +354,7 @@ gen_map();
   h = createElement(input);
   h.type = "range";
   h.min = 1;
-  h.max = 128;
+  h.max = 200;
   h.value = 10;
   h.step = 1;
   c1 = function() {
@@ -382,9 +378,10 @@ gen_map();
   h.style[mt] = px2;
   h.value = width;
   h.min = 1;
-  h.max = 128;
+  h.max = 200;
   h.oninput = function() {
-    width = this[van] || 1;
+    width = this[van] ? Math.max(Math.min(this[van], this.max), this.min) : 1;
+    this[van] = width;
     this[pes][ih] = width + postfix;
     this[pes][pes].value = width;
     gen_map();
@@ -398,7 +395,7 @@ gen_map();
   h = createElement(input);
   h.type = "range";
   h.min = 1;
-  h.max = 128;
+  h.max = 200;
   h.value = 10;
   h.step = 1;
   c2 = function() {
@@ -422,9 +419,10 @@ gen_map();
   h.style[mt] = px2;
   h.value = height;
   h.min = 1;
-  h.max = 128;
+  h.max = 200;
   h.oninput = function() {
-    height = this[van] || 1;
+    height = this[van] ? Math.max(Math.min(this[van], this.max), this.min) : 1;
+    this[van] = height;
     this[pes][ih] = height + postfix;
     this[pes][pes].value = height;
     gen_map();
