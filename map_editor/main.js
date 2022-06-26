@@ -92,12 +92,16 @@ function get_move() {
   }
 }
 function maybe_add_spawn_point() {
-  if(pressing && spawns[tile_idx] == undefined) {
-    spawns[tile_idx] = [(tile_idx / height) | 0, tile_idx % height];
-    draw_text_at("S", 20 + spawns[tile_idx][0] * 40, 20 + spawns[tile_idx][1] * 40, 0, false, false);
-    cached_vals[cached_vals.length] = spawns[tile_idx];
-  } else if(counter_pressing && spawns[tile_idx] != undefined) {
-    delete spawns[tile_idx];
+  if(!spawn) return;
+  const _x = (tile_idx / height) | 0;
+  const _y = tile_idx % height;
+  const id = `${_x},${_y}`;
+  if(pressing && spawns[id] == undefined) {
+    spawns[id] = [_x, _y];
+    draw_text_at("S", 20 + spawns[id][0] * 40, 20 + spawns[id][1] * 40, 0, false, false);
+    cached_vals[cached_vals.length] = spawns[id];
+  } else if(counter_pressing && spawns[id] != undefined) {
+    delete spawns[id];
     paint_bg_explicit(tile_idx);
     cached_vals = Object.values(spawns);
   }
@@ -130,32 +134,26 @@ window.onmousemove = function(x) {
   mouse = [x.clientX * dpr, x.clientY * dpr];
   tile_idx = get_tile_idx();
   if(tile_idx != -1) {
-    if(pressing && u8[tile_idx] != tile_type) {
+    if(pressing && !spawn && u8[tile_idx] != tile_type) {
       u8[tile_idx] = tile_type;
       paint_bg_explicit(tile_idx);
     }
-    if(spawn) {
-      maybe_add_spawn_point();
-    }
+    maybe_add_spawn_point();
   }
 };
 canvas.onmousedown = function(x) {
   if(x.button == 0) {
     pressing = 1;
     if(tile_idx != -1) {
-      if(u8[tile_idx] != tile_type) {
+      if(!spawn && u8[tile_idx] != tile_type) {
         u8[tile_idx] = tile_type;
         paint_bg_explicit(tile_idx);
       }
-      if(spawn) {
-        maybe_add_spawn_point();
-      }
+      maybe_add_spawn_point();
     }
   } else if(x.button == 2) {
     counter_pressing = 1;
-    if(spawn) {
-      maybe_add_spawn_point();
-    }
+    maybe_add_spawn_point();
   }
 };
 canvas.onmouseup = function(x) {
