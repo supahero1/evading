@@ -26,6 +26,7 @@ let len = 0;
 let self_id = 0;
 let players = [];
 let balls = [];
+let teleports = {};
 let us = { x: 0, y: 0, ip: { x1: 0, x2: 0, y1: 0, y2: 0 } };
 let mouse = [0, 0];
 let now = null;

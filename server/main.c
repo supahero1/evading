@@ -18,7 +18,7 @@ static struct time_timers timers = {0};
 static struct tcp_server server = {0};
 static struct tcp_socket sock = {0};
 
-static uint8_t buffer[4096];
+static uint8_t buffer[65536];
 static uint32_t buffer_len = 0;
 
 static uint8_t buf[16777216];
@@ -47,6 +47,7 @@ struct client {
   uint8_t  exists:1;
   uint8_t  dead:1;
   uint8_t  deleted_by_above:1;
+  uint8_t  targetable:1;
   uint8_t  updated_x:1;
   uint8_t  updated_y:1;
   uint8_t  updated_r:1;
@@ -220,7 +221,7 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
         for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
           for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
             const uint8_t tile_type = area_infos[areas[area_id].area_info_id].tile_info->tiles[(uint32_t) cell_x * grid->cells_y + cell_y];
-            if(tile_type != tile_normal && (!info->allow_walls || tile_type != tile_wall)) {
+            if(tile_type != tile_path && (!info->allow_walls || tile_type != tile_wall)) {
               ok = 0;
               goto out;
             }
@@ -842,9 +843,15 @@ static int player_tick(const uint8_t client_id) {
   float postpone_x;
   float postpone_y;
   
+  client->targetable = 0;
+
   for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
     for(uint16_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-      if(info->tiles[(uint32_t) cell_x * info->height + cell_y] != tile_wall) continue;
+      const uint8_t type = info->tiles[(uint32_t) cell_x * info->height + cell_y];
+      if(type == tile_path) {
+        client->targetable = 1;
+      }
+      if(type != tile_wall) continue;
       float x = (uint32_t) cell_x * grid->cell_size;
       float y = (uint32_t) cell_y * grid->cell_size;
       const float mid_x = x + grid->half_cell_size;
@@ -1158,7 +1165,7 @@ void send_balls(const uint8_t client_id) {
     }
   }
   /* Not part of creating a packet */
-  if(!clients[client_id].dead) {
+  if(!clients[client_id].dead && clients[client_id].targetable) {
     const float dist_sq = (entity->x - clients[client_id].entity.x) * (entity->x - clients[client_id].entity.x) +
                           (entity->y - clients[client_id].entity.y) * (entity->y - clients[client_id].entity.y);
     if(dist_sq < ball->closest_client_dist_sq) {

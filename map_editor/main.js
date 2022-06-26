@@ -301,8 +301,8 @@ function paint_bg_explicit(idx) {
 }
 function get_mouse() {
   return {
-    mx: (mouse[0] - window.innerWidth * 0.5) / fov + x,
-    my: (mouse[1] - window.innerHeight * 0.5) / fov + y
+    mx: (mouse[0] - canvas.width * 0.5) / fov + x,
+    my: (mouse[1] - canvas.height * 0.5) / fov + y
   };
 }
 function get_tile_idx() {

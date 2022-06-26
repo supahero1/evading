@@ -152,7 +152,7 @@ struct pos {
 };
 
 enum game_tile {
-  tile_normal,
+  tile_path,
   tile_safe,
   tile_wall,
   tile_teleport
