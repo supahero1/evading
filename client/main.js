@@ -1027,6 +1027,111 @@ function game2(ws) {
       ctx.drawImage(light_background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
       ctx.globalAlpha = 1;
     }
+    let sorted = [];
+    if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
+      for(let player of players) {
+        if(!player) continue;
+        player.x = lerp(player.ip.x1, player.ip.x2, by);
+        player.y = lerp(player.ip.y1, player.ip.y2, by);
+        player.r = lerp(player.ip.r1, player.ip.r2, by);
+        sorted[sorted.length] = { player };
+      }
+    }
+    if(settings["draw_ball_fill"] || settings["draw_ball_stroke"]) {
+      for(let ball of balls) {
+        if(!ball) continue;
+        ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
+        ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
+        ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
+        sorted[sorted.length] = { ball };
+      }
+    }
+    sorted.sort((a, b) => a.r - b.r);
+    for(let { ball, player } of sorted) {
+      ctx.beginPath();
+      if(player) {
+        let r_sub = player.r * (settings["player_stroke"]["value"] / 200);
+        ctx.moveTo(player.x + player.r - r_sub, player.y);
+        ctx.arc(player.x, player.y, player.r - r_sub, 0, Math.PI * 2);
+        if(settings["draw_player_fill"]) {
+          ctx.fillStyle = "#ebecf0";
+          ctx.fill();
+        }
+        if(settings["draw_player_stroke"]) {
+          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
+            ctx.strokeStyle = "#ebecf0";
+          } else {
+            ctx.strokeStyle = darken("#ebecf0");
+          }
+          ctx.lineWidth = r_sub * 2;
+          ctx.stroke();
+        }
+        if(settings["draw_player_name"] && player.name.length != 0) {
+          ctx.font = `700 ${player.r / fov}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#00000080";
+          if(fov > 1) {
+            target_name_y = player.r * 0.5;
+          } else {
+            target_name_y = player.r * 0.5 + (2 / (fov * fov));
+          }
+          name_y = lerp(name_y, target_name_y, 0.1);
+          ctx.fillText(player.name, player.x, player.y - player.r - name_y);
+        }
+        if(player.dead) {
+          ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#f00";
+          ctx.fillText(player.death_counter, player.x, player.y);
+          if(settings["draw_death_arrow"]) {
+            let s_x = canvas.width * 0.5 + (player.x - us.x) * fov;
+            let s_y = canvas.height * 0.5 + (player.y - us.y) * fov;
+            let k = death_arrow.width * 0.75 * fov;
+            if(s_x < 0 || s_x > canvas.width || s_y < 0 || s_y > canvas.height) {
+              let t_x = Math.max(Math.min(s_x, canvas.width - k), k);
+              let t_y = Math.max(Math.min(s_y, canvas.height - k), k);
+              let angle;
+              if((s_x < k || s_x > canvas.width - k) && (s_y < k || s_y > canvas.height - k)) {
+                angle = Math.atan2(s_y - t_y, s_x - t_x);
+              } else {
+                angle = Math.atan2(s_y < k ? -1 : s_y > canvas.height - k ? 1 : 0, s_x < k ? -1 : s_x > canvas.width - k ? 1 : 0);
+              }
+              let r_x = (t_x - canvas.width * 0.5) / fov + us.x;
+              let r_y = (t_y - canvas.height * 0.5) / fov + us.y;
+              ctx.translate(r_x, r_y);
+              ctx.rotate(angle);
+              ctx.drawImage(death_arrow, -death_arrow.width * 0.5, -death_arrow.width * 0.5);
+              ctx.rotate(-angle);
+              ctx.font = `700 ${death_arrow.width * 0.3}px Ubuntu`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = "#f00";
+              ctx.fillText(player.death_counter, 0, 0);
+              ctx.translate(-r_x, -r_y);
+            }
+          }
+        }
+      } else {
+        let r_sub = ball.r * (settings["ball_stroke"]["value"] / 200);
+        ctx.moveTo(ball.x + ball.r - r_sub, ball.y);
+        ctx.arc(ball.x, ball.y, ball.r - r_sub, 0, Math.PI * 2);
+        if(settings["draw_ball_fill"]) {
+          ctx.fillStyle = ball_colors[ball.type];
+          ctx.fill();
+        }
+        if(settings["draw_ball_stroke"]) {
+          if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
+            ctx.strokeStyle = ball_colors[ball.type];
+          } else {
+            ctx.strokeStyle = darken(ball_colors[ball.type]);
+          }
+          ctx.lineWidth = r_sub * 2;
+          ctx.stroke();
+        }
+      }
+    }
     if(!tutorial_running) {
       if(bg_data.area_id == 0 && !saw_tutorial) {
         draw_text("Need help? Press T for a tutorial.", bg_data.real_width * 0.5, bg_data.cell_size * 2.5);
@@ -1141,111 +1246,6 @@ function game2(ws) {
           localStorage.setItem("tutorial", "1");
           saw_tutorial = 1;
           break;
-        }
-      }
-    }
-    let sorted = [];
-    if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
-      for(let player of players) {
-        if(!player) continue;
-        player.x = lerp(player.ip.x1, player.ip.x2, by);
-        player.y = lerp(player.ip.y1, player.ip.y2, by);
-        player.r = lerp(player.ip.r1, player.ip.r2, by);
-        sorted[sorted.length] = { player };
-      }
-    }
-    if(settings["draw_ball_fill"] || settings["draw_ball_stroke"]) {
-      for(let ball of balls) {
-        if(!ball) continue;
-        ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
-        ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
-        ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-        sorted[sorted.length] = { ball };
-      }
-    }
-    sorted.sort((a, b) => a.r - b.r);
-    for(let { ball, player } of sorted) {
-      ctx.beginPath();
-      if(player) {
-        let r_sub = player.r * (settings["player_stroke"]["value"] / 200);
-        ctx.moveTo(player.x + player.r - r_sub, player.y);
-        ctx.arc(player.x, player.y, player.r - r_sub, 0, Math.PI * 2);
-        if(settings["draw_player_fill"]) {
-          ctx.fillStyle = "#ebecf0";
-          ctx.fill();
-        }
-        if(settings["draw_player_stroke"]) {
-          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
-            ctx.strokeStyle = "#ebecf0";
-          } else {
-            ctx.strokeStyle = darken("#ebecf0");
-          }
-          ctx.lineWidth = r_sub * 2;
-          ctx.stroke();
-        }
-        if(settings["draw_player_name"] && player.name.length != 0) {
-          ctx.font = `700 ${player.r / fov}px Ubuntu`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = "#00000080";
-          if(fov > 1) {
-            target_name_y = player.r * 0.5;
-          } else {
-            target_name_y = player.r * 0.5 + (2 / (fov * fov));
-          }
-          name_y = lerp(name_y, target_name_y, 0.1);
-          ctx.fillText(player.name, player.x, player.y - player.r - name_y);
-        }
-        if(player.dead) {
-          ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = "#f00";
-          ctx.fillText(player.death_counter, player.x, player.y);
-          if(settings["draw_death_arrow"]) {
-            let s_x = canvas.width * 0.5 + (player.x - us.x) * fov;
-            let s_y = canvas.height * 0.5 + (player.y - us.y) * fov;
-            let k = death_arrow.width * 0.75 * fov;
-            if(s_x < 0 || s_x > canvas.width || s_y < 0 || s_y > canvas.height) {
-              let t_x = Math.max(Math.min(s_x, canvas.width - k), k);
-              let t_y = Math.max(Math.min(s_y, canvas.height - k), k);
-              let angle;
-              if((s_x < k || s_x > canvas.width - k) && (s_y < k || s_y > canvas.height - k)) {
-                angle = Math.atan2(s_y - t_y, s_x - t_x);
-              } else {
-                angle = Math.atan2(s_y < k ? -1 : s_y > canvas.height - k ? 1 : 0, s_x < k ? -1 : s_x > canvas.width - k ? 1 : 0);
-              }
-              let r_x = (t_x - canvas.width * 0.5) / fov + us.x;
-              let r_y = (t_y - canvas.height * 0.5) / fov + us.y;
-              ctx.translate(r_x, r_y);
-              ctx.rotate(angle);
-              ctx.drawImage(death_arrow, -death_arrow.width * 0.5, -death_arrow.width * 0.5);
-              ctx.rotate(-angle);
-              ctx.font = `700 ${death_arrow.width * 0.3}px Ubuntu`;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillStyle = "#f00";
-              ctx.fillText(player.death_counter, 0, 0);
-              ctx.translate(-r_x, -r_y);
-            }
-          }
-        }
-      } else {
-        let r_sub = ball.r * (settings["ball_stroke"]["value"] / 200);
-        ctx.moveTo(ball.x + ball.r - r_sub, ball.y);
-        ctx.arc(ball.x, ball.y, ball.r - r_sub, 0, Math.PI * 2);
-        if(settings["draw_ball_fill"]) {
-          ctx.fillStyle = ball_colors[ball.type];
-          ctx.fill();
-        }
-        if(settings["draw_ball_stroke"]) {
-          if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
-            ctx.strokeStyle = ball_colors[ball.type];
-          } else {
-            ctx.strokeStyle = darken(ball_colors[ball.type]);
-          }
-          ctx.lineWidth = r_sub * 2;
-          ctx.stroke();
         }
       }
     }
