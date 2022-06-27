@@ -2,7 +2,7 @@
 
 static struct tile_info t;
 
-struct area_info area_001 = {
+struct area_info area_002 = {
   &t,
   (struct ball_info[]){
     {
