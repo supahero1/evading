@@ -23,17 +23,21 @@ struct teleport_dest dereference_teleport(const uint16_t area_info_id, const uin
   assert(0);
 }
 
-struct area_info area_infos[] = {
-  area_001/*,
-  area_002,
-  area_003,
-  area_004,
-  area_005,
-  area_006,
-  area_007,
-  area_008,
-  area_009*/
-};
+struct area_info* area_infos;
+
+void area_info_init() {
+  area_infos = (struct area_info*) {
+    &area_001/*,
+    &area_002,
+    &area_003,
+    &area_004,
+    &area_005,
+    &area_006,
+    &area_007,
+    &area_008,
+    &area_009*/
+  };
+}
 
 const uint8_t whitespace_chars[256] = {
   0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0,

@@ -210,11 +210,11 @@ static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info,
     }
     default: assert(0);
   }
-#define RANDOM_POS(num, x, y) \
+#define RANDOM_POS(num, _x, _y) \
 uint8_t ok; \
 do { \
-  entity->x = x; \
-  entity->y = y; \
+  entity->x = _x; \
+  entity->y = _y; \
   grid_recalculate(grid, entity); \
   ok = 1; \
   for(uint16_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) { \
@@ -258,17 +258,18 @@ do { \
     case position_tile_random_in_range: {
       RANDOM_POS(3,
         grid->half_cell_size + (info->tile_x_min + randf() * (info->tile_x_max - info->tile_x_min)) * grid->cell_size,
-        grid->half_cell_size + (info->tile_y_min + randf() * (info->tile_y_max - info->tile_y_min)) * grid->cell_size,
+        grid->half_cell_size + (info->tile_y_min + randf() * (info->tile_y_max - info->tile_y_min)) * grid->cell_size
       );
       break;
     }
     case position_tile_random_in_range_snap_to_tiles: {
       RANDOM_POS(4,
         grid->half_cell_size + (info->tile_x_min + (fast_rand() % (info->tile_x_max - info->tile_x_min))) * grid->cell_size,
-        grid->half_cell_size + (info->tile_y_min + (fast_rand() % (info->tile_y_max - info->tile_y_min))) * grid->cell_size,
+        grid->half_cell_size + (info->tile_y_min + (fast_rand() % (info->tile_y_max - info->tile_y_min))) * grid->cell_size
       );
       break;
     }
+#undef RANDOM_POS
     case position_fixed: {
       entity->x = info->x;
       entity->y = info->y;
@@ -1307,6 +1308,7 @@ static void tick(void* nil) {
 }
 
 static void start_game(void) {
+  area_info_init();
   assert(!time_add_interval(&timers, &((struct time_interval) {
     .base_time = time_get_time(),
     .interval = time_ms_to_ns(tick_interval),

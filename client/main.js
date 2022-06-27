@@ -39,6 +39,10 @@ let settings_div = getElementById("settings");
 let settings_insert = getElementById("ss");
 let sees_settings = false;
 let chat_timestamps = new Array(5).fill(0);
+let saw_tutorial = localStorage.getItem("tutorial") ? 1 : 0;
+let tutorial_running = 0;
+let tutorial_stage = 0;
+let old_fov = 0;
 let _keybinds = localStorage.getItem("keybinds");
 let default_keybinds = {
   ["settings"]: "Escape",
@@ -74,6 +78,8 @@ let bg_data = {
   area_id: 0,
   width: 0,
   height: 0,
+  real_width: 0,
+  real_height: 0,
   cell_size: 0,
   fills: [],
   strokes: []
@@ -455,6 +461,18 @@ function dont_go_over_limit(n) {
     }
   };
 }
+function draw_text(text, _x, _y) {
+  ctx.translate(_x, _y);
+  ctx.font = `700 20px Ubuntu`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 1;
+  ctx.fillText(text, 0, 0);
+  ctx.strokeText(text, 0, 0);
+  ctx.translate(-_x, -_y);
+}
 function game(ws) {
   loading.innerHTML = "Enter your name<br>";
   sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
@@ -521,6 +539,8 @@ function game2(ws) {
       bg_data.height = u8[idx] | (u8[idx + 1] << 8);
       idx += 2;
       bg_data.cell_size = u8[idx++];
+      bg_data.real_width = bg_data.width * bg_data.cell_size;
+      bg_data.real_height = bg_data.height * bg_data.cell_size;
       bg_data.fills = new Array(256);
       bg_data.strokes = new Array(256);
       for(let x = 0; x < bg_data.width; ++x) {
@@ -791,7 +811,7 @@ function game2(ws) {
         movement.distance = 160 * dpr;
       }
     }
-    if(sees_settings) {
+    if(sees_settings || tutorial_running) {
       ws.send(new Uint8Array([0, 0, 0, 0, 0, 0]));
       return;
     }
@@ -820,7 +840,9 @@ function game2(ws) {
     send_movement();
   };
   canvas.onmousedown = function() {
-    movement.mouse = !movement.mouse;
+    if(!tutorial_running) {
+      movement.mouse = !movement.mouse;
+    }
     movement.angle = Math.atan2(mouse[1] - canvas.height * 0.5, mouse[0] - canvas.width  * 0.5);
     movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
     send_movement();
@@ -882,8 +904,23 @@ function game2(ws) {
         break;
       }
       case keybinds["settings"]: {
-        sees_settings = !sees_settings;
-        settings_div.style.display = sees_settings ? "block" : "none";
+        if(!tutorial_running) {
+          sees_settings = !sees_settings;
+          settings_div.style.display = sees_settings ? "block" : "none";
+        }
+        break;
+      }
+      case "KeyT": {
+        if(!tutorial_running) {
+          if(bg_data.area_id == 0) {
+            tutorial_running = 1;
+            tutorial_stage = 0;
+            old_fov = target_fov;
+            target_fov = settings["fov"]["max"];
+          }
+        } else {
+          ++tutorial_stage;
+        }
         break;
       }
       default: break;
@@ -974,8 +1011,10 @@ function game2(ws) {
     }
     now += when - last_draw;
     last_draw = when;
-    us.x = lerp(us.ip.x1, us.ip.x2, by);
-    us.y = lerp(us.ip.y1, us.ip.y2, by);
+    if(!tutorial_running) {
+      us.x = lerp(us.ip.x1, us.ip.x2, by);
+      us.y = lerp(us.ip.y1, us.ip.y2, by);
+    }
     ctx.resetTransform();
     ctx.fillStyle = "#333";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -987,6 +1026,123 @@ function game2(ws) {
       ctx.globalAlpha = 1 - fov * fov;
       ctx.drawImage(light_background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
       ctx.globalAlpha = 1;
+    }
+    if(!tutorial_running) {
+      if(bg_data.area_id == 0 && !saw_tutorial) {
+        draw_text("Need help? Press T for a tutorial.", bg_data.real_width * 0.5, bg_data.cell_size * 2.5);
+      }
+    } else {
+      switch(tutorial_stage) {
+        case 0: {
+          draw_text("<-- Your character", us.x + 110, us.y);
+          draw_text("Your character -->", us.x - 110, us.y);
+          draw_text("This is your character. You can control it with these keys:", us.x, us.y - 220);
+          draw_text(`${keybinds["up"]}: up`, us.x, us.y - 170);
+          draw_text(`${keybinds["left"]}: left`, us.x, us.y - 130);
+          draw_text(`${keybinds["right"]}: right`, us.x, us.y - 90);
+          draw_text(`${keybinds["down"]}: down`, us.x, us.y - 50);
+          draw_text(`You can also control it with mouse. Just`, us.x, us.y + 50);
+          draw_text(`press any mouse button to start or stop moving.`, us.x, us.y + 70);
+          draw_text(`Scroll to change your field of view.`, us.x, us.y + 110);
+          draw_text(`Note that you won't be able to perform some`, us.x, us.y + 150);
+          draw_text(`of the above actions until the tutorial ends.`, us.x, us.y + 170);
+          draw_text(`Press T to continue`, us.x, us.y + 220);
+          break;
+        }
+        case 1: {
+          const _x = bg_data.real_width * 0.5 - bg_data.cell_size * 6;
+          const _y = bg_data.real_height * 0.5;
+          us.x = lerp(us.x, _x, 0.2 * by);
+          us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text(`-->`, _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 1);
+          draw_text(`-->`, _x + bg_data.cell_size * 2, _y);
+          draw_text(`-->`, _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 1);
+          draw_text(`<--`, _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
+          draw_text(`<--`, _x - bg_data.cell_size * 3, _y - bg_data.cell_size * 1);
+          draw_text(`<--`, _x - bg_data.cell_size * 4, _y);
+          draw_text(`<--`, _x - bg_data.cell_size * 3, _y + bg_data.cell_size * 1);
+          draw_text(`<--`, _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
+          draw_text(`These are safezones. Enemies can't`, _x, _y - 130);
+          draw_text(`reach you inside of these tiles.`, _x, _y - 110);
+          draw_text(`Press T to continue`, _x, _y + 110);
+          break;
+        }
+        case 2: {
+          const _x = bg_data.real_width * 0.5 + bg_data.cell_size * 6;
+          const _y = bg_data.real_height * 0.5;
+          us.x = lerp(us.x, _x, 0.2 * by);
+          us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text(`<--`, _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
+          draw_text(`<--`, _x - bg_data.cell_size * 1, _y - bg_data.cell_size * 3);
+          draw_text(`<--`, _x, _y - bg_data.cell_size * 4);
+          draw_text(`<--`, _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
+          draw_text(`<--`, _x - bg_data.cell_size * 1, _y + bg_data.cell_size * 3);
+          draw_text(`<--`, _x, _y + bg_data.cell_size * 4);
+          draw_text(`-->`, _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 3);
+          draw_text(`-->`, _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 3);
+          draw_text(`<--`, _x + bg_data.cell_size * 5, _y - bg_data.cell_size * 2);
+          draw_text(`<--`, _x + bg_data.cell_size * 6, _y - bg_data.cell_size * 1);
+          draw_text(`<--`, _x + bg_data.cell_size * 7, _y);
+          draw_text(`<--`, _x + bg_data.cell_size * 6, _y + bg_data.cell_size * 1);
+          draw_text(`<--`, _x + bg_data.cell_size * 5, _y + bg_data.cell_size * 2);
+          draw_text(`These are walls. Players can't walk over them.`, _x, _y - 40);
+          draw_text(`However, some types (colors) of enemies can.`, _x, _y - 10);
+          draw_text(`Press T to continue`, _x, _y + 40);
+          break;
+        }
+        case 3: {
+          const _x = bg_data.cell_size * 0.5;
+          const _y = bg_data.real_height * 0.5;
+          us.x = lerp(us.x, _x, 0.2 * by);
+          us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text(`-->`, _x, _y);
+          draw_text(`This is a teleport tile. If you walk on it, it will teleport you`, _x, _y - 90);
+          draw_text(`to an area it points to. Using the number on the tile, you can`, _x, _y - 70);
+          draw_text(`look at the minimap in the top left corner to see where that area is.`, _x, _y - 50);
+          draw_text(`Press T to continue`, _x, _y + 50);
+          break;
+        }
+        case 4: {
+          let first_ball;
+          for(const ball of balls) {
+            if(ball) {
+              first_ball = ball;
+              break;
+            }
+          }
+          const _x = first_ball.x;
+          const _y = first_ball.y;
+          us.x = lerp(us.x, _x, 0.2 * by);
+          us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text(`This is an enemy, also called simply a ball. A grey ball`, _x, _y - 110);
+          draw_text(`doesn't do a lot - it simply moves in one direction. However,`, _x, _y - 90);
+          draw_text(`as you are about to find out when you start exploring the game,`, _x, _y - 70);
+          draw_text(`there are lots of types of enemies, each having their own color.`, _x, _y - 50);
+          draw_text(`Coming in contact with an enemy downs you. While downed, you can't move,`, _x, _y + 50);
+          draw_text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
+          draw_text(`Press T to continue`, _x, _y + 120);
+          break;
+        }
+        case 5: {
+          const _x = us.ip.x2;
+          const _y = us.ip.y2;
+          us.x = lerp(us.x, _x, 0.2 * by);
+          us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text(`You can press ${keybinds["settings"]} to open settings. There`, _x, _y - 80);
+          draw_text("are a lot of cool options there to change. Try it out later.", _x, _y - 60);
+          draw_text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
+          draw_text("GLHF!", _x, _y + 80);
+          draw_text("Press T to end the tutorial", _x, _y + 130);
+          break;
+        }
+        case 6: {
+          target_fov = old_fov;
+          tutorial_running = 0;
+          localStorage.setItem("tutorial", "1");
+          saw_tutorial = 1;
+          break;
+        }
+      }
     }
     let sorted = [];
     if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {

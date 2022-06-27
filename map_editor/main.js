@@ -108,7 +108,10 @@ function maybe_add_spawn_point() {
     cached_vals[cached_vals.length] = spawns[id];
   } else if(counter_pressing && spawns[id] != undefined) {
     delete spawns[id];
+    const old = tile_type;
+    tile_type = u8[tile_idx];
     paint_bg_explicit(tile_idx);
+    tile_type = old;
     cached_vals = Object.values(spawns);
   }
 }
@@ -260,7 +263,7 @@ struct area_info area_000 = {\n
   (struct pos[]){${sp}${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")}${sp}}, ${cached_vals.length}\n
 };\n
 \n
-struct tile_info name = { ${width}, ${height}, 40, (uint8_t[]){\n`;
+static struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
   let m = "/*       ";
   for(let i = 0; i < height; ++i) {
       m += i.toString().padStart(3, " ") + " ";
@@ -315,7 +318,7 @@ function parse_tiles(config) {
     c2();
     spawns = {};
     for(let i = 0; i < info.length; ++i) {
-      spawns[info[i][0] * height + info[i][1]] = [info[i][0], info[i][1]];
+      spawns[`${info[i][0]},${info[i][1]}`] = [info[i][0], info[i][1]];
     }
     cached_vals = Object.values(spawns);
     u8 = new Uint8Array(_w * _h);
@@ -583,6 +586,14 @@ function draw() {
   get_move();
   x += v[0];
   y += v[1];
+  tile_idx = get_tile_idx();
+  if(tile_idx != -1) {
+    if(pressing && !spawn && u8[tile_idx] != tile_type) {
+      u8[tile_idx] = tile_type;
+      paint_bg_explicit(tile_idx);
+    }
+    maybe_add_spawn_point();
+  }
   if(resized || old != fov || old_x != x || old_y != y) {
     resized = false;
     ctx.resetTransform();

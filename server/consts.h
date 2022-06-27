@@ -7,7 +7,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_id = 2,
+  default_area_id = 0,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   max_players = 100,
@@ -188,8 +188,8 @@ struct teleport_dest {
 
 extern struct teleport_dest dereference_teleport(const uint16_t, const uint16_t, const uint16_t);
 
-extern struct area_info area_001;
-/*extern struct area_info area_002;
+extern struct area_info area_001;/*
+extern struct area_info area_002;
 extern struct area_info area_003;
 extern struct area_info area_004;
 extern struct area_info area_005;
@@ -198,7 +198,9 @@ extern struct area_info area_007;
 extern struct area_info area_008;
 extern struct area_info area_009;*/
 
-extern struct area_info area_infos[];
+extern struct area_info* area_infos;
+
+extern void area_info_init(void);
 
 extern const uint8_t whitespace_chars[256];
 
