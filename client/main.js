@@ -1041,12 +1041,12 @@ function game2(ws) {
           draw_text(`${keybinds["left"]}: left`, us.x, us.y - 130);
           draw_text(`${keybinds["right"]}: right`, us.x, us.y - 90);
           draw_text(`${keybinds["down"]}: down`, us.x, us.y - 50);
-          draw_text(`You can also control it with mouse. Just`, us.x, us.y + 50);
-          draw_text(`press any mouse button to start or stop moving.`, us.x, us.y + 70);
-          draw_text(`Scroll to change your field of view.`, us.x, us.y + 110);
-          draw_text(`Note that you won't be able to perform some`, us.x, us.y + 150);
-          draw_text(`of the above actions until the tutorial ends.`, us.x, us.y + 170);
-          draw_text(`Press T to continue`, us.x, us.y + 220);
+          draw_text("You can also control it with mouse. Just", us.x, us.y + 50);
+          draw_text("press any mouse button to start or stop moving.", us.x, us.y + 70);
+          draw_text("Scroll to change your field of view.", us.x, us.y + 110);
+          draw_text("Note that you won't be able to perform some", us.x, us.y + 150);
+          draw_text("of the above actions until the tutorial ends.", us.x, us.y + 170);
+          draw_text("Press T to continue", us.x, us.y + 220);
           break;
         }
         case 1: {
@@ -1054,17 +1054,17 @@ function game2(ws) {
           const _y = bg_data.real_height * 0.5;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`-->`, _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 1);
-          draw_text(`-->`, _x + bg_data.cell_size * 2, _y);
-          draw_text(`-->`, _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 1);
-          draw_text(`<--`, _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
-          draw_text(`<--`, _x - bg_data.cell_size * 3, _y - bg_data.cell_size * 1);
-          draw_text(`<--`, _x - bg_data.cell_size * 4, _y);
-          draw_text(`<--`, _x - bg_data.cell_size * 3, _y + bg_data.cell_size * 1);
-          draw_text(`<--`, _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
-          draw_text(`These are safezones. Enemies can't`, _x, _y - 130);
-          draw_text(`reach you inside of these tiles.`, _x, _y - 110);
-          draw_text(`Press T to continue`, _x, _y + 110);
+          draw_text("-->", _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 1);
+          draw_text("-->", _x + bg_data.cell_size * 2, _y);
+          draw_text("-->", _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 1);
+          draw_text("<--", _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
+          draw_text("<--", _x - bg_data.cell_size * 3, _y - bg_data.cell_size * 1);
+          draw_text("<--", _x - bg_data.cell_size * 4, _y);
+          draw_text("<--", _x - bg_data.cell_size * 3, _y + bg_data.cell_size * 1);
+          draw_text("<--", _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
+          draw_text("These are safezones. Enemies can't", _x, _y - 130);
+          draw_text("reach you inside of these tiles.", _x, _y - 110);
+          draw_text("Press T to continue", _x, _y + 110);
           break;
         }
         case 2: {
@@ -1072,22 +1072,22 @@ function game2(ws) {
           const _y = bg_data.real_height * 0.5;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`<--`, _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
-          draw_text(`<--`, _x - bg_data.cell_size * 1, _y - bg_data.cell_size * 3);
-          draw_text(`<--`, _x, _y - bg_data.cell_size * 4);
-          draw_text(`<--`, _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
-          draw_text(`<--`, _x - bg_data.cell_size * 1, _y + bg_data.cell_size * 3);
-          draw_text(`<--`, _x, _y + bg_data.cell_size * 4);
-          draw_text(`-->`, _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 3);
-          draw_text(`-->`, _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 3);
-          draw_text(`<--`, _x + bg_data.cell_size * 5, _y - bg_data.cell_size * 2);
-          draw_text(`<--`, _x + bg_data.cell_size * 6, _y - bg_data.cell_size * 1);
-          draw_text(`<--`, _x + bg_data.cell_size * 7, _y);
-          draw_text(`<--`, _x + bg_data.cell_size * 6, _y + bg_data.cell_size * 1);
-          draw_text(`<--`, _x + bg_data.cell_size * 5, _y + bg_data.cell_size * 2);
-          draw_text(`These are walls. Players can't walk over them.`, _x, _y - 40);
-          draw_text(`However, some types (colors) of enemies can.`, _x, _y - 10);
-          draw_text(`Press T to continue`, _x, _y + 40);
+          draw_text("<--", _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
+          draw_text("<--", _x - bg_data.cell_size * 1, _y - bg_data.cell_size * 3);
+          draw_text("<--", _x, _y - bg_data.cell_size * 4);
+          draw_text("<--", _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
+          draw_text("<--", _x - bg_data.cell_size * 1, _y + bg_data.cell_size * 3);
+          draw_text("<--", _x, _y + bg_data.cell_size * 4);
+          draw_text("-->", _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 3);
+          draw_text("-->", _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 3);
+          draw_text("<--", _x + bg_data.cell_size * 5, _y - bg_data.cell_size * 2);
+          draw_text("<--", _x + bg_data.cell_size * 6, _y - bg_data.cell_size * 1);
+          draw_text("<--", _x + bg_data.cell_size * 7, _y);
+          draw_text("<--", _x + bg_data.cell_size * 6, _y + bg_data.cell_size * 1);
+          draw_text("<--", _x + bg_data.cell_size * 5, _y + bg_data.cell_size * 2);
+          draw_text("These are walls. Players can't walk over them.", _x, _y - 40);
+          draw_text("However, some types (colors) of enemies can.", _x, _y - 10);
+          draw_text("Press T to continue", _x, _y + 40);
           break;
         }
         case 3: {
@@ -1095,11 +1095,11 @@ function game2(ws) {
           const _y = bg_data.real_height * 0.5;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`-->`, _x, _y);
-          draw_text(`This is a teleport tile. If you walk on it, it will teleport you`, _x, _y - 90);
-          draw_text(`to an area it points to. Using the number on the tile, you can`, _x, _y - 70);
-          draw_text(`look at the minimap in the top left corner to see where that area is.`, _x, _y - 50);
-          draw_text(`Press T to continue`, _x, _y + 50);
+          draw_text("-->", _x, _y);
+          draw_text("This is a teleport tile. If you walk on it, it will teleport you", _x, _y - 90);
+          draw_text("to an area it points to. Using the number on the tile, you can", _x, _y - 70);
+          draw_text("look at the minimap in the top left corner to see where that area is.", _x, _y - 50);
+          draw_text("Press T to continue", _x, _y + 50);
           break;
         }
         case 4: {
@@ -1114,13 +1114,13 @@ function game2(ws) {
           const _y = first_ball.y;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`This is an enemy, also called simply a ball. A grey ball`, _x, _y - 110);
-          draw_text(`doesn't do a lot - it simply moves in one direction. However,`, _x, _y - 90);
-          draw_text(`as you are about to find out when you start exploring the game,`, _x, _y - 70);
-          draw_text(`there are lots of types of enemies, each having their own color.`, _x, _y - 50);
-          draw_text(`Coming in contact with an enemy downs you. While downed, you can't move,`, _x, _y + 50);
+          draw_text("This is an enemy, also called simply a ball. A grey ball", _x, _y - 110);
+          draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
+          draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
+          draw_text("there are lots of types of enemies, each having their own color.", _x, _y - 50);
+          draw_text("Coming in contact with an enemy downs you. While downed, you can't move,", _x, _y + 50);
           draw_text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
-          draw_text(`Press T to continue`, _x, _y + 120);
+          draw_text("Press T to continue", _x, _y + 120);
           break;
         }
         case 5: {

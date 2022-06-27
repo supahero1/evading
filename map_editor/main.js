@@ -287,7 +287,7 @@ function parse_tiles(config) {
     config = atob(config);
     let info = config.match(/{ (\d+), (\d+) }/g);
     if(info == null) {
-      return 0;
+      info = [];
     }
     info = info.map(r => r.match(/\d+/g).map(t => +t));
     if(info.length != config.match(/}, (\d+)\n};/)[1]) {
