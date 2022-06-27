@@ -1011,7 +1011,7 @@ function game2(ws) {
     }
     now += when - last_draw;
     last_draw = when;
-    if(!tutorial_running) {
+    if(!tutorial_running || tutorial_stage == 0) {
       us.x = lerp(us.ip.x1, us.ip.x2, by);
       us.y = lerp(us.ip.y1, us.ip.y2, by);
     }
