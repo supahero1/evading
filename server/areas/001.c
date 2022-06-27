@@ -7,10 +7,10 @@ struct area_info area_001 = {
   (struct ball_info[]){
     {0}
   },
-  (struct pos[]){ { 4, 55 }, { 2, 1 } }, 2
+  (struct pos[]){ { 55, 5 }, { 55, 6 }, { 55, 4 } }, 3
 };
 
-static struct tile_info t = { 111, 11, 40, (uint8_t[]){
+struct tile_info name = { 111, 11, 40, (uint8_t[]){
 /*         0   1   2   3   4   5   6   7   8   9  10 */
 
 /*   0*/   2,  2,  2,  1,  1,  1,  1,  1,  2,  2,  2,
