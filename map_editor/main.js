@@ -1,5 +1,6 @@
 const getElementById = document.getElementById.bind(document);
 const createElement = document.createElement.bind(document);
+const { localStorage } = window;
 const canvas = getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const background = createElement("canvas");
@@ -243,6 +244,7 @@ window.onkeyup = function(x) {
 window.onbeforeunload = function(e) {
   e.preventDefault();
   e.returnValue = "Are you sure you want to quit?";
+  localStorage.setItem("cache", export_tiles());
   return "Are you sure you want to quit?";
 };
 canvas.oncontextmenu = function(e) {
@@ -577,6 +579,10 @@ function draw_text_at(text, _x, _y, k, preserve_x, preserve_y) {
   ctx.fillText(text, 0, 0);
   ctx.strokeText(text, 0, 0);
   ctx.translate(-r_x, -r_y);
+}
+const saved = localStorage.getItem("cache");
+if(saved) {
+  parse_tiles(saved);
 }
 function draw() {
   let old = fov;
