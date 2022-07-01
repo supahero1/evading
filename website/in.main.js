@@ -18,9 +18,10 @@ const options = {
 
 const servers = {};
 let servers_str = "[]";
-function add_server(ip, players) {
-  if(servers[ip] == null) {
-    servers[ip] = [new Date().getTime(), players, ip];
+function add_server(ip, players, max_players) {
+  const was = servers[ip] == null;
+  servers[ip] = [new Date().getTime(), players, max_players, ip];
+  if(was) {
     servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
   }
 }
@@ -35,7 +36,7 @@ setInterval(function() {
   if(ok) {
     servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
   }
-}, 10000);
+}, 1000);
 
 const app = express();
 app.use(express.json());
@@ -81,8 +82,8 @@ app.get("/servers.json", function(req, res) {
 });
 
 app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", function(req, res) {
-  if(req.body && req.body.ip && req.body.players != undefined) {
-    add_server(req.body.ip, req.body.players);
+  if(req.body && typeof req.body.ip == "string" && typeof req.body.players == "number" && typeof req.body.max_players == "number") {
+    add_server(req.body.ip, req.body.players, req.body.max_players);
     res.status(204).end();
   } else {
     res.status(400).end();

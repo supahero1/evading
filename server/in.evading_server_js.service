@@ -1,5 +1,5 @@
 [Unit]
-Description=ev2_server_js
+Description=evading_server_js
 
 [Service]
 Type=simple

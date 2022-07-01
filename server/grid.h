@@ -8,10 +8,10 @@ struct grid_entity {
   float x;
   float y;
   float r;
-  uint16_t min_x;
-  uint16_t min_y;
-  uint16_t max_x;
-  uint16_t max_y;
+  uint8_t min_x;
+  uint8_t min_y;
+  uint8_t max_x;
+  uint8_t max_y;
 };
 
 struct grid_node_entity {
@@ -26,9 +26,12 @@ struct grid {
   
   int  (*update)(struct grid*, const uint16_t);
   
-  uint16_t cells_x;
-  uint16_t cells_y;
-  uint16_t cell_size;
+  uint8_t cells_x;
+  uint8_t cells_y;
+  uint8_t cell_size;
+
+  uint8_t cells_x_mask;
+  uint8_t cells_y_mask;
   
   uint16_t free_entity;
   uint16_t entities_used;
@@ -44,7 +47,7 @@ struct grid {
 
 #define GRID_FOR(grid, i) \
 for(uint16_t i = 1; i < (grid)->entities_used; ++i) { \
-  if((grid)->entities[i].max_x == UINT16_MAX) continue
+  if((grid)->entities[i].max_x == UINT8_MAX) continue
 
 #define GRID_ROF() }
 

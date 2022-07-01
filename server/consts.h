@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+/* MAX 65534 balls in one area */
+
 enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
@@ -19,6 +21,14 @@ enum game_const {
 #define base_tick_interval (40.0f)
 #define time_scale (tick_interval / base_tick_interval)
 #define base_player_speed (15.0f * time_scale)
+
+enum game_opcodes {
+  game_opcode_area,
+  game_opcode_players,
+  game_opcode_balls,
+  game_opcode_chat,
+  game_opcode_minimap
+};
 
 enum ball_type {
   ball_invalid,
@@ -86,83 +96,71 @@ enum range_type {
 };
 
 struct ball_info {
-  uint8_t type;
-  uint8_t radius_type:2;
-  uint8_t position_type:3;
-  uint8_t movement_type:3;
-  uint8_t frequency_type:3;
-  uint8_t tick_type:2;
-  uint8_t spawn_idx_type:2;
-  uint8_t range_type:2;
-  uint8_t allow_walls:1;
-  uint8_t die_on_collision:1;
-  uint16_t count;
+  const uint8_t type;
+  const uint8_t radius_type:2;
+  const uint8_t position_type:3;
+  const uint8_t movement_type:3;
+  const uint8_t frequency_type:3;
+  const uint8_t tick_type:2;
+  const uint8_t spawn_idx_type:2;
+  const uint8_t range_type:2;
+  const uint8_t allow_walls:1;
+  const uint8_t die_on_collision:1;
+  const uint16_t count;
   union {
     struct {
-      uint32_t frequency_num;
-      uint32_t frequency_num_min;
-      uint32_t frequency_num_max;
+      const uint32_t frequency_num;
+      const uint32_t frequency_num_min;
+      const uint32_t frequency_num_max;
     };
     struct {
-      float frequency_float;
-      float frequency_float_min;
-      float frequency_float_max;
+      const float frequency_float;
+      const float frequency_float_min;
+      const float frequency_float_max;
     };
   };
-  float speed;
-  float angle;
+  const float speed;
+  const float angle;
   union {
     struct {
-      float x;
-      float y;
+      const float x;
+      const float y;
     };
     struct {
-      float x_min;
-      float x_max;
-      float y_min;
-      float y_max;
+      const float x_min;
+      const float x_max;
+      const float y_min;
+      const float y_max;
     };
     struct {
-      uint16_t tile_x;
-      uint16_t tile_y;
+      const uint8_t tile_x;
+      const uint8_t tile_y;
     };
     struct {
-      uint16_t tile_x_min;
-      uint16_t tile_x_max;
-      uint16_t tile_y_min;
-      uint16_t tile_y_max;
+      const uint8_t tile_x_min;
+      const uint8_t tile_x_max;
+      const uint8_t tile_y_min;
+      const uint8_t tile_y_max;
     };
   };
   union {
-    float r;
-    float r_min;
+    const float r;
+    const float r_min;
   };
-  float r_max;
-  float vx;
-  float vy;
-  uint64_t tick;
-  uint64_t tick_min;
-  uint64_t tick_max;
-  struct ball_info* spawn;
-  uint32_t spawn_idx;
-  uint32_t spawn_idx_min;
-  uint32_t spawn_idx_max;
-  float range;
-  float range_min;
-  float range_max;
-  uint32_t relative_entity_id;
-};
-
-struct tile_info {
-  uint16_t width;
-  uint16_t height;
-  uint16_t cell_size;
-  uint8_t* tiles;
-};
-
-struct pos {
-  uint16_t tile_x;
-  uint16_t tile_y;
+  const float r_max;
+  const float vx;
+  const float vy;
+  const uint64_t tick;
+  const uint64_t tick_min;
+  const uint64_t tick_max;
+  const struct ball_info* const spawn;
+  const uint16_t spawn_idx;
+  const uint16_t spawn_idx_min;
+  const uint16_t spawn_idx_max;
+  const float range;
+  const float range_min;
+  const float range_max;
+  const uint32_t relative_entity_id;
 };
 
 enum game_tile {
@@ -172,36 +170,67 @@ enum game_tile {
   tile_teleport
 };
 
-struct area_info {
-  struct tile_info* tile_info;
-  struct ball_info* balls;
-  struct pos* spawn_tiles;
-  uint32_t spawn_tiles_len;
+struct tile_info {
+  const uint8_t width;
+  const uint8_t height;
+  const uint8_t cell_size;
+  const uint8_t* const tiles;
+};
+
+struct pos {
+  const uint8_t tile_x;
+  const uint8_t tile_y;
 };
 
 struct teleport_dest {
-  uint16_t area_info_id;
-  uint16_t tile_x;
-  uint16_t tile_y;
-  uint16_t random_spawn:1;
+  const uint8_t area_info_id;
+  const struct pos pos;
+  const uint8_t not_random_spawn:1;
 };
 
-extern struct teleport_dest dereference_teleport(const uint16_t, const uint16_t, const uint16_t);
+struct teleport {
+  const struct pos pos;
+  const struct teleport_dest dest;
+};
 
-extern struct area_info area_001;/*
-extern struct area_info area_002;
-extern struct area_info area_003;
-extern struct area_info area_004;
-extern struct area_info area_005;
-extern struct area_info area_006;
-extern struct area_info area_007;
-extern struct area_info area_008;
-extern struct area_info area_009;*/
+struct teleport_min {
+  const uint8_t tile_x;
+  const uint8_t tile_y;
+  const uint8_t target;
+};
 
-extern struct area_info* area_infos;
+#define ADJACENT(a) \
+a, \
+.has_adjacent = 1
 
-extern void area_info_init(void);
+struct area_info {
+  const struct tile_info* const tile_info;
+  const struct ball_info* const balls;
+  const struct pos* const spawn_tiles;
+  const struct teleport* const teleport_tiles;
+  const struct teleport_min* const serial;
+  const uint8_t spawn_tiles_len;
+  const uint8_t teleport_tiles_len;
+  const uint8_t top;
+  const uint8_t left;
+  const uint8_t right;
+  const uint8_t bottom;
+  const uint8_t has_adjacent;
+};
+
+extern const struct area_info* area_infos[1];
 
 extern const uint8_t whitespace_chars[256];
+
+extern const struct area_info area_000;
+extern const struct area_info area_001;
+extern const struct area_info area_002;
+extern const struct area_info area_003;
+extern const struct area_info area_004;
+extern const struct area_info area_005;
+extern const struct area_info area_006;
+extern const struct area_info area_007;
+extern const struct area_info area_008;
+extern const struct area_info area_009;
 
 #endif // game_consts_h

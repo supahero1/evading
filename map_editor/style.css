@@ -57,10 +57,11 @@ button:active {
 }
 
 .tile {
-  width: 82px;
-  height: 82px;
+  height: 0;
+  width: 93%;
   cursor: pointer;
   border-radius: 5px;
+  padding-bottom: 93%;
   border: 3px solid #fff;
 }
 

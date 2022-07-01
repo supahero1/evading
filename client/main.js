@@ -26,7 +26,6 @@ let len = 0;
 let self_id = 0;
 let players = [];
 let balls = [];
-let teleports = {};
 let us = { x: 0, y: 0, ip: { x1: 0, x2: 0, y1: 0, y2: 0 } };
 let mouse = [0, 0];
 let now = null;
@@ -38,6 +37,8 @@ let target_name_y = 0;
 let settings_div = getElementById("settings");
 let settings_insert = getElementById("ss");
 let sees_settings = false;
+//let minimap = getElementById("minimap"); // or draw on canvas??
+let sees_minimap = false;
 let chat_timestamps = new Array(5).fill(0);
 let saw_tutorial = localStorage.getItem("tutorial") ? 1 : 0;
 let tutorial_running = 0;
@@ -50,7 +51,8 @@ let default_keybinds = {
   ["left"]: "KeyA",
   ["right"]: "KeyD",
   ["down"]: "KeyS",
-  ["slowwalk"]: "ShiftLeft"
+  ["slowwalk"]: "ShiftLeft",
+  ["minimap"]: "KeyM"
 };
 let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
 for(let prop in default_keybinds) {
@@ -81,6 +83,7 @@ let bg_data = {
   real_width: 0,
   real_height: 0,
   cell_size: 0,
+  teleports: [],
   fills: [],
   strokes: []
 };
@@ -306,11 +309,11 @@ function create_settings() {
   table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
   table_insert_el(table, create_text("Draw balls' stroke"), create_switch("draw_ball_stroke"));
   table_insert_el(table, create_text("Draw stroke-only balls with brighter color"), create_switch("draw_ball_stroke_bright"));
-  table_insert_el(table, create_text("Balls' stroke radius percentage"), create_slider("ball_stroke", " %"));
+  table_insert_el(table, create_text("Balls' stroke radius percentage"), create_slider("ball_stroke", "%"));
   table_insert_el(table, create_text("Draw players' fill"), create_switch("draw_player_fill"));
   table_insert_el(table, create_text("Draw players' stroke"), create_switch("draw_player_stroke"));
   table_insert_el(table, create_text("Draw stroke-only players with brighter color"), create_switch("draw_player_stroke_bright"));
-  table_insert_el(table, create_text("Players' stroke radius percentage"), create_slider("player_stroke", " %"));
+  table_insert_el(table, create_text("Players' stroke radius percentage"), create_slider("player_stroke", "%"));
   table_insert_el(table, create_text("Draw players' name"), create_switch("draw_player_name"));
   table_insert_el(table, create_text("Draw an arrow towards dead players"), create_switch("draw_death_arrow"));
   table_insert_el(table, create_text("Death arrow size"), create_slider("death_arrow_size", "px", update_death_arrow_size));
@@ -324,6 +327,7 @@ function create_settings() {
   table_insert_el(table, create_text("Move down"), create_keybind("down"));
   table_insert_el(table, create_text("Move right"), create_keybind("right"));
   table_insert_el(table, create_text("Move slowly"), create_keybind("slowwalk"));
+  table_insert_el(table, create_text("Big minimap"), create_keybind("minimap"));
   show_el(table);
   show_el(create_header("RESET"));
   table = create_table();
@@ -372,7 +376,7 @@ function init(servers) {
   }
   loading.innerHTML = "Connecting...";
   let arr = servers.map(function(serv) {
-    let ws = new WebSocket(serv[1]);
+    let ws = new WebSocket(serv[2]);
     ws.binaryType = "arraybuffer";
     ws.probes = [];
     ws.onopen = function() {
@@ -462,16 +466,17 @@ function dont_go_over_limit(n) {
   };
 }
 function draw_text(text, _x, _y) {
-  ctx.translate(_x, _y);
   ctx.font = `700 20px Ubuntu`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#fff";
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 1;
-  ctx.fillText(text, 0, 0);
-  ctx.strokeText(text, 0, 0);
-  ctx.translate(-_x, -_y);
+  ctx.fillText(text, _x, _y);
+  ctx.strokeText(text, _x, _y);
+}
+function darken(hex) {
+  return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + hex.substring(7);
 }
 function game(ws) {
   loading.innerHTML = "Enter your name<br>";
@@ -495,13 +500,14 @@ function game(ws) {
   };
   window.onkeydown = function(x) {
     if(x.code == "Enter") {
-      localStorage.setItem("name", name.value);
+      let n = name.value.trim();
+      localStorage.setItem("name", n);
       loading.innerHTML = "Spawning...";
       sub.innerHTML = "";
       name.style.display = "none";
       let token = localStorage.getItem("token");
       token = token ? token.split(",").map(r => +r) : [];
-      let encoded = new TextEncoder().encode(name.value);
+      let encoded = new TextEncoder().encode(n);
       ws.send(new Uint8Array([...encoded, ...token]));
       game2(ws);
     }
@@ -532,15 +538,20 @@ function game2(ws) {
       reset = 1;
       balls = [];
       self_id = u8[idx++];
-      bg_data.area_id = u8[idx] | (u8[idx + 1] << 8);
-      idx += 2;
-      bg_data.width = u8[idx] | (u8[idx + 1] << 8);
-      idx += 2;
-      bg_data.height = u8[idx] | (u8[idx + 1] << 8);
-      idx += 2;
+      bg_data.area_id = u8[idx++];
+      bg_data.width = u8[idx++];
+      bg_data.height = u8[idx++];
       bg_data.cell_size = u8[idx++];
       bg_data.real_width = bg_data.width * bg_data.cell_size;
       bg_data.real_height = bg_data.height * bg_data.cell_size;
+      bg_data.teleports = new Array(u8[idx++]);
+      for(let i = 0; i < bg_data.teleports.length; ++i) {
+        bg_data.teleports[i] = [
+          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
+          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
+          u8[idx++]
+        ];
+      }
       bg_data.fills = new Array(256);
       bg_data.strokes = new Array(256);
       for(let x = 0; x < bg_data.width; ++x) {
@@ -576,6 +587,13 @@ function game2(ws) {
         bg_ctx.fill(bg_data.fills[i]);
         lbg_ctx.fillStyle = tile_colors[i];
         lbg_ctx.fill(bg_data.strokes[i]);
+      }
+      bg_ctx.font = `700 ${bg_data.cell_size}px Ubuntu`;
+      bg_ctx.textAlign = "center";
+      bg_ctx.textBaseline = "middle";
+      bg_ctx.fillStyle = darken(tile_colors[3]);
+      for(const tp of bg_data.teleports) {
+        bg_ctx.fillText(tp[2], tp[0], tp[1]);
       }
       start_drawing();
     }
@@ -740,6 +758,23 @@ function game2(ws) {
         idx += len;
       }
     }
+    if(idx == len) {
+      return;
+    }
+    if(u8[idx] == 4) {
+      /* Minimap data */
+      ++idx;
+      let areas_len = u8[idx++];
+      for(let i = 0; i < areas_len; ++i) {
+        let has_adjacent = u8[idx++];
+        if(has_adjacent) {
+          let top = u8[idx++];
+          let left = u8[idx++];
+          let right = u8[idx++];
+          let bottom = u8[idx++];
+        }
+      }
+    }
   };
   ws.onmessage = function(x) {
     reset = 0;
@@ -797,9 +832,6 @@ function game2(ws) {
   window.onresize = resize;
   function lerp(num, to, by) {
     return num + (to - num) * by;
-  }
-  function darken(hex) {
-    return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + hex.substring(7);
   }
   function send_movement() {
     if(!movement.mouse) {
@@ -908,6 +940,10 @@ function game2(ws) {
           sees_settings = !sees_settings;
           settings_div.style.display = sees_settings ? "block" : "none";
         }
+        break;
+      }
+      case keybinds["minimap"]: {
+        sees_minimap = !sees_minimap;
         break;
       }
       case "KeyT": {
@@ -1144,8 +1180,8 @@ function game2(ws) {
           draw_text("This is your character. You can control it with these keys:", us.x, us.y - 220);
           draw_text(`${keybinds["up"]}: up`, us.x, us.y - 170);
           draw_text(`${keybinds["left"]}: left`, us.x, us.y - 130);
-          draw_text(`${keybinds["right"]}: right`, us.x, us.y - 90);
-          draw_text(`${keybinds["down"]}: down`, us.x, us.y - 50);
+          draw_text(`${keybinds["down"]}: down`, us.x, us.y - 90);
+          draw_text(`${keybinds["right"]}: right`, us.x, us.y - 50);
           draw_text("You can also control it with mouse. Just", us.x, us.y + 50);
           draw_text("press any mouse button to start or stop moving.", us.x, us.y + 70);
           draw_text("Scroll to change your field of view.", us.x, us.y + 110);
@@ -1219,6 +1255,8 @@ function game2(ws) {
           const _y = first_ball.y;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
+          draw_text("Enemy ball -->", _x - 110, _y);
+          draw_text("<-- Enemy ball", _x + 110, _y);
           draw_text("This is an enemy, also called simply a ball. A grey ball", _x, _y - 110);
           draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
           draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
@@ -1233,8 +1271,8 @@ function game2(ws) {
           const _y = us.ip.y2;
           us.x = lerp(us.x, _x, 0.2 * by);
           us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`You can press ${keybinds["settings"]} to open settings. There`, _x, _y - 80);
-          draw_text("are a lot of cool options there to change. Try it out later.", _x, _y - 60);
+          draw_text(`You can press ${keybinds["settings"]} to open settings.`, _x, _y - 80);
+          draw_text("There are a lot of cool options to change. Try it out later.", _x, _y - 60);
           draw_text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
           draw_text("GLHF!", _x, _y + 80);
           draw_text("Press T to end the tutorial", _x, _y + 130);

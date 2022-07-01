@@ -1,10 +1,10 @@
 #include "../consts.h"
 
-static struct tile_info t;
+static const struct tile_info t;
 
-struct area_info area_002 = {
+const struct area_info area_000 = {
   &t,
-  (struct ball_info[]){
+  (struct ball_info[]) {
     {
       .type = ball_grey,
       .position_type = position_tile_random_in_range,
@@ -29,14 +29,17 @@ struct area_info area_002 = {
       .r_min = 10,
       .r_max = 15,
       .speed = 3 * time_scale,
-      .count = 20
+      .count = 30
     },
     {0}
   },
-  (struct pos[]){ { 55, 5 }, { 55, 6 }, { 55, 7 } }, 3
+  (struct pos[]){ { 55, 5 }, { 55, 6 }, { 55, 7 } },
+  (struct teleport[]){ { { 1, 6 }, { 0 } } },
+  (struct teleport_min[]){ { 1, 6, 0 } },
+  3, 1
 };
 
-static struct tile_info t = { 111, 13, 40, (uint8_t[]){
+static const struct tile_info t = { 111, 13, 40, (uint8_t[]){
 /*         0   1   2   3   4   5   6   7   8   9  10  11  12 */
 
 /*   0*/   2,  2,  2,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,
@@ -259,7 +262,7 @@ static struct tile_info t = { 111, 13, 40, (uint8_t[]){
 
 /* 109*/   2,  2,  1,  1,  1,  2,  3,  2,  1,  1,  1,  2,  2,
 
-/* 110*/   2,  2,  2,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,
+/* 110*/   2,  2,  2,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2
 
 /*         0   1   2   3   4   5   6   7   8   9  10  11  12 */
   }

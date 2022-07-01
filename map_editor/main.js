@@ -87,6 +87,7 @@ let spawn = 0;
 let spawns = {};
 let resized = true;
 let cached_vals = [];
+let teleports = [];
 let hidden = 0;
 let c1 = function(){};
 let c2 = function(){};
@@ -252,20 +253,22 @@ canvas.oncontextmenu = function(e) {
   return false;
 };
 function export_tiles() {
-  const sp = cached_vals.length != 0 ? " " : "";
   let str = `#include "../consts.h"\n
 \n
-static struct tile_info t;\n
+static const struct tile_info t;\n
 \n
-struct area_info area_000 = {\n
+const struct area_info area_000 = {\n
   &t,\n
   (struct ball_info[]){\n
     {0}\n
   },\n
-  (struct pos[]){${sp}${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")}${sp}}, ${cached_vals.length}\n
+  (struct pos[]){ ${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")} },\n
+  (struct teleport[]){ ${teleports.map(r => `{ { ${r.pos.join(", ")} }, { ${r.area_id} } }`).join(", ")} },\n
+  (struct teleport_min[]){ ${teleports.map(r => `{ ${r.pos.join(", ")}, ${r.area_id} }`).join(", ")} },\n
+  ${cached_vals.length}, ${teleports.length}\n
 };\n
 \n
-static struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
+static const struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
   let m = "/*       ";
   for(let i = 0; i < height; ++i) {
       m += i.toString().padStart(3, " ") + " ";
@@ -277,22 +280,31 @@ static struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
     for(let y = 0; y < height; ++y) {
       str += ` ${u8[x * height + y]}, `;
     }
-    str = str.substring(0, str.length - 1);
+    str = str.substring(0, str.length - 1 - (x == width - 1));
     str += "\n\n";
   }
-  str = str.substring(0, str.length - 1);
-  str += `\n${m}  }\n};\n`;
+  str += `${m}  }\n};\n`;
   return btoa(str);
 }
 function parse_tiles(config) {
   try {
     config = atob(config);
-    let info = config.match(/{ (\d+), (\d+) }/g);
+    let helper = config.match(/\(struct pos\[\]\){ (.*?) },\n/);
+    if(helper == null) {
+      return 0;
+    }
+    helper = helper[1];
+    let info = helper.match(/{ (\d+), (\d+) }/g);
     if(info == null) {
       info = [];
     }
     info = info.map(r => r.match(/\d+/g).map(t => +t));
-    if(info.length != config.match(/}, (\d+)\n};/)[1]) {
+    let vals = config.match(/(\d+), (\d+)\n};\n/);
+    if(vals == null) {
+      return 0;
+    }
+    vals = [+vals[1], +vals[2]];
+    if(info.length != vals[0]) {
       return 0;
     }
     const reg = config.match(/{ (\d+), (\d+), 40, \(uint8_t\[\]\){/);
@@ -304,13 +316,14 @@ function parse_tiles(config) {
     if(_w < 1 || _w > 200 || _h < 1 || _h > 200) {
       return 0;
     }
-    const res = eval(`[${config.substring(reg.index + reg[0].length, config.length - 5)}]`);
-    if(!(res instanceof Array)) return 0;
+    const res = eval(`[${config.substring(reg.index + reg[0].length, config.length - 10)}*/]`);
     if(res.length != _w * _h) {
       return 0;
     }
     for(let i = 0; i < info.length; ++i) {
-      if(info[i][0] >= _w || info[i][1] >= _h) return 0;
+      if(info[i][0] >= _w || info[i][1] >= _h) {
+        return 0;
+      }
     }
     width = _w;
     height = _h;
@@ -324,6 +337,9 @@ function parse_tiles(config) {
     }
     cached_vals = Object.values(spawns);
     u8 = new Uint8Array(_w * _h);
+    if(!(res instanceof Array)) {
+      return 0;
+    }
     u8.set(res);
     paint_bg();
     return 1;
@@ -553,8 +569,8 @@ gen_map();
 set_selected();
 function draw_text_at(text, _x, _y, k, preserve_x, preserve_y) {
   k *= fov;
-  let s_x = canvas.width * 0.5 + (_x - x) * fov;
-  let s_y = canvas.height * 0.5 + (_y - y) * fov;
+  const s_x = canvas.width * 0.5 + (_x - x) * fov;
+  const s_y = canvas.height * 0.5 + (_y - y) * fov;
   let t_x;
   let t_y;
   if(preserve_x && (s_x < k || s_x > canvas.width - k)) {
@@ -567,23 +583,24 @@ function draw_text_at(text, _x, _y, k, preserve_x, preserve_y) {
   } else {
     t_y = s_y;
   }
-  let r_x = (t_x - canvas.width * 0.5) / fov + x;
-  let r_y = (t_y - canvas.height * 0.5) / fov + y;
-  ctx.translate(r_x, r_y);
+  const r_x = (t_x - canvas.width * 0.5) / fov + x;
+  const r_y = (t_y - canvas.height * 0.5) / fov + y;
   ctx.font = `700 20px Ubuntu`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#fff";
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 1;
-  ctx.fillText(text, 0, 0);
-  ctx.strokeText(text, 0, 0);
-  ctx.translate(-r_x, -r_y);
+  ctx.fillText(text, r_x, r_y);
+  ctx.strokeText(text, r_x, r_y);
 }
 const saved = localStorage.getItem("cache");
 if(saved) {
   parse_tiles(saved);
 }
+setInterval(function() {
+  localStorage.setItem("cache", export_tiles());
+}, 10000);
 function draw() {
   let old = fov;
   fov = lerp(fov, target_fov, 0.075);

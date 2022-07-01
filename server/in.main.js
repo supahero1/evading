@@ -96,7 +96,7 @@ function create_ws_server() {
   app.ws("/*", {
     compression: uWS.DISABLED, /*      chat message        name packet */
     maxPayloadLength: Math.max(1 + 1 + max_chat_message_len, 4 + 8),
-    maxBackpressure: 1048576,
+    maxBackpressure: 4194304,
     idleTimeout: 0,
     open: function(ws) {
       if(free == -1 && clients.length >= max_players) {
@@ -146,7 +146,7 @@ function create_ws_server() {
           headers: { "Content-Type": "application/json" }
         }, function(){});
         req.on("error", function(){});
-        req.write(JSON.stringify({ ip: "ws__SECURE_SERVER_CHAR__://__SERVER_NAME__:8191", players: clients.length }));
+        req.write(JSON.stringify({ ip: "ws__SECURE_SERVER_CHAR__://__SERVER_NAME__:8191", players: clients.length, max_players: max_players }));
         req.end();
       }
       setInterval(register_self, 5000);
