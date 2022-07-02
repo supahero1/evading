@@ -30,7 +30,7 @@ let players = [];
 let balls = [];
 let us = { x: 0, y: 0, ip: { x1: 0, x2: 0, y1: 0, y2: 0 } };
 let mouse = [0, 0];
-let now = null;
+let now = 0;
 let last_draw = 0;
 let updates = [0, 0];
 let reset = 0;
@@ -553,8 +553,8 @@ function game2(ws) {
       bg_data.teleports = new Array(u8[idx++]);
       for(let i = 0; i < bg_data.teleports.length; ++i) {
         bg_data.teleports[i] = [
-          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
-          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
+          (u8[idx++] + 0.5) * bg_data.cell_size,
+          (u8[idx++] + 0.5) * bg_data.cell_size,
           u8[idx++]
         ];
       }
@@ -788,7 +788,7 @@ function game2(ws) {
           buf[i].bottom = u8[idx++];
         }
       }
-      minimap.width = 16384;
+      /*minimap.width = 16384;
       minimap.height = minimap.width;
       let deps = [];
       let path = new Path2D();
@@ -839,7 +839,7 @@ function game2(ws) {
           }
         }
       } while(new_deps.length != 0);
-      minimap_ctx.stroke(path);
+      minimap_ctx.stroke(path);*/
     }
   };
   ws.onmessage = function(x) {
@@ -1127,7 +1127,7 @@ function game2(ws) {
     ctx.translate(-us.x, -us.y);
     ctx.drawImage(background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
     if(fov < 1) {
-      ctx.globalAlpha = 1 - fov * fov;
+      ctx.globalAlpha = 1 - (fov - settings["fov"]["min"]) * 4 / 3;
       ctx.drawImage(light_background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
       ctx.globalAlpha = 1;
     }
