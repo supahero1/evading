@@ -88,6 +88,7 @@ app.get("/map_editor/" + map_editor_style_checksum, function(req, res) {
 
 app.get("/servers.json", function(req, res) {
   res.set("Content-Type", "application/json");
+  res.set("Cache-Control", "public, max-age=2");
   res.status(200).end(servers_str);
 });
 
