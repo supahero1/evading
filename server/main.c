@@ -8,6 +8,7 @@
 
 #include "grid.h"
 #include "consts.h"
+#include "commands.h"
 
 #include <shnet/tcp.h>
 #include <shnet/time.h>
@@ -66,7 +67,7 @@ struct client {
   uint32_t last_meaningful_movement;
   uint32_t last_message_at;
   uint8_t  name_len;
-  char     name[4];
+  char     name[max_name_len];
   uint8_t  chat_len;
   uint8_t  chat_timestamp_idx;
   char     chat[max_chat_message_len];
@@ -425,9 +426,10 @@ static void send_arena(const uint8_t client_id) {
   if(clients[client_id].sent_area) {
     return;
   }
+  clients[client_id].sent_area = 1;
+  
   const struct area* const area = areas + clients[client_id].area_id;
   const struct area_info* const info = area_infos[area->area_info_id];
-  clients[client_id].sent_area = 1;
   buf[buf_len++] = game_opcode_area;
   buf[buf_len++] = client_id;
   buf[buf_len++] = area->area_info_id;
@@ -1272,6 +1274,8 @@ void send_minimap(const uint8_t client_id) {
   if(clients[client_id].sent_minimap) {
     return;
   }
+  clients[client_id].sent_minimap = 1;
+
   buf[buf_len++] = game_opcode_minimap;
   buf[buf_len++] = sizeof(area_infos) / sizeof(area_infos[0]);
   memcpy(buf + buf_len, minimap_data, minimap_data_len);
@@ -1345,14 +1349,28 @@ static void tick(void* nil) {
 
 static void start_game(void) {
   for(uint8_t i = 0; i < sizeof(area_infos) / sizeof(area_infos[0]); ++i) {
-    minimap_data[minimap_data_len++] = area_infos[i]->has_adjacent;
-    if(area_infos[i]->has_adjacent) {
-      minimap_data[minimap_data_len++] = area_infos[i]->top;
-      minimap_data[minimap_data_len++] = area_infos[i]->left;
-      minimap_data[minimap_data_len++] = area_infos[i]->right;
-      minimap_data[minimap_data_len++] = area_infos[i]->bottom;
+    const struct area_info* const info = area_infos[i];
+    minimap_data[minimap_data_len] = 0;
+    uint32_t relative = 0;
+    if(info->has_top) {
+      minimap_data[minimap_data_len] |= 1;
+      minimap_data[minimap_data_len + relative++] = info->top;
     }
+    if(info->has_left) {
+      minimap_data[minimap_data_len] |= 2;
+      minimap_data[minimap_data_len + relative++] = info->left;
+    }
+    if(info->has_right) {
+      minimap_data[minimap_data_len] |= 4;
+      minimap_data[minimap_data_len + relative++] = info->right;
+    }
+    if(info->has_bottom) {
+      minimap_data[minimap_data_len] |= 8;
+      minimap_data[minimap_data_len + relative++] = info->bottom;
+    }
+    minimap_data_len += relative;
   }
+  init_commands();
   assert(!time_add_interval(&timers, &((struct time_interval) {
     .base_time = time_get_time(),
     .interval = time_ms_to_ns(tick_interval),
@@ -1408,7 +1426,7 @@ static void parse(void) {
       goto close;
     }
     /* Create the player */
-    add_client_to_area(client_id, default_area_id);
+    add_client_to_area(client_id, default_area_info_id);
     client->exists = 1;
     client->entity.r = default_player_radius;
     set_player_pos_to_area_spawn_tiles(client_id);
@@ -1458,6 +1476,24 @@ static void parse(void) {
         uint8_t end = 4 + client->chat_len - 1;
         while(whitespace_chars[buffer[end]] && --end == 4 - 1) goto out2;
         memcpy(client->chat, buffer + start, end - start + 1);
+        const uint16_t command = find_command(client->chat, client->chat_len);
+        switch(command) {
+          case command_invalid: break;
+          case command_respawn: {
+            if(default_area_info_id != areas[client->area_id].area_info_id) {
+              remove_client_from_its_area(client_id);
+              add_client_to_area(client_id, default_area_info_id);
+            }
+            set_player_pos_to_area_spawn_tiles(client_id);
+            client->dead = 0;
+            client->updated_dc = 1;
+            break;
+          }
+          default: assert(0);
+        }
+        if(command != command_invalid) {
+          client->chat_len = 0;
+        }
         out2:;
         break;
       }

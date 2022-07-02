@@ -16,7 +16,7 @@ const struct area_info area_000 = {
       .r_min = 15,
       .r_max = 20,
       .speed = 1 * time_scale,
-      .count = 30
+      .count = 150
     },
     {
       .type = ball_grey,
@@ -29,7 +29,7 @@ const struct area_info area_000 = {
       .r_min = 10,
       .r_max = 15,
       .speed = 3 * time_scale,
-      .count = 30
+      .count = 150
     },
     {0}
   },

@@ -13,6 +13,8 @@ let light_background = createElement("canvas");
 let lbg_ctx = light_background.getContext("2d");
 let death_arrow = createElement("canvas");
 let death_arrow_ctx = death_arrow.getContext("2d");
+let minimap = createElement("canvas");
+let minimap_ctx = minimap.getContext("2d");
 let drawing = 0;
 let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
 let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#663a82"];
@@ -37,7 +39,6 @@ let target_name_y = 0;
 let settings_div = getElementById("settings");
 let settings_insert = getElementById("ss");
 let sees_settings = false;
-//let minimap = getElementById("minimap"); // or draw on canvas??
 let sees_minimap = false;
 let chat_timestamps = new Array(5).fill(0);
 let saw_tutorial = localStorage.getItem("tutorial") ? 1 : 0;
@@ -160,9 +161,14 @@ for(let prop in settings) {
   if(settings[prop]["max"] && settings[prop]["max"] != default_settings[prop]["max"]) {
     settings[prop]["max"] = default_settings[prop]["max"];
   }
+  if(settings[prop]["step"] && settings[prop]["step"] != default_settings[prop]["step"]) {
+    settings[prop]["step"] = default_settings[prop]["step"];
+  }
   settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
 localStorage.setItem("settings", JSON.stringify(settings));
+let room_size = 160 * settings["fov"]["max"];
+let half_room_size = room_size >> 1;
 let probing_key = false;
 let probe_key = "";
 let probe_resolve;
@@ -765,15 +771,75 @@ function game2(ws) {
       /* Minimap data */
       ++idx;
       let areas_len = u8[idx++];
+      let buf = new Array(areas_len);
       for(let i = 0; i < areas_len; ++i) {
-        let has_adjacent = u8[idx++];
-        if(has_adjacent) {
-          let top = u8[idx++];
-          let left = u8[idx++];
-          let right = u8[idx++];
-          let bottom = u8[idx++];
+        let adjacents = u8[idx++];
+        buf[i] = { adjacents, drawn: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 };
+        if(adjacents & 1) {
+          buf[i].top = u8[idx++];
+        }
+        if(adjacents & 2) {
+          buf[i].left = u8[idx++];
+        }
+        if(adjacents & 4) {
+          buf[i].right = u8[idx++];
+        }
+        if(adjacents & 8) {
+          buf[i].bottom = u8[idx++];
         }
       }
+      minimap.width = 16384;
+      minimap.height = minimap.width;
+      let deps = [];
+      let path = new Path2D();
+      buf[0].x = minimap.width * 0.5 - half_room_size;
+      buf[0].y = minimap.height * 0.5 - half_room_size;
+      let new_deps = [0];
+      minimap_ctx.strokeStyle = "#fff";
+      minimap_ctx.fillStyle = "#fff";
+      minimap_ctx.font = `700 ${50 * settings["fov"]["max"]}px Ubuntu`;
+      minimap_ctx.lineWidth = settings["fov"]["max"];
+      minimap_ctx.textAlign = "center";
+      minimap_ctx.textBaseline = "middle";
+      console.log(areas_len, buf);
+      do {
+        deps = new_deps;
+        new_deps = [];
+        for(const dep of deps) {
+          buf[dep].drawn = 1;
+          path.rect(buf[dep].x, buf[dep].y, room_size, room_size);
+          minimap_ctx.fillText(dep, buf[dep].x + half_room_size, buf[dep].y + half_room_size);
+          if(buf[dep].adjacents & 1) {
+            if(!buf[buf[dep].top].drawn) {
+              new_deps[new_deps.length] = buf[dep].top;
+              buf[buf[dep].top].x = buf[dep].x;
+              buf[buf[dep].top].y = buf[dep].y - room_size * 1.3;
+            }
+          }
+          if(buf[dep].adjacents & 2) {
+            if(!buf[buf[dep].left].drawn) {
+              new_deps[new_deps.length] = buf[dep].left;
+              buf[buf[dep].left].x = buf[dep].x - room_size * 1.3;
+              buf[buf[dep].left].y = buf[dep].y;
+            }
+          }
+          if(buf[dep].adjacents & 4) {
+            if(!buf[buf[dep].right].drawn) {
+              new_deps[new_deps.length] = buf[dep].right;
+              buf[buf[dep].right].x = buf[dep].x + room_size * 1.3;
+              buf[buf[dep].right].y = buf[dep].y;
+            }
+          }
+          if(buf[dep].adjacents & 8) {
+            if(!buf[buf[dep].bottom].drawn) {
+              new_deps[new_deps.length] = buf[dep].bottom;
+              buf[buf[dep].bottom].x = buf[dep].x;
+              buf[buf[dep].bottom].y = buf[dep].y + room_size * 1.3;
+            }
+          }
+        }
+      } while(new_deps.length != 0);
+      minimap_ctx.stroke(path);
     }
   };
   ws.onmessage = function(x) {
@@ -939,6 +1005,7 @@ function game2(ws) {
         if(!tutorial_running) {
           sees_settings = !sees_settings;
           settings_div.style.display = sees_settings ? "block" : "none";
+          send_movement();
         }
         break;
       }
@@ -1056,6 +1123,7 @@ function game2(ws) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
     ctx.scale(fov, fov);
+    //ctx.drawImage(minimap, -minimap.width / 2 / settings["fov"]["max"], -minimap.height / 2 / settings["fov"]["max"], minimap.width / settings["fov"]["max"], minimap.height / settings["fov"]["max"]);
     ctx.translate(-us.x, -us.y);
     ctx.drawImage(background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
     if(fov < 1) {

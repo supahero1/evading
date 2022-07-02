@@ -9,7 +9,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_id = 0,
+  default_area_info_id = 0,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   max_players = 100,
@@ -199,10 +199,6 @@ struct teleport_min {
   const uint8_t target;
 };
 
-#define ADJACENT(a) \
-a, \
-.has_adjacent = 1
-
 struct area_info {
   const struct tile_info* const tile_info;
   const struct ball_info* const balls;
@@ -215,7 +211,10 @@ struct area_info {
   const uint8_t left;
   const uint8_t right;
   const uint8_t bottom;
-  const uint8_t has_adjacent;
+  const uint8_t has_top:1;
+  const uint8_t has_left:1;
+  const uint8_t has_right:1;
+  const uint8_t has_bottom:1;
 };
 
 extern const struct area_info* area_infos[1];
