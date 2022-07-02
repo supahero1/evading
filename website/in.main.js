@@ -1,19 +1,29 @@
-const fs = require("fs");
+const { readFileSync } = require("fs");
 const express = require("express");
 
-const index_html = fs.readFileSync("../client/index.html");
-const favicon = fs.readFileSync("../client/favicon.ico");
-const main_js = fs.readFileSync("../client/main.min2.js");
-const style_css = fs.readFileSync("../client/style.min.css");
+function read(path) {
+  return readFileSync(path, "utf8");
+};
 
-const map_editor_index_html = fs.readFileSync("../map_editor/index.html");
-const map_editor_main_js = fs.readFileSync("../map_editor/main.min2.js");
-const map_editor_style_css = fs.readFileSync("../map_editor/style.min.css");
+const main_checksum = read("../client/main.checksum.txt").substring(15, 23) + ".js";
+const style_checksum = read("../client/style.checksum.txt").substring(15, 23) + ".css";
+
+const index_html = read("../client/index.html").replace("main.js", main_checksum).replace("style.css", style_checksum);
+const favicon = read("../client/favicon.ico");
+const main_js = read("../client/main.min2.js");
+const style_css = read("../client/style.min.css");
+
+const map_editor_main_checksum = read("../map_editor/main.checksum.txt").substring(15, 23) + ".js";
+const map_editor_style_checksum = read("../map_editor/style.checksum.txt").substring(15, 23) + ".css";
+
+const map_editor_index_html = read("../map_editor/index.html").replace("main.js", map_editor_main_checksum).replace("style.css", map_editor_style_checksum);
+const map_editor_main_js = read("../map_editor/main.min2.js");
+const map_editor_style_css = read("../map_editor/style.min.css");
 
 const options = {
-  key: fs.readFileSync("./key.pem"),
-  cert: fs.readFileSync("./cert.pem"),
-  dhparam: fs.readFileSync("./dhparams.pem")
+  key: read("./key.pem"),
+  cert: read("./cert.pem"),
+  dhparam: read("./dhparams.pem")
 };
 
 const servers = {};
@@ -51,12 +61,12 @@ app.get("/favicon.ico", function(req, res) {
   res.status(200).end(favicon);
 });
 
-app.get("/main.js", function(req, res) {
+app.get("/" + main_checksum, function(req, res) {
   res.set("Content-Type", "text/javascript");
   res.status(200).end(main_js);
 });
 
-app.get("/style.css", function(req, res) {
+app.get("/" + style_checksum, function(req, res) {
   res.set("Content-Type", "text/css");
   res.status(200).end(style_css);
 });
@@ -66,12 +76,12 @@ app.get(["/map_editor/", "/map_editor/index.html"], function(req, res) {
   res.status(200).end(map_editor_index_html);
 });
 
-app.get("/map_editor/main.js", function(req, res) {
+app.get("/map_editor/" + map_editor_main_checksum, function(req, res) {
   res.set("Content-Type", "text/javascript");
   res.status(200).end(map_editor_main_js);
 });
 
-app.get("/map_editor/style.css", function(req, res) {
+app.get("/map_editor/" + map_editor_style_checksum, function(req, res) {
   res.set("Content-Type", "text/css");
   res.status(200).end(map_editor_style_css);
 });
