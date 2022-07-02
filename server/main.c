@@ -517,6 +517,7 @@ static void add_client_to_area(const uint8_t client_id, const uint8_t area_info_
   const uint8_t area_id = find_or_create_area(area_info_id);
   struct client* const client = clients + client_id;
   client->area_id = area_id;
+  client->targetable = 0;
   client->sent_area = 0;
   client->sent_balls = 0;
   ++areas[area_id].players_len;
