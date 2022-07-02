@@ -415,7 +415,7 @@ do { \
     }
     default: assert(0);
   }
-  ball->tick = info->tick;
+  ball->closest_client_dist_sq = 16777215;
   ball->type = info->type;
   ball->allow_walls = info->allow_walls;
   ball->die_on_collision = info->die_on_collision;
@@ -484,13 +484,14 @@ static uint8_t find_or_create_area(const uint8_t area_info_id) {
 }
 
 static void set_player_pos_to_tile(const uint8_t client_id, const uint8_t tile_x, const uint8_t tile_y) {
-  const struct area* const area = areas + clients[client_id].area_id;
-  clients[client_id].entity.x = (uint16_t) tile_x * area->grid.cell_size + area->grid.half_cell_size;
-  clients[client_id].entity.y = (uint16_t) tile_y * area->grid.cell_size + area->grid.half_cell_size;
-  grid_recalculate(&area->grid, &clients[client_id].entity);
-  clients[client_id].updated_x = 1;
-  clients[client_id].updated_y = 1;
-  clients[client_id].last_meaningful_movement = current_tick;
+  struct client* const client = clients + client_id;
+  const struct area* const area = areas + client->area_id;
+  client->entity.x = (uint16_t) tile_x * area->grid.cell_size + area->grid.half_cell_size;
+  client->entity.y = (uint16_t) tile_y * area->grid.cell_size + area->grid.half_cell_size;
+  grid_recalculate(&area->grid, &client->entity);
+  client->updated_x = 1;
+  client->updated_y = 1;
+  client->last_meaningful_movement = current_tick;
 }
 
 static void set_player_pos_to_area_spawn_tiles(const uint8_t client_id) {
@@ -514,9 +515,10 @@ static void remove_client_from_its_area(const uint8_t client_id) {
 
 static void add_client_to_area(const uint8_t client_id, const uint8_t area_info_id) {
   const uint8_t area_id = find_or_create_area(area_info_id);
-  clients[client_id].area_id = area_id;
-  clients[client_id].sent_area = 0;
-  clients[client_id].sent_balls = 0;
+  struct client* const client = clients + client_id;
+  client->area_id = area_id;
+  client->sent_area = 0;
+  client->sent_balls = 0;
   ++areas[area_id].players_len;
 }
 
@@ -1007,7 +1009,7 @@ static int player_tick(const uint8_t client_id) {
       true:;
       const struct teleport_dest* const dest = dereference_teleport(area->area_info_id, cell_x, cell_y);
       if(dest == NULL) {
-        goto after_tp;
+        continue;
       }
       if(dest->area_info_id == area->area_info_id) {
         if(!dest->not_random_spawn) {
@@ -1227,11 +1229,18 @@ void send_balls(const uint8_t client_id) {
   }
   /* Not part of creating a packet */
   if(!client->dead && client->targetable) {
-    const float dist_sq = (entity->x - client->entity.x) * (entity->x - client->entity.x) +
-                          (entity->y - client->entity.y) * (entity->y - client->entity.y);
-    if(dist_sq < ball->closest_client_dist_sq) {
-      ball->closest_client_dist_sq = dist_sq;
-      ball->closest_client_id = client_id;
+    switch(ball->type) {
+      case ball_light_blue:
+      case ball_purple: {
+        const float dist_sq = (entity->x - client->entity.x) * (entity->x - client->entity.x) +
+                              (entity->y - client->entity.y) * (entity->y - client->entity.y);
+        if(dist_sq < ball->closest_client_dist_sq) {
+          ball->closest_client_dist_sq = dist_sq;
+          ball->closest_client_id = client_id;
+        }
+        break;
+      }
+      default: break;
     }
   }
   GRID_ROF();

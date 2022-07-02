@@ -553,8 +553,8 @@ function game2(ws) {
       bg_data.teleports = new Array(u8[idx++]);
       for(let i = 0; i < bg_data.teleports.length; ++i) {
         bg_data.teleports[i] = [
-          (u8[idx++] + 0.5) * bg_data.cell_size,
-          (u8[idx++] + 0.5) * bg_data.cell_size,
+          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
+          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
           u8[idx++]
         ];
       }

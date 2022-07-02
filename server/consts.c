@@ -1,10 +1,10 @@
 #include "consts.h"
 
 const struct area_info* area_infos[] = (const struct area_info*[]) {
-  &area_000/*,
+  &area_000,
   &area_001,
   &area_002,
-  &area_003,
+  &area_003/*,
   &area_004,
   &area_005,
   &area_006,

@@ -16,7 +16,7 @@ const struct area_info area_000 = {
       .r_min = 15,
       .r_max = 20,
       .speed = 1 * time_scale,
-      .count = 150
+      .count = 30
     },
     {
       .type = ball_grey,
@@ -29,14 +29,14 @@ const struct area_info area_000 = {
       .r_min = 10,
       .r_max = 15,
       .speed = 3 * time_scale,
-      .count = 150
+      .count = 30
     },
     {0}
   },
   (struct pos[]){ { 55, 5 }, { 55, 6 }, { 55, 7 } },
-  (struct teleport[]){ { { 1, 6 }, { 0 } } },
-  (struct teleport_min[]){ { 1, 6, 0 } },
-  3, 1
+  (struct teleport[]){ { { 1, 6 }, { 0 } }, { { 109, 6 }, { 1 } } },
+  (struct teleport_min[]){ { 1, 6, 0 }, { 109, 6, 1 } },
+  3, 2
 };
 
 static const struct tile_info t = { 111, 13, 40, (uint8_t[]){

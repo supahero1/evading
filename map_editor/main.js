@@ -259,7 +259,7 @@ static const struct tile_info t;\n
 \n
 const struct area_info area_000 = {\n
   &t,\n
-  (struct ball_info[]){\n
+  (struct ball_info[]) {\n
     {0}\n
   },\n
   (struct pos[]){ ${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")} },\n
@@ -299,7 +299,7 @@ function parse_tiles(config) {
       info = [];
     }
     info = info.map(r => r.match(/\d+/g).map(t => +t));
-    let vals = config.match(/(\d+), (\d+)\n};\n/);
+    let vals = config.match(/(\d+), (\d+),?\n/);
     if(vals == null) {
       return 0;
     }

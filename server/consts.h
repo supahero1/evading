@@ -217,7 +217,7 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-extern const struct area_info* area_infos[1];
+extern const struct area_info* area_infos[4];
 
 extern const uint8_t whitespace_chars[256];
 
