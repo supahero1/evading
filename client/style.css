@@ -7,7 +7,7 @@ body {
   background-color: #333;
 }
 
-html, body, #canvas, #settings, #menu {
+html, body, #canvas, #settings_container, #menu {
   top: 0;
   left: 0;
   right: 0;
@@ -26,7 +26,7 @@ html, body, #canvas, #settings, #menu {
   -webkit-user-select: none;
 }
 
-#ss, #name, #status, #splash, #play, #spec {
+#settings, #name, #status, #splash, #play, #spec {
   top: 50%;
 	left: 50%;
   position: absolute;
@@ -46,12 +46,12 @@ html, body, #canvas, #settings, #menu {
   text-align: center;
 }
 
-#menu, #settings {
+#menu, #settings_container {
   display: none;
   background-color: #00000040;
 }
 
-#ss {
+#settings {
   width: 100%;
   height: 80%;
   color: #fff;
@@ -138,7 +138,7 @@ button {
 
 #chlog {
   top: 0;
-  left: 14px;
+  left: 20px;
   font-size: 14pt;
   position: absolute;
 }
@@ -146,8 +146,12 @@ button {
 #selected_serv {
   top: 0;
   right: 20px;
-  font-size: 10pt;
+  font-size: 14pt;
   position: absolute;
+}
+
+#select_serv {
+  display: inline-block;
 }
 
 
@@ -168,11 +172,11 @@ button {
   background: #555;
 }
 
-#sendmsg:disabled::placeholder {
+input[type="text"]:disabled::placeholder {
   color: #ddd;
 }
 
-#sendmsg:disabled::-ms-input-placeholder {
+input[type="text"]:disabled::-ms-input-placeholder {
   color: #ddd;
 }
 
@@ -191,27 +195,27 @@ h5 {
   text-shadow: 0px 1px 0px #b2a98f, 0px 1px 1.4px #00000040;
 }
 
-#ss table {
+#settings table {
   width: 100%;
 }
 
-#ss table tr td {
+#settings table tr td {
   width: 50%;
   text-align: left;
 }
 
-#ss table tr td > * {
+#settings table tr td > * {
   margin-left: 15px;
 }
 
-#ss table tr td:first-child {
+#settings table tr td:first-child {
   text-align: right;
 }
 
-#ss table tr td:first-child > * {
+#settings table tr td:first-child > * {
   margin-right: 15px;
 }
 
-#ss .input {
+#settings .input {
   display: flex;
 }

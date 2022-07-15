@@ -119,7 +119,7 @@ function save_settings() {
 const getElementById = document.getElementById.bind(document);
 const createElement = document.createElement.bind(document);
 
-const status = getElementById("status");
+const status = getElementById("ID_status");
 
 const _token = localStorage.getItem("token");
 let token = [];
@@ -256,10 +256,10 @@ const Ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#66
 
 class Menu {
   constructor() {
-    this.div = getElementById("menu");
-    this.name = getElementById("name");
+    this.div = getElementById("ID_menu");
+    this.name = getElementById("ID_name");
 
-    this.selected_server = getElementById("selected_serv");
+    this.selected_server = getElementById("ID_selected_serv");
 
     this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
 
@@ -380,8 +380,12 @@ class Socket {
       CLIENT.onconnected();
     }
   }
-  close() {
-    CLIENT.ondisconnected();
+  close(code) {
+    if(code == 4000) {
+      CLIENT.onserverfull();
+    } else {
+      CLIENT.ondisconnected();
+    }
   }
   send() {
     this.ws.send(PACKET.u8.subarray(0, PACKET.len));
@@ -551,9 +555,9 @@ class Chat {
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
     this.idx = 0;
 
-    this.div = getElementById("chat");
-    this.messages = getElementById("messages");
-    this.sendmsg = getElementById("sendmsg");
+    this.div = getElementById("ID_chat");
+    this.messages = getElementById("ID_messages");
+    this.sendmsg = getElementById("ID_sendmsg");
 
     this.limit = limit_input_to(CONSTS.max_chat_message_len);
 
@@ -938,8 +942,8 @@ class Key_prober {
 
 class Settings {
   constructor() {
-    this.div = getElementById("settings");
-    this.insert = getElementById("ss");
+    this.div = getElementById("ID_settings_container");
+    this.insert = getElementById("ID_settings");
 
     this.visible = false;
     this.blocked = false;
@@ -1261,7 +1265,7 @@ class Background {
 
 class Canvas {
   constructor() {
-    this.canvas = getElementById("canvas");
+    this.canvas = getElementById("ID_canvas");
     this.ctx = this.canvas.getContext("2d");
 
     this.width = 0;
@@ -1623,6 +1627,9 @@ class Client {
     CHAT.hide();
   }
   onconnected() {
+    const match = SOCKET.ws.url.match(/\/\/(.*?)\.shadam\.xyz/);
+    const match2 = SOCKET.ws.url.match(/\/\/(.*?)[\/:]/);
+    //MENU.set_server_to(match ? match[1] : (match2 ? match2[1] : SOCKET.ws.url));
     MENU.show();
     CHAT.show();
   }
@@ -1630,6 +1637,10 @@ class Client {
     status.innerHTML = "Disconnected";
     MENU.hide_name();
     WINDOW.prevent_unload = false;
+  }
+  onserverfull() {
+    this.ondisconnected();
+    status.innerHTML = "Server is full";
   }
   onspectatestart() {
     MENU.hide();
@@ -1701,9 +1712,6 @@ WINDOW.resize();
       socket.stop();
     } else {
       SOCKET.takeover(socket);
-      const match = url.match(/\/\/(.*?)\.shadam\.xyz/);
-      const match2 = url.match(/\/\/(.*?)[\/:]/);
-      MENU.set_server_to(match ? match[1] : (match2 ? match2[1] : url));
     }
   }
 })();

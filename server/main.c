@@ -1113,7 +1113,7 @@ static void player_tick(const uint8_t client_id) {
       client->updated_r = updated.r;
     }
     
-    if(updated.x || updated.y || updated.r) {
+    if(updated.x || updated.y) {
       client->last_meaningful_movement = current_tick;
     }
   }

@@ -9,11 +9,26 @@ const main_checksum = read("../client/main.checksum.txt").substring(15, 23) + ".
 const style_checksum = read("../client/style.checksum.txt").substring(15, 23) + ".css";
 
 const changelog_txt = read("../client/changelog.txt");
-const index_html = read("../client/index.html").replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
+let index_html = read("../client/index.html");
 const favicon = read("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-const main_js = read("../client/main.js");
-const style_css = read("../client/style.min.css");
+let main_js = read("../client/main.min2.js");
+let style_css = read("../client/style.min.css");
+
+const IDs = index_html.match(/ID_(\w+)/g);
+const ID_map = {};
+const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+let i = 0;
+for(const ID of IDs) {
+  if(ID_map[ID] == undefined) {
+    ID_map[ID] = 0;
+    index_html = index_html.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
+    main_js = main_js.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
+    style_css = style_css.replaceAll("#" + ID.substring(3), "#" + ID_chars[i]);
+    ++i;
+  }
+}
+index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
 
 const map_editor_main_checksum = read("../map_editor/main.checksum.txt").substring(15, 23) + ".js";
 const map_editor_style_checksum = read("../map_editor/style.checksum.txt").substring(15, 23) + ".css";

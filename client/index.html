@@ -3,7 +3,7 @@
   <head>
     <base href="http://localhost/">
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=0.5">
     <meta name="description" content="Evade enemies with your friends."/>
     <meta property="og:url" content="http://localhost/">
     <meta property="og:description" content="Evade enemies with your friends.">
@@ -17,22 +17,22 @@
   </head>
   <body>
     <script>window.s=__SERVERS__</script>
-    <canvas id="canvas"></canvas>
-    <div id="menu">
-      <h5 id="chlog">__CHANGELOG__</h5>
-      <h1 id="splash">EVADING</h1>
-      <input id="name" autocomplete="off" placeholder="Your nickname">
-      <button id="play">Play</button>
-      <button id="spec">Spectate</button>
-      <h5 id="selected_serv"></h5>
-      <a id="discord" href="https://discord.gg/3DYbXcKc3j"><img src="discord.svg" width="50"></a>
+    <canvas id="ID_canvas"></canvas>
+    <div id="ID_menu">
+      <h5 id="ID_chlog">__CHANGELOG__</h5>
+      <h1 id="ID_splash">EVADING</h1>
+      <input id="ID_name" autocomplete="off" placeholder="Your nickname">
+      <button id="ID_play">Play</button>
+      <button id="ID_spec">Spectate</button>
+      <div id="ID_selected_serv"><h5 id="ID_selected_serv_text">Selected server: </h5><select id="ID_select_serv"></select></div>
+      <a id="ID_discord" href="https://discord.gg/3DYbXcKc3j"><img src="discord.svg" width="50"></a>
     </div>
-    <div id="chat">
-      <div id="messages"></div>
-      <input id="sendmsg" autocomplete="off" placeholder="Press enter to chat">
+    <div id="ID_chat">
+      <div id="ID_messages"></div>
+      <input id="ID_sendmsg" autocomplete="off" placeholder="Press enter to chat">
     </div>
-    <div id="settings"><div id="ss"></div></div>
-    <h1 id="status">Loading</h1>
+    <div id="ID_settings_container"><div id="ID_settings"></div></div>
+    <h1 id="ID_status">Loading</h1>
     <script src="main.js"></script>
   </body>
 </html>

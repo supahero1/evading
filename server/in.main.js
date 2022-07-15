@@ -97,7 +97,7 @@ function create_ws_server() {
     open: function(ws) {
       if(free == -1 && clients.length >= max_players) {
         ws.game_close = 1;
-        return ws.end();
+        return ws.end(4000);
       }
       ws.game_id = get_client_id();
       ws.game_close = 0;

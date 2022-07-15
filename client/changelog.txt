@@ -2,9 +2,7 @@ Last modified: Jul 15 2020
 <br>
 <br>
 <br>
-* New game menu! The client has been remastered
-<br>
-to allow for more extensibility in the future.
+* New remastered main menu!
 <br>
 <br>
 * New spectator mode - you can observe others
@@ -12,6 +10,6 @@ to allow for more extensibility in the future.
 playing the game and chat with them in the meanwhile.
 <br>
 <br>
-Join our Discord server (in bottom right) to be
+Join our Discord server (at bottom right) to be
 <br>
 always up-to-date and to suggest new changes!
