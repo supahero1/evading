@@ -12,10 +12,6 @@ if(__SECURE_WEBSITE__) {
   port = 80;
 }
 
-const game_client_close = 0;
-const game_client_data = 1;
-const game_client_open = 2;
-
 const clients = [];
 let free = -1;
 function get_client_id() {
@@ -94,8 +90,8 @@ function create_ws_server() {
     app = uWS.App({});
   }
   app.ws("/*", {
-    compression: uWS.DISABLED, /*      chat message        name packet */
-    maxPayloadLength: Math.max(1 + 1 + max_chat_message_len, 4 + 8),
+    compression: uWS.DISABLED,
+    maxPayloadLength: 1 + 1 + max_chat_message_len,
     maxBackpressure: 4194304,
     idleTimeout: 0,
     open: function(ws) {
@@ -126,7 +122,7 @@ function create_ws_server() {
       socket.write(new Uint8Array(message));
       socket.uncork();
     },
-    close: function(ws, code, message) {
+    close: function(ws) {
       if(ws.game_close) return;
       ws.game_close = 1;
       clearInterval(ws.pinging);

@@ -49,7 +49,11 @@ struct client {
   uint8_t  sent_area:1;
   uint8_t  sent_balls:1;
   uint8_t  sent_minimap:1;
+  uint8_t  init:1;
   uint8_t  exists:1;
+  uint8_t  in_area:1;
+  uint8_t  spectating_a_player:1;
+  uint8_t  spectated_player_dced:1;
   uint8_t  dead:1;
   uint8_t  deleted_by_above:1;
   uint8_t  targetable:1;
@@ -57,8 +61,8 @@ struct client {
   uint8_t  updated_y:1;
   uint8_t  updated_r:1;
   uint8_t  updated_dc:1;
-  uint8_t  type;
-  uint8_t  client_id;
+  uint8_t  traverse_area_idx;
+  uint8_t  spectating_client_id;
   uint8_t  speed;
   uint8_t  death_counter;
   uint8_t  died_ticks_ago;
@@ -66,6 +70,7 @@ struct client {
   float    angle;
   uint32_t last_meaningful_movement;
   uint32_t last_message_at;
+  uint32_t last_spectator_change;
   uint8_t  name_len;
   char     name[max_name_len];
   uint8_t  chat_len;
@@ -75,6 +80,7 @@ struct client {
 };
 
 static struct client clients[max_players] = {0};
+static uint8_t existing_clients_len = 0;
 
 struct ball {
   union {
@@ -134,6 +140,10 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   {  19, 167,  67, 202,  56, 220, 231,  79 }
 };
 
+static struct data_frame area_info_serials[area_infos_size];
+
+static uint8_t area_traversal[area_infos_size];
+
 static int ball_tick(struct grid* const, const uint16_t);
 
 static void close_client(const uint8_t);
@@ -153,6 +163,14 @@ static uint16_t fast_rand(void) {
 
 static uint32_t fast_rand32(void) {
   return ((uint32_t) fast_rand() << 15) | fast_rand();
+}
+
+static float randf(void) {
+  return (float) fast_rand() / FAST_RAND_MAX;
+}
+
+static int angle_diff_turn_dir(const float a, const float b) {
+  return fmodf(a - b + M_PI * 3, M_PI * 2) - M_PI > 0;
 }
 
 /*
@@ -186,14 +204,6 @@ static void return_ball_idx(const uint32_t idx) {
 /*
  * =================================== AREA ===================================
  */
-
-static float randf(void) {
-  return (float) fast_rand() / FAST_RAND_MAX;
-}
-
-static int angle_diff_turn_dir(const float a, const float b) {
-  return fmodf(a - b + M_PI * 3, M_PI * 2) - M_PI > 0;
-}
 
 static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info, const struct ball_info* const relative, const uint8_t area_id) {
   const uint32_t idx = get_free_ball_idx();
@@ -423,26 +433,26 @@ do { \
 }
 
 static void send_arena(const uint8_t client_id) {
-  if(clients[client_id].sent_area) {
+  struct client* const client = clients + client_id;
+  if(client->sent_area) {
     return;
   }
-  clients[client_id].sent_area = 1;
+  client->sent_area = 1;
   
-  const struct area* const area = areas + clients[client_id].area_id;
-  const struct area_info* const info = area_infos[area->area_info_id];
-  buf[buf_len++] = game_opcode_area;
-  buf[buf_len++] = client_id;
-  buf[buf_len++] = area->area_info_id;
-  buf[buf_len++] = info->tile_info->width;
-  buf[buf_len++] = info->tile_info->height;
-  buf[buf_len++] = area->grid.cell_size;
-  buf[buf_len++] = info->teleport_tiles_len;
-  uint16_t size = sizeof(*info->serial) * info->teleport_tiles_len;
-  memcpy(buf + buf_len, info->serial, size);
-  buf_len += size;
-  size = (uint16_t) info->tile_info->width * info->tile_info->height;
-  memcpy(buf + buf_len, info->tile_info->tiles, size);
-  buf_len += size;
+  const struct area* const area = areas + client->area_id;
+  const struct data_frame* const serial = area_info_serials + area->area_info_id;
+  memcpy(buf + buf_len, serial->data, serial->len);
+  buf_len += serial->len;
+  if(!client->exists) {
+    if(client->spectating_client_id == client_id) {
+      buf[buf_len++] = 0;
+    } else {
+      buf[buf_len++] = client->spectating_client_id + 1;
+    }
+  } else {
+    buf[buf_len++] = client_id + 1;
+  }
+  buf[buf_len++] = client->spectating_a_player;
 }
 
 static uint8_t create_area(const uint8_t area_info_id) {
@@ -492,6 +502,8 @@ static void set_player_pos_to_tile(const uint8_t client_id, const uint8_t tile_x
   client->updated_x = 1;
   client->updated_y = 1;
   client->last_meaningful_movement = current_tick;
+  const struct tile_info* const info = area_infos[area->area_info_id]->tile_info;
+  client->targetable = (info->tiles[(uint16_t) tile_x * info->height + tile_y] == tile_path);
 }
 
 static void set_player_pos_to_area_spawn_tiles(const uint8_t client_id) {
@@ -502,25 +514,32 @@ static void set_player_pos_to_area_spawn_tiles(const uint8_t client_id) {
 }
 
 static void remove_client_from_its_area(const uint8_t client_id) {
-  if(--areas[clients[client_id].area_id].players_len == 0) {
-    struct grid* const grid = &areas[clients[client_id].area_id].grid;
+  struct client* const client = clients + client_id;
+  if(--areas[client->area_id].players_len == 0) {
+    struct grid* const grid = &areas[client->area_id].grid;
     GRID_FOR(grid, i);
     return_ball_idx(grid->entities[i].ref);
     GRID_ROF();
     grid_free(grid);
-    areas[clients[client_id].area_id].area_info_id = free_area;
-    free_area = clients[client_id].area_id;
+    areas[client->area_id].area_info_id = free_area;
+    free_area = client->area_id;
   }
+  client->in_area = 0;
+  --existing_clients_len;
 }
 
 static void add_client_to_area(const uint8_t client_id, const uint8_t area_info_id) {
-  const uint8_t area_id = find_or_create_area(area_info_id);
   struct client* const client = clients + client_id;
+  if(client->in_area) {
+    remove_client_from_its_area(client_id);
+  }
+  const uint8_t area_id = find_or_create_area(area_info_id);
   client->area_id = area_id;
-  client->targetable = 0;
+  client->in_area = 1;
   client->sent_area = 0;
   client->sent_balls = 0;
   ++areas[area_id].players_len;
+  ++existing_clients_len;
 }
 
 static const struct teleport_dest* dereference_teleport(const uint8_t area_info_id, const uint8_t tile_x, const uint8_t tile_y) {
@@ -537,6 +556,47 @@ static const struct teleport_dest* dereference_teleport(const uint8_t area_info_
 /*
  * =================================== TICK ===================================
  */
+
+static void spectate(const uint8_t client_id) {
+  struct client* const client = clients + client_id;
+
+  if(client->exists) {
+    return;
+  }
+
+  if(client->spectating_a_player) {
+    if(!client->spectated_player_dced) {
+      if(!clients[client->spectating_client_id].exists) {
+        client->spectated_player_dced = 1;
+      } else if(client->area_id != clients[client->spectating_client_id].area_id) {
+        add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
+      }
+    }
+    return;
+  }
+  
+  if(current_tick < spectating_interval + client->last_spectator_change) {
+    return;
+  }
+
+  client->last_spectator_change = current_tick;
+  if(existing_clients_len <= 1) {
+    client->spectating_client_id = client_id;
+    client->traverse_area_idx = (client->traverse_area_idx + 1) % area_infos_size;
+    add_client_to_area(client_id, area_traversal[client->traverse_area_idx]);
+    printf("adding client to area info id %hhu\n", area_traversal[client->traverse_area_idx]);
+  } else {
+    for(uint8_t i = (client->spectating_client_id + 1) % max_players; i != client->spectating_client_id; i = (i + 1) % max_players) {
+      if(clients[i].exists) {
+        client->spectating_client_id = i;
+        if(client->area_id != clients[i].area_id) {
+          add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
+        }
+        break;
+      }
+    }
+  }
+}
 
 static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
   struct grid_entity* entity = grid->entities + entity_id;
@@ -563,6 +623,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
   } else if(ball->updated_removed) {
     return 0;
   }
+
   struct {
     uint8_t x:1;
     uint8_t y:1;
@@ -840,219 +901,222 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
   return 0;
 }
 
-static int player_tick(const uint8_t client_id) {
+static void player_tick(const uint8_t client_id) {
   struct client* const client = clients + client_id;
-  struct grid_entity* const entity = &client->entity;
-  const struct area* const area = areas + client->area_id;
-  const struct grid* const grid = &area->grid;
-  const struct tile_info* const info = area_infos[area->area_info_id]->tile_info;
-  
+
   if(current_tick % send_interval == 0) {
     client->updated_x = 0;
     client->updated_y = 0;
     client->updated_r = 0;
     client->chat_len = 0;
   }
-  struct {
-    uint8_t x:1;
-    uint8_t y:1;
-    uint8_t r:1;
-    uint8_t collided:1;
-    uint8_t postponed:1;
-  } updated = {0};
-  
-  if(current_tick - client->last_meaningful_movement > idle_timeout) {
-    close_client(client_id);
-    return 0;
-  }
 
-  const float save_x = entity->x;
-  const float save_y = entity->y;
-  const float save_r = entity->r;
-  
-  if(client->dead) {
-    if(++client->died_ticks_ago * tick_interval >= 1000) {
-      if(client->death_counter-- == 0) {
-        close_client(client_id);
-        return 0;
-      }
-      client->died_ticks_ago = 0;
-      client->updated_dc = 1;
-    }
-  } else if(client->speed != 0) {
-    entity->x += cosf(client->angle) * client->movement_speed * (client->speed / 255.0f);
-    entity->y += sinf(client->angle) * client->movement_speed * (client->speed / 255.0f);
-  }
-  if(entity->x < entity->r) {
-    entity->x = entity->r;
-  } else {
-    const uint16_t temp = (uint16_t) grid->cells_x * grid->cell_size;
-    if(entity->x > temp - entity->r) {
-      entity->x = temp - entity->r;
-    }
-  }
-  if(entity->y < entity->r) {
-    entity->y = entity->r;
-  } else {
-    const uint16_t temp = (uint16_t) grid->cells_y * grid->cell_size;
-    if(entity->y > temp - entity->r) {
-      entity->y = temp - entity->r;
-    }
-  }
-  
-  grid_recalculate(grid, entity);
-  
-  float postpone_x;
-  float postpone_y;
-  
-  client->targetable = 0;
+  spectate(client_id);
 
-  for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
-    for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-      const uint8_t type = info->tiles[(uint16_t) cell_x * info->height + cell_y];
-      if(type == tile_path) {
-        client->targetable = 1;
-      }
-      if(type != tile_wall) continue;
-      float x = (uint16_t) cell_x * grid->cell_size;
-      float y = (uint16_t) cell_y * grid->cell_size;
-      const float mid_x = x + grid->half_cell_size;
-      if(fabs(entity->x - mid_x) >= grid->half_cell_size + entity->r) continue;
-      const float mid_y = y + grid->half_cell_size;
-      if(fabs(entity->y - mid_y) >= grid->half_cell_size + entity->r) continue;
-      if(entity->x < mid_x) {
-        if(entity->y < mid_y) {
-          /* Top Left */
-          if(entity->y >= y && entity->x + entity->r > x) {
-            entity->x = x - entity->r;
-            updated.collided = 1;
-            continue;
-          }
-          if(entity->x >= x && entity->y + entity->r > y) {
-            entity->y = y - entity->r;
-            updated.collided = 1;
-            continue;
-          }
-        } else {
-          /* Bottom Left */
-          y += grid->cell_size;
-          if(entity->y <= y && entity->x + entity->r > x) {
-            entity->x = x - entity->r;
-            updated.collided = 1;
-            continue;
-          }
-          if(entity->x >= x && entity->y - entity->r < y) {
-            entity->y = y + entity->r;
-            updated.collided = 1;
-            continue;
-          }
-        }
-      } else {
-        if(entity->y < mid_y) {
-          /* Top Right */
-          x += grid->cell_size;
-          if(entity->y >= y && entity->x - entity->r < x) {
-            entity->x = x + entity->r;
-            updated.collided = 1;
-            continue;
-          }
-          if(entity->x <= x && entity->y + entity->r > y) {
-            entity->y = y - entity->r;
-            updated.collided = 1;
-            continue;
-          }
-        } else {
-          /* Bottom Right */
-          x += grid->cell_size;
-          y += grid->cell_size;
-          if(entity->y <= y && entity->x - entity->r < x) {
-            entity->x = x + entity->r;
-            updated.collided = 1;
-            continue;
-          }
-          if(entity->x <= x && entity->y - entity->r < y) {
-            entity->y = y + entity->r;
-            updated.collided = 1;
-            continue;
-          }
-        }
-      }
-      postpone_x = x;
-      postpone_y = y;
-      updated.postponed = 1;
+  if(client->exists) {
+    struct grid_entity* const entity = &client->entity;
+    const struct area* const area = areas + client->area_id;
+    const struct grid* const grid = &area->grid;
+    const struct tile_info* const info = area_infos[area->area_info_id]->tile_info;
+    
+    if(current_tick - client->last_meaningful_movement > idle_timeout) {
+      close_client(client_id);
+      return;
     }
-  }
-  
-  if(updated.postponed && !updated.collided) {
-    const float dist_sq = (postpone_x - entity->x) * (postpone_x - entity->x) + (postpone_y - entity->y) * (postpone_y - entity->y);
-    if(dist_sq < entity->r * entity->r) {
-      const float angle = atan2f(entity->y - postpone_y, entity->x - postpone_x);
-      entity->x = postpone_x + cosf(angle) * entity->r;
-      entity->y = postpone_y + sinf(angle) * entity->r;
-    }
-  }
-  
-  grid_recalculate(grid, entity);
-  
-  for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
-    for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-      if(info->tiles[(uint16_t) cell_x * info->height + cell_y] != tile_teleport) continue;
-      const float mid_x = (uint16_t) cell_x * grid->cell_size + grid->half_cell_size;
-      const float dist_x = fabs(entity->x - mid_x);
-      if(dist_x >= grid->half_cell_size + entity->r) continue;
-      const float mid_y = (uint16_t) cell_y * grid->cell_size + grid->half_cell_size;
-      const float dist_y = fabs(entity->y - mid_y);
-      if(dist_y >= grid->half_cell_size + entity->r) continue;
-      if(dist_x < grid->half_cell_size) goto true;
-      if(dist_y < grid->half_cell_size) goto true;
-      if((dist_x - grid->half_cell_size) * (dist_x - grid->half_cell_size) +
-        (dist_y - grid->half_cell_size) * (dist_y - grid->half_cell_size) >= entity->r * entity->r) continue;
-      true:;
-      const struct teleport_dest* const dest = dereference_teleport(area->area_info_id, cell_x, cell_y);
-      if(dest == NULL) {
-        continue;
+
+    struct {
+      uint8_t x:1;
+      uint8_t y:1;
+      uint8_t r:1;
+      uint8_t collided:1;
+      uint8_t postponed:1;
+    } updated = {0};
+    
+    const float save_x = entity->x;
+    const float save_y = entity->y;
+    const float save_r = entity->r;
+    
+    if(client->dead) {
+      if(++client->died_ticks_ago * tick_interval >= 1000) {
+        if(client->death_counter-- == 0) {
+          close_client(client_id);
+          return;
+        }
+        client->died_ticks_ago = 0;
+        client->updated_dc = 1;
       }
-      if(dest->area_info_id == area->area_info_id) {
-        if(!dest->not_random_spawn) {
-          set_player_pos_to_area_spawn_tiles(client_id);
-        } else {
-          set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
-        }
-        goto after_tp;
-      } else {
-        remove_client_from_its_area(client_id);
-        add_client_to_area(client_id, dest->area_info_id);
-        if(!dest->not_random_spawn) {
-          set_player_pos_to_area_spawn_tiles(client_id);
-        } else {
-          set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
-        }
-        return 0;
+    } else if(client->speed != 0) {
+      entity->x += cosf(client->angle) * client->movement_speed * (client->speed / 255.0f);
+      entity->y += sinf(client->angle) * client->movement_speed * (client->speed / 255.0f);
+    }
+    if(entity->x < entity->r) {
+      entity->x = entity->r;
+    } else {
+      const uint16_t temp = (uint16_t) grid->cells_x * grid->cell_size;
+      if(entity->x > temp - entity->r) {
+        entity->x = temp - entity->r;
       }
     }
+    if(entity->y < entity->r) {
+      entity->y = entity->r;
+    } else {
+      const uint16_t temp = (uint16_t) grid->cells_y * grid->cell_size;
+      if(entity->y > temp - entity->r) {
+        entity->y = temp - entity->r;
+      }
+    }
+    
+    grid_recalculate(grid, entity);
+    
+    float postpone_x;
+    float postpone_y;
+    
+    client->targetable = 0;
+
+    for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
+      for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
+        const uint8_t type = info->tiles[(uint16_t) cell_x * info->height + cell_y];
+        if(type == tile_path) {
+          client->targetable = 1;
+        }
+        if(type != tile_wall) continue;
+        float x = (uint16_t) cell_x * grid->cell_size;
+        float y = (uint16_t) cell_y * grid->cell_size;
+        const float mid_x = x + grid->half_cell_size;
+        if(fabs(entity->x - mid_x) >= grid->half_cell_size + entity->r) continue;
+        const float mid_y = y + grid->half_cell_size;
+        if(fabs(entity->y - mid_y) >= grid->half_cell_size + entity->r) continue;
+        if(entity->x < mid_x) {
+          if(entity->y < mid_y) {
+            /* Top Left */
+            if(entity->y >= y && entity->x + entity->r > x) {
+              entity->x = x - entity->r;
+              updated.collided = 1;
+              continue;
+            }
+            if(entity->x >= x && entity->y + entity->r > y) {
+              entity->y = y - entity->r;
+              updated.collided = 1;
+              continue;
+            }
+          } else {
+            /* Bottom Left */
+            y += grid->cell_size;
+            if(entity->y <= y && entity->x + entity->r > x) {
+              entity->x = x - entity->r;
+              updated.collided = 1;
+              continue;
+            }
+            if(entity->x >= x && entity->y - entity->r < y) {
+              entity->y = y + entity->r;
+              updated.collided = 1;
+              continue;
+            }
+          }
+        } else {
+          if(entity->y < mid_y) {
+            /* Top Right */
+            x += grid->cell_size;
+            if(entity->y >= y && entity->x - entity->r < x) {
+              entity->x = x + entity->r;
+              updated.collided = 1;
+              continue;
+            }
+            if(entity->x <= x && entity->y + entity->r > y) {
+              entity->y = y - entity->r;
+              updated.collided = 1;
+              continue;
+            }
+          } else {
+            /* Bottom Right */
+            x += grid->cell_size;
+            y += grid->cell_size;
+            if(entity->y <= y && entity->x - entity->r < x) {
+              entity->x = x + entity->r;
+              updated.collided = 1;
+              continue;
+            }
+            if(entity->x <= x && entity->y - entity->r < y) {
+              entity->y = y + entity->r;
+              updated.collided = 1;
+              continue;
+            }
+          }
+        }
+        postpone_x = x;
+        postpone_y = y;
+        updated.postponed = 1;
+      }
+    }
+    
+    if(updated.postponed && !updated.collided) {
+      const float dist_sq = (postpone_x - entity->x) * (postpone_x - entity->x) + (postpone_y - entity->y) * (postpone_y - entity->y);
+      if(dist_sq < entity->r * entity->r) {
+        const float angle = atan2f(entity->y - postpone_y, entity->x - postpone_x);
+        entity->x = postpone_x + cosf(angle) * entity->r;
+        entity->y = postpone_y + sinf(angle) * entity->r;
+      }
+    }
+    
+    grid_recalculate(grid, entity);
+    
+    for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
+      for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
+        if(info->tiles[(uint16_t) cell_x * info->height + cell_y] != tile_teleport) continue;
+        const float mid_x = (uint16_t) cell_x * grid->cell_size + grid->half_cell_size;
+        const float dist_x = fabs(entity->x - mid_x);
+        if(dist_x >= grid->half_cell_size + entity->r) continue;
+        const float mid_y = (uint16_t) cell_y * grid->cell_size + grid->half_cell_size;
+        const float dist_y = fabs(entity->y - mid_y);
+        if(dist_y >= grid->half_cell_size + entity->r) continue;
+        if(dist_x < grid->half_cell_size) goto true;
+        if(dist_y < grid->half_cell_size) goto true;
+        if((dist_x - grid->half_cell_size) * (dist_x - grid->half_cell_size) +
+          (dist_y - grid->half_cell_size) * (dist_y - grid->half_cell_size) >= entity->r * entity->r) continue;
+        true:;
+        const struct teleport_dest* const dest = dereference_teleport(area->area_info_id, cell_x, cell_y);
+        if(dest == NULL) {
+          continue;
+        }
+        if(dest->area_info_id == area->area_info_id) {
+          if(!dest->not_random_spawn) {
+            set_player_pos_to_area_spawn_tiles(client_id);
+          } else {
+            set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+          }
+          goto after_tp;
+        } else {
+          add_client_to_area(client_id, dest->area_info_id);
+          if(!dest->not_random_spawn) {
+            set_player_pos_to_area_spawn_tiles(client_id);
+          } else {
+            set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+          }
+          return;
+        }
+      }
+    }
+    
+    after_tp:;
+    
+    updated.x = entity->x != save_x;
+    updated.y = entity->y != save_y;
+    updated.r = entity->r != save_r;
+    
+    if(!client->updated_x) {
+      client->updated_x = updated.x;
+    }
+    if(!client->updated_y) {
+      client->updated_y = updated.y;
+    }
+    if(!client->updated_r) {
+      client->updated_r = updated.r;
+    }
+    
+    if(updated.x || updated.y || updated.r) {
+      client->last_meaningful_movement = current_tick;
+    }
   }
-  
-  after_tp:;
-  
-  updated.x = entity->x != save_x;
-  updated.y = entity->y != save_y;
-  updated.r = entity->r != save_r;
-  
-  if(!client->updated_x) {
-    client->updated_x = updated.x;
-  }
-  if(!client->updated_y) {
-    client->updated_y = updated.y;
-  }
-  if(!client->updated_r) {
-    client->updated_r = updated.r;
-  }
-  
-  if(updated.x || updated.y || updated.r) {
-    client->last_meaningful_movement = current_tick;
-    return 1;
-  }
-  return 0;
 }
 
 static void player_collide(const uint8_t client_id1, const uint8_t client_id2) {
@@ -1082,7 +1146,7 @@ static void player_collide_ball(const uint8_t client_id, struct grid_entity* con
 
 static void send_players(const uint8_t client_id) {
   uint8_t updated = 0;
-  buf[buf_len++] = game_opcode_players;
+  buf[buf_len++] = server_opcode_players;
   const uint32_t that_idx = buf_len;
   ++buf_len;
 
@@ -1178,7 +1242,7 @@ static void send_players(const uint8_t client_id) {
 
 void send_balls(const uint8_t client_id) {
   uint16_t updated = 0;
-  buf[buf_len++] = game_opcode_balls;
+  buf[buf_len++] = server_opcode_balls;
   const uint32_t that_idx = buf_len;
   buf_len += 2;
   struct client* const client = clients + client_id;
@@ -1191,8 +1255,10 @@ void send_balls(const uint8_t client_id) {
   struct ball* const ball = balls + entity->ref;
   if(ball->updated_removed) {
     /* DELETE */
-    buf[buf_len++] = 0;
-    ++updated;
+    if(client->sent_balls) {
+      buf[buf_len++] = 0;
+      ++updated;
+    }
   } else if(ball->updated_created || !client->sent_balls) {
     /* CREATE */
     buf[buf_len++] = ball->type;
@@ -1229,7 +1295,7 @@ void send_balls(const uint8_t client_id) {
     }
   }
   /* Not part of creating a packet */
-  if(!client->dead && client->targetable) {
+  if(!client->dead && client->exists && client->targetable) {
     switch(ball->type) {
       case ball_light_blue:
       case ball_purple: {
@@ -1258,7 +1324,7 @@ void send_balls(const uint8_t client_id) {
 
 void send_chat(const uint8_t client_id) {
   uint8_t updated = 0;
-  buf[buf_len++] = game_opcode_chat;
+  buf[buf_len++] = server_opcode_chat;
   const uint32_t that_idx = buf_len;
   ++buf_len;
 
@@ -1286,8 +1352,8 @@ void send_minimap(const uint8_t client_id) {
   }
   clients[client_id].sent_minimap = 1;
 
-  buf[buf_len++] = game_opcode_minimap;
-  buf[buf_len++] = sizeof(area_infos) / sizeof(area_infos[0]);
+  buf[buf_len++] = server_opcode_minimap;
+  buf[buf_len++] = area_infos_size;
   memcpy(buf + buf_len, minimap_data, minimap_data_len);
   buf_len += minimap_data_len;
 }
@@ -1297,17 +1363,16 @@ static void tick(void* nil) {
   if(++current_tick % send_interval == 0) {
     tcp_socket_cork_on(&sock);
     for(uint8_t i = 0; i < max_players; ++i) {
-      if(!clients[i].exists) continue;
-      buf[4] = current_tick & 255;
-      buf[5] = (current_tick >> 8) & 255;
-      buf[6] = (current_tick >> 16) & 255;
-      buf[7] = (current_tick >> 24) & 255;
-      buf_len = 8;
-      send_arena(i);
-      send_players(i);
-      send_balls(i);
+      if(!clients[i].init) continue;
+      buf[4] = 0;
+      buf_len = 5;
+      if(clients[i].in_area) {
+        send_arena(i);
+        send_players(i);
+        send_balls(i);
+      }
       send_chat(i);
-      send_minimap(i);
+      //send_minimap(i);
       buf[0] = buf_len & 255;
       buf[1] = (buf_len >> 8) & 255;
       buf[2] = (buf_len >> 16) & 255;
@@ -1347,7 +1412,7 @@ static void tick(void* nil) {
     }
   }
   for(uint8_t i = 0; i < max_players; ++i) {
-    if(!clients[i].exists) continue;
+    if(!clients[i].init) continue;
     player_tick(i);
   }
   for(uint8_t i = 0; i < areas_used; ++i) {
@@ -1358,7 +1423,9 @@ static void tick(void* nil) {
 }
 
 static void start_game(void) {
-  for(uint8_t i = 0; i < sizeof(area_infos) / sizeof(area_infos[0]); ++i) {
+  const uint64_t start = time_get_time();
+  puts("Initialising minimap data and area info serials...");
+  for(uint8_t i = 0; i < area_infos_size; ++i) {
     const struct area_info* const info = area_infos[i];
     minimap_data[minimap_data_len] = 0;
     uint32_t relative = 0;
@@ -1379,8 +1446,42 @@ static void start_game(void) {
       minimap_data[minimap_data_len + relative++] = info->bottom;
     }
     minimap_data_len += relative;
+
+    const uint32_t teleports_size = sizeof(*info->serial) * info->teleport_tiles_len;
+    const uint32_t area_size = (uint32_t) info->tile_info->width * info->tile_info->height;
+    const uint32_t len = 6 + teleports_size + area_size;
+    uint8_t* const ptr = malloc(len);
+    assert(ptr);
+    ptr[0] = server_opcode_area;
+    ptr[1] = i;
+    ptr[2] = info->tile_info->width;
+    ptr[3] = info->tile_info->height;
+    ptr[4] = info->tile_info->cell_size;
+    ptr[5] = info->teleport_tiles_len;
+    memcpy(ptr + 6, info->serial, teleports_size);
+    memcpy(ptr + 6 + teleports_size, info->tile_info->tiles, area_size);
+    area_info_serials[i] = (struct data_frame) {
+      .data = (char*) ptr,
+      .len = len,
+      .read_only = 1,
+      .dont_free = 1,
+      .free_onerr = 0
+    };
+
+    area_traversal[i] = i;
   }
+  puts("Initialising area traversal...");
+  for(uint8_t k = 0; k < 10; ++k) {
+    for(uint8_t i = 0; i < area_infos_size; ++i) {
+      const uint8_t idx = fast_rand() % area_infos_size;
+      const uint8_t temp = area_traversal[idx];
+      area_traversal[idx] = area_traversal[i];
+      area_traversal[i] = temp;
+    }
+  }
+  puts("Initialising commands...");
   init_commands();
+  printf("Init done in %lums\n", time_ns_to_ms(time_get_time() - start));
   assert(!time_add_interval(&timers, &((struct time_interval) {
     .base_time = time_get_time(),
     .interval = time_ms_to_ns(tick_interval),
@@ -1390,7 +1491,7 @@ static void start_game(void) {
 
 static void close_client(const uint8_t client_id) {
   uint8_t deleted_by_above = clients[client_id].deleted_by_above;
-  if(clients[client_id].exists) {
+  if(clients[client_id].in_area) {
     remove_client_from_its_area(client_id);
   }
   memset(clients + client_id, 0, sizeof(*clients));
@@ -1415,100 +1516,113 @@ static void parse(void) {
     client->deleted_by_above = 1;
     goto close;
   }
-  if(!client->exists) {
-    if(sizeof(alpha_tokens[0]) > len) {
-      goto close;
-    }
-    const uint8_t name_len = len - sizeof(alpha_tokens[0]);
-    if(name_len > max_name_len) {
-      goto close;
-    }
-    const uint8_t* const name = buffer + 2;
-    const uint8_t* const token = name + name_len;
-    uint8_t ok = 0;
-    for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
-      if(memcmp(token, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
-        ok = 1;
-        break;
+  if(!client->init) {
+    if(token_required) {
+      if(len != sizeof(alpha_tokens[0])) {
+        goto close;
       }
-    }
-    if(!ok) {
+      uint8_t ok = 0;
+      for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
+        if(memcmp(buffer + 2, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
+          ok = 1;
+          break;
+        }
+      }
+      if(!ok) {
+        goto close;
+      }
+    } else if(len != 1) {
       goto close;
     }
-    /* Create the player */
-    add_client_to_area(client_id, default_area_info_id);
-    client->exists = 1;
-    client->entity.r = default_player_radius;
-    set_player_pos_to_area_spawn_tiles(client_id);
-    client->movement_speed = base_player_speed;
-    if(name_len == 0) {
-      goto out1;
+    client->init = 1;
+    client->last_spectator_change = -spectating_interval;
+    client->traverse_area_idx = fast_rand() % area_infos_size;
+    spectate(client_id);
+    return;
+  }
+  switch(buffer[2]) {
+    case client_opcode_spawn: {
+      if(client->exists) {
+        goto close;
+      }
+      const uint8_t name_len = len - 1;
+      if(name_len > max_name_len) {
+        goto close;
+      }
+      client->entity.r = default_player_radius;
+      client->movement_speed = default_player_speed;
+      add_client_to_area(client_id, default_area_info_id);
+      set_player_pos_to_area_spawn_tiles(client_id);
+      if(name_len != 0) {
+        uint8_t start = 3;
+        uint8_t end = start + name_len - 1;
+        while(whitespace_chars[buffer[start]] && ++start == 3 + name_len) goto out1;
+        while(whitespace_chars[buffer[end]]) --end;
+        client->name_len = end - start + 1;
+        memcpy(client->name, buffer + start, client->name_len);
+        out1:;
+      }
+      break;
     }
-    uint8_t start = 2;
-    while(whitespace_chars[buffer[start]] && ++start == 2 + name_len) goto out1;
-    uint8_t end = 2 + name_len - 1;
-    while(whitespace_chars[buffer[end]] && --end == 2 - 1) goto out1;
-    client->name_len = end - start + 1;
-    memcpy(client->name, buffer + start, client->name_len);
-    out1:;
-  } else {
-    if(len < 2) {
-      goto close;
-    }
-    switch(buffer[2]) {
-      case 0: {
-        /* Update the player */
+    case client_opcode_movement: {
+      if(len != 6) {
+        goto close;
+      }
+      if(!client->spectating_a_player) {
         memcpy(&client->angle, buffer + 3, sizeof(float));
         client->speed = buffer[7];
-        break;
       }
-      case 1: {
-        /* Chat message */
-        if(buffer[3] > max_chat_message_len || 2 + buffer[3] > len) {
-          goto close;
+      break;
+    }
+    case client_opcode_chat: {
+      if(!client->exists) {
+        goto close;
+      }
+      uint8_t chat_len = len - 3;
+      client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
+      const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
+      if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx]
+         < time_sec_to_ns(1) * (max_chat_timestamps - 1) || chat_len > max_chat_message_len) {
+        goto close;
+      }
+      client->chat_timestamp_idx = next_idx;
+      client->last_message_at = current_tick;
+      if(chat_len == 0) {
+        goto out2;
+      }
+      /* Trim whitespace */
+      uint8_t start = 3;
+      uint8_t end = start + chat_len - 1;
+      while(whitespace_chars[buffer[start]] && ++start == 3 + chat_len) goto out2;
+      while(whitespace_chars[buffer[end]]) --end;
+      chat_len = end - start + 1;
+      memcpy(client->chat, buffer + start, chat_len);
+      const uint16_t command = find_command(client->chat, chat_len);
+      if(command != command_invalid && !client->exists) {
+        goto out2;
+      }
+      switch(command) {
+        case command_invalid: {
+          client->chat_len = chat_len;
+          break;
         }
-        client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
-        const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
-        /* Note that at start, the array of timestamps is zeroed, so this will overflow, but
-        the number will then be so huge it will pass this check either way, so we are fine. */
-        if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx] < time_sec_to_ns(1) * (max_chat_timestamps - 1)) {
-          goto close;
-        }
-        client->chat_timestamp_idx = next_idx;
-        client->last_message_at = current_tick;
-        client->chat_len = buffer[3];
-        if(client->chat_len == 0) {
-          goto out2;
-        }
-        /* Trim whitespace */
-        uint8_t start = 4;
-        while(whitespace_chars[buffer[start]] && ++start == 4 + client->chat_len) goto out2;
-        uint8_t end = 4 + client->chat_len - 1;
-        while(whitespace_chars[buffer[end]] && --end == 4 - 1) goto out2;
-        memcpy(client->chat, buffer + start, end - start + 1);
-        const uint16_t command = find_command(client->chat, client->chat_len);
-        switch(command) {
-          case command_invalid: break;
-          case command_respawn: {
-            if(default_area_info_id != areas[client->area_id].area_info_id) {
-              remove_client_from_its_area(client_id);
-              add_client_to_area(client_id, default_area_info_id);
-            }
-            set_player_pos_to_area_spawn_tiles(client_id);
+        case command_respawn: {
+          if(default_area_info_id != areas[client->area_id].area_info_id) {
+            add_client_to_area(client_id, default_area_info_id);
+          }
+          set_player_pos_to_area_spawn_tiles(client_id);
+          if(client->dead != 0) {
             client->dead = 0;
             client->updated_dc = 1;
-            break;
           }
-          default: assert(0);
+          break;
         }
-        if(command != command_invalid) {
-          client->chat_len = 0;
-        }
-        out2:;
-        break;
+        default: assert(0);
       }
-      default: goto close;
+      out2:;
+      break;
     }
+    default: goto close;
   }
   return;
   

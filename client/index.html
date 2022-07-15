@@ -13,20 +13,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://frankfurt.shadam.xyz">
   </head>
   <body>
-    <script>window.s=fetch("/servers.json",{cache:"no-store"})</script>
+    <script>window.s=__SERVERS__</script>
     <canvas id="canvas"></canvas>
-    <div id="main">
-      <span id="loading">Loading...</span>
-      <input id="name" autocomplete="off">
-      <span id="sub"></span>
+    <div id="menu">
+      <h5 id="chlog">__CHANGELOG__</h5>
+      <h1 id="splash">EVADING</h1>
+      <input id="name" autocomplete="off" placeholder="Your nickname">
+      <button id="play">Play</button>
+      <button id="spec">Spectate</button>
+      <h5 id="selected_serv"></h5>
+      <a id="discord" href="https://discord.gg/3DYbXcKc3j"><img src="discord.svg" width="50"></a>
     </div>
     <div id="chat">
       <div id="messages"></div>
       <input id="sendmsg" autocomplete="off" placeholder="Press enter to chat">
     </div>
     <div id="settings"><div id="ss"></div></div>
+    <h1 id="status">Loading</h1>
     <script src="main.js"></script>
   </body>
 </html>

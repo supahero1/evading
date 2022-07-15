@@ -12,22 +12,30 @@ enum game_const {
   default_area_info_id = 0,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
+  spectating_interval = (1000 / tick_interval) * 10,
+  token_required = 1,
   max_players = 100,
   max_chat_message_len = 128,
   max_chat_timestamps = 6, /* in main.js this is -1 */
-  max_name_len = 4
+  max_name_len = 16
 };
 
 #define base_tick_interval (40.0f)
 #define time_scale (tick_interval / base_tick_interval)
-#define base_player_speed (15.0f * time_scale)
+#define default_player_speed (15.0f * time_scale)
 
-enum game_opcodes {
-  game_opcode_area,
-  game_opcode_players,
-  game_opcode_balls,
-  game_opcode_chat,
-  game_opcode_minimap
+enum server_opcodes {
+  server_opcode_area,
+  server_opcode_players,
+  server_opcode_balls,
+  server_opcode_chat,
+  server_opcode_minimap
+};
+
+enum client_opcodes {
+  client_opcode_spawn,
+  client_opcode_movement,
+  client_opcode_chat
 };
 
 enum ball_type {
@@ -217,7 +225,9 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-extern const struct area_info* area_infos[4];
+#define area_infos_size 4
+
+extern const struct area_info* area_infos[area_infos_size];
 
 extern const uint8_t whitespace_chars[256];
 

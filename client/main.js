@@ -1,52 +1,10 @@
-const getElementById = document.getElementById.bind(document);
-const createElement = document.createElement.bind(document);
+/*
+ * LOCALSTORAGE
+ */
 const { localStorage } = window;
-let loading = getElementById("loading");
-loading.innerHTML = "Fetching servers...";
-let sub = getElementById("sub");
-let name = getElementById("name");
-let canvas = getElementById("canvas");
-let ctx = canvas.getContext("2d");
-let background = createElement("canvas");
-let bg_ctx = background.getContext("2d");
-let light_background = createElement("canvas");
-let lbg_ctx = light_background.getContext("2d");
-let death_arrow = createElement("canvas");
-let death_arrow_ctx = death_arrow.getContext("2d");
-let minimap = createElement("canvas");
-let minimap_ctx = minimap.getContext("2d");
-let drawing = 0;
-let tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
-let ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#663a82"];
-let width = 0;
-let height = 0;
-let dpr = 0;
-let buffer = new ArrayBuffer(1048576);
-let u8 = new Uint8Array(buffer);
-let view = new DataView(u8.buffer);
-let len = 0;
-let self_id = 0;
-let players = [];
-let balls = [];
-let us = { x: 0, y: 0, ip: { x1: 0, x2: 0, y1: 0, y2: 0 } };
-let mouse = [0, 0];
-let now = 0;
-let last_draw = 0;
-let updates = [0, 0];
-let reset = 0;
-let name_y = 0;
-let target_name_y = 0;
-let settings_div = getElementById("settings");
-let settings_insert = getElementById("ss");
-let sees_settings = false;
-let sees_minimap = false;
-let chat_timestamps = new Array(5).fill(0);
-let saw_tutorial = localStorage.getItem("tutorial") ? 1 : 0;
-let tutorial_running = 0;
-let tutorial_stage = 0;
-let old_fov = 0;
-let _keybinds = localStorage.getItem("keybinds");
-let default_keybinds = {
+
+const _keybinds = localStorage.getItem("keybinds");
+const default_keybinds = {
   ["settings"]: "Escape",
   ["up"]: "KeyW",
   ["left"]: "KeyA",
@@ -56,40 +14,22 @@ let default_keybinds = {
   ["minimap"]: "KeyM"
 };
 let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
-for(let prop in default_keybinds) {
-  if(keybinds[prop] == undefined) {
+for(const prop in default_keybinds) {
+  if(!(prop in keybinds)) {
     keybinds[prop] = default_keybinds[prop];
   }
 }
-for(let prop in keybinds) {
-  if(default_keybinds[prop] == undefined) {
+for(const prop in keybinds) {
+  if(!(prop in default_keybinds)) {
     delete keybinds[prop];
-    continue;
   }
 }
-let movement = {
-  up: 0,
-  left: 0,
-  right: 0,
-  down: 0,
-  mult: 1,
-  angle: 0,
-  mouse: 0,
-  distance: 0
-};
-let bg_data = {
-  area_id: 0,
-  width: 0,
-  height: 0,
-  real_width: 0,
-  real_height: 0,
-  cell_size: 0,
-  teleports: [],
-  fills: [],
-  strokes: []
-};
-let _settings = localStorage.getItem("settings");
-let default_settings = {
+function save_keybinds() {
+  localStorage.setItem("keybinds", JSON.stringify(keybinds));
+}
+
+const _settings = localStorage.getItem("settings");
+const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
     ["max"]: 1.75,
@@ -120,7 +60,7 @@ let default_settings = {
   },*/
   ["draw_ball_fill"]: true,
   ["draw_ball_stroke"]: true,
-  ["draw_ball_stroke_bright"]: false,
+  ["draw_ball_stroke_bright"]: true,
   ["ball_stroke"]: {
     ["min"]: 0,
     ["max"]: 100,
@@ -129,7 +69,7 @@ let default_settings = {
   },
   ["draw_player_fill"]: true,
   ["draw_player_stroke"]: true,
-  ["draw_player_stroke_bright"]: false,
+  ["draw_player_stroke_bright"]: true,
   ["player_stroke"]: {
     ["min"]: 0,
     ["max"]: 100,
@@ -143,17 +83,19 @@ let default_settings = {
     ["max"]: 100,
     ["value"]: 40,
     ["step"]: 1
-  }
+  },
+  ["show_tutorial"]: true
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
-for(let prop in default_settings) {
-  if(settings[prop] == undefined) {
+for(const prop in default_settings) {
+  if(!(prop in settings)) {
     settings[prop] = default_settings[prop];
   }
 }
-for(let prop in settings) {
-  if(default_settings[prop] == undefined) {
+for(const prop in settings) {
+  if(!(prop in default_settings)) {
     delete settings[prop];
+    continue;
   }
   if(settings[prop]["min"] && settings[prop]["min"] != default_settings[prop]["min"]) {
     settings[prop]["min"] = default_settings[prop]["min"];
@@ -166,298 +108,67 @@ for(let prop in settings) {
   }
   settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
-localStorage.setItem("settings", JSON.stringify(settings));
-let room_size = 160 * settings["fov"]["max"];
-let half_room_size = room_size >> 1;
-let probing_key = false;
-let probe_key = "";
-let probe_resolve;
-let fov = settings["fov"]["value"];
-let target_fov = fov;
-let chat = getElementById("chat");
-let messages = getElementById("messages");
-let sendmsg = getElementById("sendmsg");
-let sees_chat = settings["chat_on"];
-let chat_message_len = 0;
-window["s"].then(r => r.json()).then(r => init(r));
-function reload() {
-  setTimeout(location.reload.bind(location), 1000);
-}
 function save_settings() {
   localStorage.setItem("settings", JSON.stringify(settings));
 }
-function save_keybinds() {
-  localStorage.setItem("keybinds", JSON.stringify(keybinds));
+
+/*
+ * UTILITY
+ */
+
+const getElementById = document.getElementById.bind(document);
+const createElement = document.createElement.bind(document);
+
+const status = getElementById("status");
+
+const _token = localStorage.getItem("token");
+let token = [];
+if(typeof _token == "string") {
+  token = _token.split(",").map(r => +r);
 }
-function show_el(el) {
-  settings_insert.appendChild(el);
+
+function soft_reload() {
+  setTimeout(location.reload.bind(location), 1000);
 }
-function create_header(content) {
-  let h1 = createElement("h1");
-  h1.innerHTML = content;
-  return h1;
+
+function reload() {
+  WINDOW.prevent_unload = false;
+  soft_reload();
 }
-function create_text(content) {
-  let h3 = createElement("h3");
-  h3.innerHTML = content;
-  return h3;
-}
-function create_comment(content) {
-  let h5 = createElement("h5");
-  h5.innerHTML = content;
-  return h5;
-}
-function create_table() {
-  return createElement("table");
-}
-function table_insert_el(table, left_el, right_el) {
-  let tr = createElement("tr");
-  let td = createElement("td");
-  td.appendChild(left_el);
-  tr.appendChild(td);
-  td = createElement("td");
-  td.appendChild(right_el);
-  tr.appendChild(td);
-  table.appendChild(tr);
-  return table;
-}
-function create_switch(name) {
-  let btn = createElement("button");
-  settings[name] = !settings[name];
-  btn.onclick = function() {
-    settings[name] = !settings[name];
-    if(settings[name] == true) {
-      btn.innerHTML = "ON";
-      btn.style["background-color"] = "#23c552";
-    } else {
-      btn.innerHTML = "OFF";
-      btn.style["background-color"] = "#f84f31";
+
+String.prototype.darken = function() {
+  return "#" + (parseInt(this.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + this.substring(7);
+};
+
+WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
+  apply: function(to, what, args) {
+    if(what.readyState == WebSocket.OPEN) {
+      return to.apply(what, args);
     }
-    save_settings();
-  };
-  btn.onclick();
-  return btn;
-}
-function create_list(name) {
-  let select = createElement("select");
-  for(let option of settings[name]["options"]) {
-    let opt = createElement("option");
-    opt.value = option;
-    if(option == settings[name]["selected"]) {
-      opt.selected = 1;
+  },
+  configurable: true,
+  enumerable: true
+});
+
+WebSocket.prototype.close = new Proxy(WebSocket.prototype.close, {
+  apply: function(to, what, args) {
+    if(what.readyState == WebSocket.CONNECTING || what.readyState == WebSocket.OPEN) {
+      return to.apply(what, args);
     }
-    opt.innerHTML = option;
-    select.appendChild(opt);
-  }
-  select.onchange = save_settings;
-  return select;
-}
-function create_keybind(name) {
-  let btn = createElement("button");
-  btn.innerHTML = keybinds[name];
-  btn.onclick = async function() {
-    btn.innerHTML = "...";
-    probing_key = 1;
-    await new Promise(function(resolve) {
-      probe_resolve = resolve;
-    });
-    probing_key = 0;
-    btn.innerHTML = probe_key;
-    keybinds[name] = probe_key;
-    save_keybinds();
-  };
-  return btn;
-}
-function create_slider(name, add="", cb=function(){}) {
-  let div = createElement("div");
-  div.className = "input";
-  let input = createElement("input");
-  input.type = "range";
-  input.min = settings[name]["min"];
-  input.max = settings[name]["max"];
-  input.step = settings[name]["step"];
-  input.value = settings[name]["value"];
-  input.oninput = function() {
-    input.nextElementSibling.innerHTML = input.value + add;
-    settings[name]["value"] = input.valueAsNumber;
-    cb();
-  };
-  input.onchange = save_settings;
-  div.appendChild(input);
-  div.appendChild(create_text(input.value + add));
-  return div;
-}
-function create_button(name, cb) {
-  let btn = createElement("button");
-  btn.innerHTML = name;
-  btn.onclick = cb;
-  return btn;
-}
-function create_settings() {
-  settings_insert.innerHTML = "";
-  show_el(create_header("CHAT"));
-  let table = create_table();
-  table_insert_el(table, create_text("Show chat"), create_switch("chat_on"));
-  table_insert_el(table, create_text("Max number of chat messages"), create_slider("max_chat_messages", "", function() {
-    while(chat_message_len > settings["max_chat_messages"]["value"]) {
-      messages.removeChild(messages.lastChild);
-      --chat_message_len;
-    }
-  }));
-  table_insert_el(table, create_text("Chat text scale"), create_slider("chat_text_scale", "", function() {
-    messages.style["font-size"] = settings["chat_text_scale"]["value"] + "em";
-  }));
-  show_el(table);
-  show_el(create_header("VISUALS"));
-  table = create_table();
-  //table_insert_el(table, create_text("Chat position"), create_list("chat_position")); // usage example of list
-  table_insert_el(table, create_text("Default FOV"), create_slider("fov"));
-  table_insert_el(table, create_text("Draw balls' fill"), create_switch("draw_ball_fill"));
-  table_insert_el(table, create_text("Draw balls' stroke"), create_switch("draw_ball_stroke"));
-  table_insert_el(table, create_text("Draw stroke-only balls with brighter color"), create_switch("draw_ball_stroke_bright"));
-  table_insert_el(table, create_text("Balls' stroke radius percentage"), create_slider("ball_stroke", "%"));
-  table_insert_el(table, create_text("Draw players' fill"), create_switch("draw_player_fill"));
-  table_insert_el(table, create_text("Draw players' stroke"), create_switch("draw_player_stroke"));
-  table_insert_el(table, create_text("Draw stroke-only players with brighter color"), create_switch("draw_player_stroke_bright"));
-  table_insert_el(table, create_text("Players' stroke radius percentage"), create_slider("player_stroke", "%"));
-  table_insert_el(table, create_text("Draw players' name"), create_switch("draw_player_name"));
-  table_insert_el(table, create_text("Draw an arrow towards dead players"), create_switch("draw_death_arrow"));
-  table_insert_el(table, create_text("Death arrow size"), create_slider("death_arrow_size", "px", update_death_arrow_size));
-  show_el(table);
-  show_el(create_header("KEYBINDS"));
-  show_el(create_comment("To change, click a button on the right side and then press the key you want to asign to it."));
-  table = create_table();
-  table_insert_el(table, create_text("Settings"), create_keybind("settings"));
-  table_insert_el(table, create_text("Move up"), create_keybind("up"));
-  table_insert_el(table, create_text("Move left"), create_keybind("left"));
-  table_insert_el(table, create_text("Move down"), create_keybind("down"));
-  table_insert_el(table, create_text("Move right"), create_keybind("right"));
-  table_insert_el(table, create_text("Move slowly"), create_keybind("slowwalk"));
-  table_insert_el(table, create_text("Big minimap"), create_keybind("minimap"));
-  show_el(table);
-  show_el(create_header("RESET"));
-  table = create_table();
-  table_insert_el(table, create_text("Reset settings"), create_button("RESET", function() {
-    settings = default_settings;
-    save_settings();
-    create_settings();
-  }));
-  table_insert_el(table, create_text("Reset keybinds"), create_button("RESET", function() {
-    keybinds = default_keybinds;
-    save_keybinds();
-    create_settings();
-  }));
-  show_el(table);
-}
-create_settings();
-function display_chat_message(author, msg) {
-  let p = createElement("p");
-  p.appendChild(document.createTextNode(author + ": " + msg));
-  messages.insertBefore(p, messages.firstChild);
-  if(++chat_message_len > settings["max_chat_messages"]["value"]) {
-    messages.removeChild(messages.lastChild);
-  }
-}
-function update_death_arrow_size() {
-  death_arrow.width = death_arrow.height = settings["death_arrow_size"]["value"];
-  let h = death_arrow.width * 0.5;
-  let k = death_arrow.width;
-  death_arrow_ctx.beginPath();
-  death_arrow_ctx.moveTo(h + k * 0.45, h);
-  death_arrow_ctx.lineTo(h - k * 0.225, h - k * 0.675 / Math.sqrt(3));
-  death_arrow_ctx.lineTo(h - k * 0.225, h + k * 0.675 / Math.sqrt(3));
-  death_arrow_ctx.closePath();
-  death_arrow_ctx.fillStyle = "#bbbbbbb0";
-  death_arrow_ctx.fill();
-  death_arrow_ctx.lineWidth = death_arrow.width * 0.05;
-  death_arrow_ctx.strokeStyle = "#f00";
-  death_arrow_ctx.stroke();
-}
-update_death_arrow_size();
-function init(servers) {
-  if(servers.length == 0) {
-    loading.innerHTML = "No servers found";
-    reload();
-    return;
-  }
-  loading.innerHTML = "Connecting...";
-  let arr = servers.map(function(serv) {
-    let ws = new WebSocket(serv[2]);
-    ws.binaryType = "arraybuffer";
-    ws.probes = [];
-    ws.onopen = function() {
-      this.send(new Uint8Array(0));
-      this.time = performance.now();
-    };
-    ws.onmessage = function(x) {
-      this.probes[this.probes.length] = performance.now() - this.time;
-      if(this.probes.length < 5) {
-        this.send(new Uint8Array(0));
-      }
-    };
-    return ws;
-  });
-  setTimeout(function() {
-    let min = 999999;
-    let min_ws = null;
-    for(let ws of arr) {
-      ws.s = 0;
-      for(let probe of ws.probes) {
-        ws.s += probe;
-      }
-      if(ws.probes.length > 0) {
-        ws.s /= ws.probes.length;
-      } else {
-        ws.s = 999999;
-      }
-      if(ws.s < min) {
-        min = ws.s;
-        min_ws = ws;
-      }
-    }
-    for(let ws of arr) {
-      ws.onopen = function(){};
-      ws.onmessage = function(){};
-      delete ws.probes;
-      delete ws.time;
-      delete ws.s;
-      if(ws != min_ws) {
-        ws.close();
-      }
-    }
-    if(min_ws == null || min_ws.readyState != 1) {
-      loading.innerHTML = "Failed connecting";
-      reload();
+  },
+  configurable: true,
+  enumerable: true
+});
+
+function limit_input_to(n) {
+  return function(e) {
+    const is_clipboard = e instanceof ClipboardEvent;
+    if(is_clipboard && e.type != "paste") {
       return;
     }
-    game(min_ws);
-  }, 1000);
-}
-function ip() {
-  us.ip.x1 = us.ip.x2;
-  us.ip.y1 = us.ip.y2;
-  for(let player of players) {
-    if(!player) continue;
-    player.ip.x1 = player.ip.x2;
-    player.ip.y1 = player.ip.y2;
-    player.ip.r1 = player.ip.r2;
-  }
-  for(let ball of balls) {
-    if(!ball) continue;
-    ball.ip.x1 = ball.ip.x2;
-    ball.ip.y1 = ball.ip.y2;
-    ball.ip.r1 = ball.ip.r2;
-  }
-}
-function dont_go_over_limit(n) {
-  return function(e) {
-    let clipboard = e instanceof ClipboardEvent;
-    if(clipboard && e.type != "paste") {
-      return true;
-    }
-    let new_val = e.target.value + (clipboard ? e.clipboardData.getData("text") : e.key);
+    const new_val = e.target.value + (is_clipboard ? e.clipboardData.getData("text") : e.key);
     if(new TextEncoder().encode(new_val).byteLength > n) {
-      if(e.target.value == "" && clipboard) {
+      if(e.target.value == "" && is_clipboard) {
         const old = e.target.placeholder;
         e.target.placeholder = "Text too long to paste!";
         setTimeout(function() {
@@ -465,902 +176,1534 @@ function dont_go_over_limit(n) {
         }, 1000);
       }
       e.preventDefault();
-      return false;
+    }
+  };
+}
+
+/**
+ * @param {number} _x
+ * @param {number} _y
+ * @param {number} k
+ * @param {boolean} preserve_x
+ * @param {boolean} preserve_y
+ * @return {Array<number>}
+ */
+function get_sticky_position(_x, _y, k, preserve_x, preserve_y) {
+  k *= CANVAS.fov;
+  const s_x = CANVAS.width * 0.5 + (_x - CAMERA.x) * CANVAS.fov;
+  const s_y = CANVAS.height * 0.5 + (_y - CAMERA.y) * CANVAS.fov;
+  let t_x;
+  let t_y;
+  if(preserve_x && (s_x < k || s_x > CANVAS.width - k)) {
+    t_x = Math.max(Math.min(s_x, CANVAS.width - k), k);
+  } else {
+    t_x = s_x;
+  }
+  if(preserve_y && (s_y < k || s_y > CANVAS.height - k)) {
+    t_y = Math.max(Math.min(s_y, CANVAS.height - k), k);
+  } else {
+    t_y = s_y;
+  }
+  return [(t_x - CANVAS.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - CANVAS.height * 0.5) / CANVAS.fov + CAMERA.y];
+}
+
+/**
+ * @param {number} num
+ * @param {number} to
+ * @param {number} by
+ * @return {number}
+ */
+function lerp(num, to, by) {
+  return num + (to - num) * by;
+}
+
+if(window["s"].length == 0) {
+  status.innerHTML = "No servers found";
+  soft_reload();
+  throw new Error(status.innerHTML);
+}
+
+status.innerHTML = "Connecting";
+
+/**
+ * @enum {number}
+ */
+const CONSTS = {
+  server_opcode_area: 0,
+  server_opcode_players: 1,
+  server_opcode_balls: 2,
+  server_opcode_chat: 3,
+  server_opcode_minimap: 4,
+
+  client_opcode_spawn: 0,
+  client_opcode_movement: 1,
+  client_opcode_chat: 2,
+
+  max_players: 100,
+  max_balls: 65535,
+  max_chat_message_len: 128,
+  max_chat_timestamps: 5,
+  max_name_len: 16
+};
+
+const Tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
+
+const Ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#663a82"];
+
+/*
+ * MENU
+ */
+
+class Menu {
+  constructor() {
+    this.div = getElementById("menu");
+    this.name = getElementById("name");
+
+    this.selected_server = getElementById("selected_serv");
+
+    this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
+
+    this.visible = false;
+    this.blocked = false;
+
+    const cached_name = localStorage.getItem("name");
+    if(typeof cached_name == "string" && new TextEncoder().encode(cached_name).length <= CONSTS.max_name_len) {
+      this.name.value = cached_name;
+    }
+  }
+  block_show() {
+    if(!this.visible) {
+      this.blocked = false;
+      this.show();
+    }
+    this.blocked = true;
+  }
+  block_hide() {
+    if(this.visible) {
+      this.blocked = false;
+      this.hide();
+    }
+    this.blocked = true;
+  }
+  unblock() {
+    this.blocked = false;
+  }
+  show() {
+    if(this.blocked) {
+      return;
+    }
+    this.visible = true;
+    this.div.style.display = "block";
+  }
+  hide() {
+    if(this.blocked) {
+      return;
+    }
+    this.visible = false;
+    this.div.style.display = "none";
+  }
+  hide_name() {
+    this.name.style.display = "none";
+  }
+  set_server_to(name) {
+    this.selected_server.innerHTML = "Selected server: " + name;
+  }
+}
+
+/*
+ * SOCKET
+ */
+
+class Socket {
+  constructor() {
+    this.ws = null;
+
+    this.once = false;
+
+    this.game_init = false;
+
+    this.updates = [0, 0];
+  }
+  takeover(latency_sock) {
+    this.ws = latency_sock.ws;
+    this.ws.onmessage = this.message.bind(this);
+    this.ws.onclose = this.close.bind(this);
+
+    PACKET.create_init_packet();
+    this.send();
+
+    this.open();
+  }
+  open() {
+    status.innerHTML = "";
+    this.once = true;
+  }
+  message({ data }) {
+    PACKET.set(new Uint8Array(data));
+    PACKET.idx = 1;
+    this.updates[0] = this.updates[1];
+    this.updates[1] = performance.now();
+    PLAYERS.ip();
+    BALLS.ip();
+    CAMERA.ip();
+    while(PACKET.idx != PACKET.len) {
+      switch(PACKET.byte()) {
+        case CONSTS.server_opcode_area: {
+          BALLS.clear();
+          CAMERA.ip();
+          BACKGROUND.parse();
+          break;
+        }
+        case CONSTS.server_opcode_players: {
+          PLAYERS.parse();
+          break;
+        }
+        case CONSTS.server_opcode_balls: {
+          BALLS.parse();
+          break;
+        }
+        case CONSTS.server_opcode_chat: {
+          CHAT.parse();
+          break;
+        }
+        default: throw new Error();
+      }
+    }
+    if(CLIENT.id == -1) {
+      CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
     } else {
-      return true;
+      CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x, PLAYERS.arr[CLIENT.id].y);
     }
-  };
-}
-function draw_text(text, _x, _y) {
-  ctx.font = `700 20px Ubuntu`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 1;
-  ctx.fillText(text, _x, _y);
-  ctx.strokeText(text, _x, _y);
-}
-function darken(hex) {
-  return "#" + (parseInt(hex.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(hex.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + hex.substring(7);
-}
-function game(ws) {
-  loading.innerHTML = "Enter your name<br>";
-  sub.innerHTML = "You are limited to 4 characters<br>Special characters might not fit<br>Press enter when you are done";
-  name.style.display = "block";
-  name.focus();
-  let name_val = localStorage.getItem("name");
-  if(name_val) {
-    name.value = name_val;
-  }
-  name.onkeypress = name.onpaste = dont_go_over_limit(4);
-  ws.onclose = function() {
-    window.onbeforeunload = function(){};
-    canvas.parentElement.removeChild(canvas);
-    settings_div.parentElement.removeChild(settings_div);
-    chat.parentElement.removeChild(chat);
-    loading.innerHTML = "Disconnected";
-    sub.innerHTML = "";
-    name.style.display = "none";
-    reload();
-  };
-  window.onkeydown = function(x) {
-    if(x.code == "Enter") {
-      let n = name.value.trim();
-      localStorage.setItem("name", n);
-      loading.innerHTML = "Spawning...";
-      sub.innerHTML = "";
-      name.style.display = "none";
-      let token = localStorage.getItem("token");
-      token = token ? token.split(",").map(r => +r) : [];
-      let encoded = new TextEncoder().encode(n);
-      ws.send(new Uint8Array([...encoded, ...token]));
-      game2(ws);
-    }
-  };
-}
-function game2(ws) {
-  sees_chat = !settings["chat_on"];
-  let last_tick = 0;
-  function onmessage({ data }) {
-    u8.set(new Uint8Array(data));
-    len = data.byteLength;
-    let tick = u8[0] | (u8[1] << 8) | (u8[2] << 16) | (u8[3] << 24);
-    if(last_tick != 0 && tick - last_tick != 4) {
-      ws.onmessage = function(){};
-      throw new Error(`tick - last_tick = ${tick - last_tick}`);
-    }
-    last_tick = tick;
-    let idx = 4;
-    updates[0] = updates[1];
-    updates[1] = performance.now();
-    ip();
-    if(idx == len) {
-      return;
-    }
-    if(u8[idx] == 0) {
-      /* Arena */
-      ++idx;
-      reset = 1;
-      balls = [];
-      self_id = u8[idx++];
-      bg_data.area_id = u8[idx++];
-      bg_data.width = u8[idx++];
-      bg_data.height = u8[idx++];
-      bg_data.cell_size = u8[idx++];
-      bg_data.real_width = bg_data.width * bg_data.cell_size;
-      bg_data.real_height = bg_data.height * bg_data.cell_size;
-      bg_data.teleports = new Array(u8[idx++]);
-      for(let i = 0; i < bg_data.teleports.length; ++i) {
-        bg_data.teleports[i] = [
-          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
-          (u8[idx++] + 0.5) * bg_data.cell_size * settings["fov"]["max"],
-          u8[idx++]
-        ];
-      }
-      bg_data.fills = new Array(256);
-      bg_data.strokes = new Array(256);
-      for(let x = 0; x < bg_data.width; ++x) {
-        for(let y = 0; y < bg_data.height; ++y) {
-          if(bg_data.fills[u8[idx]] == null) {
-            bg_data.fills[u8[idx]] = new Path2D();
-            bg_data.strokes[u8[idx]] = new Path2D();
-          }
-          bg_data.fills[u8[idx]].rect(
-            (1.5 + x * bg_data.cell_size) * settings["fov"]["max"],
-            (1.5 + y * bg_data.cell_size) * settings["fov"]["max"],
-            (bg_data.cell_size - 1.5 * 2) * settings["fov"]["max"],
-            (bg_data.cell_size - 1.5 * 2) * settings["fov"]["max"]
-          );
-          bg_data.strokes[u8[idx]].rect(
-            x * bg_data.cell_size * settings["fov"]["max"],
-            y * bg_data.cell_size * settings["fov"]["max"],
-            bg_data.cell_size * settings["fov"]["max"],
-            bg_data.cell_size * settings["fov"]["max"]
-          );
-          ++idx;
-        }
-      }
-      background.width = bg_data.cell_size * bg_data.width * settings["fov"]["max"];
-      background.height = bg_data.cell_size * bg_data.height * settings["fov"]["max"];
-      light_background.width = bg_data.cell_size * bg_data.width * settings["fov"]["max"];
-      light_background.height = bg_data.cell_size * bg_data.height * settings["fov"]["max"];
-      for(let i = 0; i < 256; ++i) {
-        if(!bg_data.fills[i]) continue;
-        bg_ctx.fillStyle = tile_colors[i] + "b0";
-        bg_ctx.fill(bg_data.strokes[i]);
-        bg_ctx.fillStyle = tile_colors[i];
-        bg_ctx.fill(bg_data.fills[i]);
-        lbg_ctx.fillStyle = tile_colors[i];
-        lbg_ctx.fill(bg_data.strokes[i]);
-      }
-      bg_ctx.font = `700 ${bg_data.cell_size}px Ubuntu`;
-      bg_ctx.textAlign = "center";
-      bg_ctx.textBaseline = "middle";
-      bg_ctx.fillStyle = darken(tile_colors[3]);
-      for(const tp of bg_data.teleports) {
-        bg_ctx.fillText(tp[2], tp[0], tp[1]);
-      }
-      start_drawing();
-    }
-    if(idx == len) {
-      return;
-    }
-    if(u8[idx] == 1) {
-      /* Players */
-      ++idx;
-      let count = u8[idx++];
-      for(let i = 0; i < count; ++i) {
-        let id = u8[idx++];
-        if(!players[id]) {
-          let x2 = view.getFloat32(idx, true);
-          idx += 4;
-          let y2 = view.getFloat32(idx, true);
-          idx += 4;
-          let r2 = view.getFloat32(idx, true);
-          idx += 4;
-          let name_len = u8[idx++];
-          let name = new TextDecoder().decode(u8.subarray(idx, idx + name_len));
-          idx += name_len;
-          let dead = u8[idx++];
-          let death_counter = 0;
-          if(dead) {
-            death_counter = u8[idx++];
-          }
-          let len = u8[idx++];
-          if(len > 0) {
-            display_chat_message(name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
-            idx += len;
-          }
-          players[id] = { x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 }, name, dead, death_counter };
-          if(self_id == id) {
-            us.ip.x2 = x2;
-            us.ip.y2 = y2;
-          }
-        } else {
-          let field = u8[idx++];
-          if(!field) {
-            players[id] = undefined;
-            continue;
-          }
-          while(field) {
-            switch(field) {
-              case 1: {
-                players[id].ip.x2 = view.getFloat32(idx, true);
-                idx += 4;
-                if(self_id == id) {
-                  us.ip.x2 = players[id].ip.x2;
-                }
-                break;
-              }
-              case 2: {
-                players[id].ip.y2 = view.getFloat32(idx, true);
-                idx += 4;
-                if(self_id == id) {
-                  us.ip.y2 = players[id].ip.y2;
-                }
-                break;
-              }
-              case 3: {
-                players[id].ip.r2 = view.getFloat32(idx, true);
-                idx += 4;
-                break;
-              }
-              case 4: {
-                players[id].dead = u8[idx++];
-                if(players[id].dead) {
-                  players[id].death_counter = u8[idx++];
-                }
-                break;
-              }
-              case 5: {
-                let len = u8[idx++];
-                display_chat_message(players[id].name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
-                idx += len;
-                break;
-              }
-            }
-            field = u8[idx++];
-          }
-        }
-      }
-    }
-    if(idx == len) {
-      return;
-    }
-    if(u8[idx] == 2) {
-      /* Balls */
-      ++idx;
-      let count = u8[idx] | (u8[idx + 1] << 8);
-      idx += 2;
-      for(let i = 0; i < count; ++i) {
-        let id = u8[idx] | (u8[idx + 1] << 8);
-        idx += 2;
-        if(!balls[id]) {
-          let type = u8[idx++];
-          if(type == 0) {
-            continue;
-          }
-          --type;
-          let x2 = view.getFloat32(idx, true);
-          idx += 4;
-          let y2 = view.getFloat32(idx, true);
-          idx += 4;
-          let r2 = view.getFloat32(idx, true);
-          idx += 4;
-          balls[id] = { type, x: 0, y: 0, r: 0, ip: { x1: x2, x2, y1: y2, y2, r1: r2, r2 } };
-          if(balls[id].ip.r2 < 1 || balls[id].ip.r2 > 60) {
-            console.log(`create ball id ${id} r ${balls[id].ip.r2}`);
-            ws.onmessage = function(){};
-            throw new Error();
-          }
-        } else {
-          let field = u8[idx++];
-          if(!field) {
-            balls[id] = undefined;
-            continue;
-          }
-          while(field) {
-            switch(field) {
-              case 1: {
-                balls[id].ip.x2 = view.getFloat32(idx, true);
-                idx += 4;
-                break;
-              }
-              case 2: {
-                balls[id].ip.y2 = view.getFloat32(idx, true);
-                idx += 4;
-                break;
-              }
-              case 3: {
-                balls[id].ip.r2 = view.getFloat32(idx, true);
-                if(balls[id].ip.r2 < 1 || balls[id].ip.r2 > 60) {
-                  console.log(`update ball id ${id} r ${balls[id].ip.r2}`);
-                  ws.onmessage = function(){};
-                  throw new Error();
-                }
-                idx += 4;
-                break;
-              }
-            }
-            field = u8[idx++];
-          }
-        }
-      }
-    }
-    if(idx == len) {
-      return;
-    }
-    if(u8[idx] == 3) {
-      /* Chat messages */
-      ++idx;
-      let count = u8[idx++];
-      for(let i = 0; i < count; ++i) {
-        let name_len = u8[idx++];
-        let name = new TextDecoder().decode(u8.subarray(idx, idx + name_len));
-        idx += name_len;
-        let len = u8[idx++];
-        display_chat_message(name, new TextDecoder().decode(u8.subarray(idx, idx + len)));
-        idx += len;
-      }
-    }
-    if(idx == len) {
-      return;
-    }
-    if(u8[idx] == 4) {
-      /* Minimap data */
-      ++idx;
-      let areas_len = u8[idx++];
-      let buf = new Array(areas_len);
-      for(let i = 0; i < areas_len; ++i) {
-        let adjacents = u8[idx++];
-        buf[i] = { adjacents, drawn: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 };
-        if(adjacents & 1) {
-          buf[i].top = u8[idx++];
-        }
-        if(adjacents & 2) {
-          buf[i].left = u8[idx++];
-        }
-        if(adjacents & 4) {
-          buf[i].right = u8[idx++];
-        }
-        if(adjacents & 8) {
-          buf[i].bottom = u8[idx++];
-        }
-      }
-      /*minimap.width = 16384;
-      minimap.height = minimap.width;
-      let deps = [];
-      let path = new Path2D();
-      buf[0].x = minimap.width * 0.5 - half_room_size;
-      buf[0].y = minimap.height * 0.5 - half_room_size;
-      let new_deps = [0];
-      minimap_ctx.strokeStyle = "#fff";
-      minimap_ctx.fillStyle = "#fff";
-      minimap_ctx.font = `700 ${50 * settings["fov"]["max"]}px Ubuntu`;
-      minimap_ctx.lineWidth = settings["fov"]["max"];
-      minimap_ctx.textAlign = "center";
-      minimap_ctx.textBaseline = "middle";
-      console.log(areas_len, buf);
-      do {
-        deps = new_deps;
-        new_deps = [];
-        for(const dep of deps) {
-          buf[dep].drawn = 1;
-          path.rect(buf[dep].x, buf[dep].y, room_size, room_size);
-          minimap_ctx.fillText(dep, buf[dep].x + half_room_size, buf[dep].y + half_room_size);
-          if(buf[dep].adjacents & 1) {
-            if(!buf[buf[dep].top].drawn) {
-              new_deps[new_deps.length] = buf[dep].top;
-              buf[buf[dep].top].x = buf[dep].x;
-              buf[buf[dep].top].y = buf[dep].y - room_size * 1.3;
-            }
-          }
-          if(buf[dep].adjacents & 2) {
-            if(!buf[buf[dep].left].drawn) {
-              new_deps[new_deps.length] = buf[dep].left;
-              buf[buf[dep].left].x = buf[dep].x - room_size * 1.3;
-              buf[buf[dep].left].y = buf[dep].y;
-            }
-          }
-          if(buf[dep].adjacents & 4) {
-            if(!buf[buf[dep].right].drawn) {
-              new_deps[new_deps.length] = buf[dep].right;
-              buf[buf[dep].right].x = buf[dep].x + room_size * 1.3;
-              buf[buf[dep].right].y = buf[dep].y;
-            }
-          }
-          if(buf[dep].adjacents & 8) {
-            if(!buf[buf[dep].bottom].drawn) {
-              new_deps[new_deps.length] = buf[dep].bottom;
-              buf[buf[dep].bottom].x = buf[dep].x;
-              buf[buf[dep].bottom].y = buf[dep].y + room_size * 1.3;
-            }
-          }
-        }
-      } while(new_deps.length != 0);
-      minimap_ctx.stroke(path);*/
-    }
-  };
-  ws.onmessage = function(x) {
-    reset = 0;
-    onmessage(x);
-    if(reset) {
-      loading.innerHTML = "";
-      ip();
-    }
-  };
-  sendmsg.onkeydown = function(e) {
-    e.stopPropagation();
-    if(e.code == "Enter") {
-      let encoded = new TextEncoder().encode(sendmsg.value.trim());
-      if(encoded.length > 0) {
-        u8[0] = 1;
-        u8[1] = encoded.length;
-        u8.set(encoded, 2);
-        ws.send(u8.subarray(0, u8[1] + 2));
-        chat_timestamps.pop();
-        /* Note: MUST NOT BE performance.now() !!! */
-        chat_timestamps.unshift(new Date().getTime());
-        const diff = Math.abs(chat_timestamps[chat_timestamps.length - 1] - chat_timestamps[0]);
-        const allowed = 1000 * chat_timestamps.length;
-        if(diff < allowed) {
-          const old = sendmsg.placeholder;
-          sendmsg.placeholder = "You are on cooldown for sending too many messages too fast";
-          sendmsg.oncooldown = 1;
-          sendmsg.onkeypress = sendmsg.onpaste = null;
-          setTimeout(function() {
-            sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(128);
-            sendmsg.oncooldown = 0;
-            sendmsg.placeholder = old;
-          }, allowed - diff);
-        }
-      }
-      sendmsg.value = "";
-      sendmsg.blur();
-      canvas.focus();
-    }
-  };
-  sendmsg.onkeyup = function(e) {
-    e.stopPropagation();
-  };
-  sendmsg.onkeypress = sendmsg.onpaste = dont_go_over_limit(128);
-  function resize() {
-    if(window.innerWidth != width || window.innerHeight != height || dpr != window.devicePixelRatio) {
-      dpr = window.devicePixelRatio;
-      width = window.innerWidth;
-      canvas.width = width * dpr;
-      height = window.innerHeight;
-      canvas.height = height * dpr;
+    if(this.updates[0] != 0 && !this.game_init) {
+      this.game_init = true;
+      CANVAS.start_drawing();
+      CLIENT.onconnected();
     }
   }
-  resize();
-  window.onresize = resize;
-  function lerp(num, to, by) {
-    return num + (to - num) * by;
+  close() {
+    CLIENT.ondisconnected();
   }
-  function send_movement() {
-    if(!movement.mouse) {
-      if(movement.down - movement.up == 0 && movement.right - movement.left == 0) {
-        movement.angle = 0;
-        movement.distance = 0;
-      } else {
-        movement.angle = Math.atan2(movement.down - movement.up, movement.right - movement.left);
-        movement.distance = 160 * dpr;
-      }
-    }
-    if(sees_settings || tutorial_running) {
-      ws.send(new Uint8Array([0, 0, 0, 0, 0, 0]));
+  send() {
+    this.ws.send(PACKET.u8.subarray(0, PACKET.len));
+  }
+}
+
+/*
+ * LATENCY SOCKET
+ */
+
+class Latency_socket extends Socket {
+  constructor(ip, resolver) {
+    super();
+
+    this.packets = 0;
+    this.resolver = resolver;
+    this.ip = ip;
+
+    this.connect();
+  }
+  connect() {
+    this.ws = new WebSocket(this.ip);
+    this.ws.binaryType = "arraybuffer";
+    this.ws.onopen = this.open.bind(this);
+    this.ws.onmessage = this.message.bind(this);
+    this.ws.onclose = this.close.bind(this);
+  }
+  open() {
+    this.ws.send(new ArrayBuffer(0));
+  }
+  message() {
+    if(++this.packets == 8) {
+      this.resolver(this.ws.url);
       return;
     }
-    u8[0] = 0;
-    view.setFloat32(1, movement.angle, true);
-    if(movement.distance >= 160 * dpr) {
-      view.setUint8(5, (255 * movement.mult) >>> 0);
+    this.ws.send(new ArrayBuffer(0));
+  }
+  close() {
+    this.connect();
+  }
+  stop() {
+    this.ws.onopen = this.ws.onmessage = this.ws.onclose = null;
+    this.ws.close();
+  }
+}
+
+/*
+ * PACKET
+ */
+
+class Packet {
+  constructor() {
+    this.buffer = new ArrayBuffer(1048576);
+    this.u8 = new Uint8Array(this.buffer);
+    this.view = new DataView(this.buffer);
+    this.len = 0;
+    this.idx = 0;
+  }
+  set(arr) {
+    this.u8.set(arr);
+    this.len = arr.length;
+    this.idx = 0;
+  }
+  clear() {
+    this.len = 0;
+    this.idx = 0;
+  }
+  byte() {
+    return this.u8[this.idx++];
+  }
+  short() {
+    const ret = this.u8[this.idx] | (this.u8[this.idx + 1] << 8);
+    this.idx += 2;
+    return ret;
+  }
+  float() {
+    const ret = this.view.getFloat32(this.idx, true);
+    this.idx += 4;
+    return ret;
+  }
+  string(len) {
+    const ret = new TextDecoder().decode(this.u8.subarray(this.idx, this.idx + len));
+    this.idx += len;
+    return ret;
+  }
+  create_init_packet() {
+    if(token.length == 0) {
+      this.len = 1;
     } else {
-      view.setUint8(5, (movement.distance * 1.59375 / dpr * movement.mult) >>> 0);
+      this.u8.set(token);
+      this.len = token.length;
     }
-    ws.send(u8.subarray(0, 6));
   }
-  canvas.onwheel = function(x) {
-    const add = -Math.sign(x.deltaY) * 0.05;
-    if(target_fov > 1) {
-      target_fov += add * 3;
-    } else {
-      target_fov += add;
-    }
-    target_fov = Math.min(Math.max(target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
-  };
-  window.onmousemove = function(x) {
-    mouse = [x.clientX * dpr, x.clientY * dpr];
-    movement.angle = Math.atan2(mouse[1] - canvas.height  * 0.5, mouse[0] - canvas.width  * 0.5);
-    movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
-    send_movement();
-  };
-  canvas.onmousedown = function() {
-    if(!tutorial_running) {
-      movement.mouse = !movement.mouse;
-    }
-    movement.angle = Math.atan2(mouse[1] - canvas.height * 0.5, mouse[0] - canvas.width  * 0.5);
-    movement.distance = Math.hypot(mouse[0] - canvas.width  * 0.5, mouse[1] - canvas.height  * 0.5) / fov;
-    send_movement();
-  };
-  window.onkeydown = function(x) {
-    if(x.repeat) return;
-    if(sees_settings) {
-      if(probing_key) {
-        x.preventDefault();
-        probe_key = x.code;
-        probe_resolve();
-      } else if(x.code == keybinds["settings"]) {
-        sees_settings = false;
-        settings_div.style.display = "none";
+  create_spawn_packet(name) {
+    this.u8[0] = CONSTS.client_opcode_spawn;
+    const encoded = new TextEncoder().encode(name);
+    this.u8.set(encoded, 1);
+    this.len = encoded.length + 1;
+  }
+  create_movement_packet() {
+    let angle = 0;
+    let distance = 0;
+    if(!MOVEMENT.mouse_movement) {
+      if(MOVEMENT.up != MOVEMENT.down || MOVEMENT.left != MOVEMENT.right) {
+        angle = Math.atan2(MOVEMENT.down - MOVEMENT.up, MOVEMENT.right - MOVEMENT.left);
+        distance = 160 * WINDOW.devicePixelRatio;
       }
+    } else {
+      const x = WINDOW.mouse[0] - CANVAS.canvas.width * 0.5;
+      const y = WINDOW.mouse[1] - CANVAS.canvas.height * 0.5;
+      angle = Math.atan2(y, x);
+      distance = Math.hypot(x, y) / CANVAS.fov;
+    }
+    this.u8[0] = CONSTS.client_opcode_movement;
+    this.view.setFloat32(1, angle, true);
+    if(distance >= 160 * WINDOW.devicePixelRatio) {
+      this.u8[5] = 255 * MOVEMENT.get_mult();
+    } else {
+      this.u8[5] = distance * 1.59375 / WINDOW.devicePixelRatio * MOVEMENT.get_mult();
+    }
+    this.len = 6;
+  }
+  create_chat_packet(chat) {
+    this.u8[0] = CONSTS.client_opcode_chat;
+    this.u8.set(chat, 1);
+    this.len = chat.length + 1;
+  }
+}
+
+/*
+ * DEATH ARROW
+ */
+
+class Death_arrow {
+  constructor() {
+    this.canvas = createElement("canvas");
+    this.ctx = this.canvas.getContext("2d");
+
+    this.init();
+  }
+  init() {
+    this.canvas.width = this.canvas.height = settings["death_arrow_size"]["value"];
+    const h = this.canvas.width * 0.5;
+    const k = this.canvas.width;
+    this.ctx.beginPath();
+    this.ctx.moveTo(h + k * 0.45, h);
+    this.ctx.lineTo(h - k * 0.225, h - k * 0.675 / Math.sqrt(3));
+    this.ctx.lineTo(h - k * 0.225, h + k * 0.675 / Math.sqrt(3));
+    this.ctx.closePath();
+    this.ctx.fillStyle = "#bbbbbbb0";
+    this.ctx.fill();
+    this.ctx.lineWidth = h * 0.1;
+    this.ctx.strokeStyle = "#f00";
+    this.ctx.stroke();
+  }
+  draw(ctx) {
+    ctx.drawImage(this.canvas, -this.canvas.width * 0.5, -this.canvas.height * 0.5);
+  }
+}
+
+/*
+ * CHAT
+ */
+
+class Chat {
+  constructor() {
+    this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
+    this.idx = 0;
+
+    this.div = getElementById("chat");
+    this.messages = getElementById("messages");
+    this.sendmsg = getElementById("sendmsg");
+
+    this.limit = limit_input_to(CONSTS.max_chat_message_len);
+
+    this.len = 0;
+
+    this.enabled = false;
+
+    this.visible = false;
+    this.blocked = false;
+
+    this.sendmsg.onkeydown = function(e) {
+      e.stopPropagation();
+      if(e.code == "Enter") {
+        const encoded = new TextEncoder().encode(this.sendmsg.value.trim());
+        if(encoded.length > 0) {
+          PACKET.create_chat_packet(encoded);
+          SOCKET.send();
+          /* MUST NOT BE performance.now() */
+          this.timestamps[this.idx] = new Date().getTime();
+          const next_idx = (this.idx + 1) % CONSTS.max_chat_timestamps;
+          const diff = this.timestamps[this.idx] - this.timestamps[next_idx];
+          this.idx = next_idx;
+          if(diff < CONSTS.max_chat_timestamps * 1000) {
+            const old = this.sendmsg.placeholder;
+            this.sendmsg.placeholder = "You are on cooldown for sending too many messages too fast";
+            this.sendmsg.oncooldown = true;
+            this.sendmsg.onkeypress = this.sendmsg.onpaste = null;
+            setTimeout(function() {
+              this.sendmsg.onkeypress = this.sendmsg.onpaste = this.limit;
+              this.sendmsg.oncooldown = false;
+              this.sendmsg.placeholder = old;
+            }, CONSTS.max_chat_timestamps * 1000 - diff);
+          }
+        }
+        this.sendmsg.value = "";
+        this.sendmsg.blur();
+        CANVAS.canvas.focus();
+      }
+    }.bind(this);
+    this.sendmsg.onkeyup = function(e) {
+      e.stopPropagation();
+    };
+    this.sendmsg.onkeypress = this.sendmsg.onpaste = this.limit;
+  }
+  block_show() {
+    if(!this.visible) {
+      this.blocked = false;
+      this.show();
+    }
+    this.blocked = true;
+  }
+  block_hide() {
+    if(this.visible) {
+      this.blocked = false;
+      this.hide();
+    }
+    this.blocked = true;
+  }
+  unblock() {
+    this.blocked = false;
+  }
+  show() {
+    if(this.blocked) {
       return;
     }
-    switch(x.code) {
-      case "Enter": {
-        if(!sendmsg.oncooldown) {
-          sendmsg.focus();
-        }
-        x.preventDefault();
-        break;
-      }
-      case keybinds["slowwalk"]: {
-        if(movement.mult == 1) {
-          movement.mult = 0.5;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["up"]: {
-        if(!movement.up) {
-          movement.up = 1;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["left"]: {
-        if(!movement.left) {
-          movement.left = 1;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["right"]: {
-        if(!movement.right) {
-          movement.right = 1;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["down"]: {
-        if(!movement.down) {
-          movement.down = 1;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["settings"]: {
-        if(!tutorial_running) {
-          sees_settings = !sees_settings;
-          settings_div.style.display = sees_settings ? "block" : "none";
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["minimap"]: {
-        sees_minimap = !sees_minimap;
-        break;
-      }
-      case "KeyT": {
-        if(!tutorial_running) {
-          if(bg_data.area_id == 0) {
-            tutorial_running = 1;
-            tutorial_stage = 0;
-            old_fov = target_fov;
-            target_fov = settings["fov"]["max"];
-          }
-        } else {
-          ++tutorial_stage;
-        }
-        break;
-      }
-      default: break;
+    this.visible = true;
+    this.div.style.display = "block";
+  }
+  hide() {
+    if(this.blocked) {
+      return;
     }
-  };
-  window.onkeyup = function(x) {
-    if(x.repeat || sees_settings) return;
-    switch(x.code) {
-      case keybinds["slowwalk"]: {
-        if(movement.mult == 0.5) {
-          movement.mult = 1;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["up"]: {
-        if(movement.up) {
-          movement.up = 0;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["left"]: {
-        if(movement.left) {
-          movement.left = 0;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["right"]: {
-        if(movement.right) {
-          movement.right = 0;
-          send_movement();
-        }
-        break;
-      }
-      case keybinds["down"]: {
-        if(movement.down) {
-          movement.down = 0;
-          send_movement();
-        }
-        break;
-      }
-      default: break;
+    this.visible = false;
+    this.div.style.display = "none";
+  }
+  focus(e) {
+    if(!this.sendmsg.oncooldown) {
+      this.sendmsg.focus();
     }
-  };
-  window.onbeforeunload = function(e) {
     e.preventDefault();
-    e.returnValue = "Are you sure you want to quit?";
-    localStorage.setItem("settings", JSON.stringify(settings));
-    return "Are you sure you want to quit?";
-  };
-  canvas.oncontextmenu = function(e) {
+  }
+  new(author, msg) {
+    const p = createElement("p");
+    p.appendChild(document.createTextNode(author + ": " + msg));
+    this.messages.insertBefore(p, this.messages.firstChild);
+    if(++this.len > settings["max_chat_messages"]["value"]) {
+      this.messages.removeChild(this.messages.lastChild);
+    }
+  }
+  update() {
+    while(this.len > settings["max_chat_messages"]["value"]) {
+      this.messages.removeChild(this.messages.lastChild);
+      --this.len;
+    }
+  }
+  font_update() {
+    this.messages.style["font-size"] = settings["chat_text_scale"]["value"] + "em";
+  }
+  parse() {
+    const count = PACKET.byte();
+    for(let i = 0; i < count; ++i) {
+      const name_len = PACKET.byte();
+      const name = new TextDecoder().decode(PACKET.u8.subarray(PACKET.idx, PACKET.idx + name_len));
+      PACKET.idx += name_len;
+      const msg_len = PACKET.byte();
+      this.new(name, new TextDecoder().decode(PACKET.u8.subarray(PACKET.idx, PACKET.idx + msg_len)));
+      PACKET.idx += msg_len;
+    }
+  }
+}
+
+/*
+ * CAMERA
+ */
+
+class Camera {
+  constructor() {
+    this.x = 0;
+    this.y = 0;
+    this.x1 = 0;
+    this.y1 = 0;
+    this.x2 = 0;
+    this.y2 = 0;
+
+    this.blocked = false;
+  }
+  block() {
+    this.blocked = true;
+  }
+  unblock() {
+    this.blocked = false;
+  }
+  move(x, y) {
+    if(this.blocked) {
+      return;
+    }
+    this.move_f(x, y);
+  }
+  instant_move(x, y) {
+    this.move(x, y);
+    this.ip();
+  }
+  move_x(x) {
+    if(this.blocked) {
+      return;
+    }
+    this.x2 = x;
+  }
+  move_y(y) {
+    if(this.blocked) {
+      return;
+    }
+    this.y2 = y;
+  }
+  move_f(x, y) {
+    this.x2 = x;
+    this.y2 = y;
+  }
+  ip() {
+    this.x1 = this.x2;
+    this.y1 = this.y2;
+  }
+}
+
+/*
+ * PLAYERS
+ */
+
+/**
+ * @typedef {{
+ *            x: number,
+ *            y: number,
+ *            r: number,
+ *            x1: number,
+ *            y1: number,
+ *            r1: number,
+ *            x2: number,
+ *            y2: number,
+ *            r2: number,
+ *            name: string,
+ *            dead: boolean,
+ *            death_counter: number,
+ *            is_player: boolean
+ *          }}
+ */
+var Player;
+
+class Players {
+  constructor() {
+    /**
+     * @type {Array<Player>}
+     */
+    this.arr = new Array(CONSTS.max_players);
+  }
+  ip() {
+    for(let i = 0; i < CONSTS.max_players; ++i) {
+      if(this.arr[i] == undefined) continue;
+      this.arr[i].x1 = this.arr[i].x2;
+      this.arr[i].y1 = this.arr[i].y2;
+      this.arr[i].r1 = this.arr[i].r2;
+    }
+  }
+  parse() {
+    const count = PACKET.byte();
+    for(let i = 0; i < count; ++i) {
+      const id = PACKET.byte();
+      if(this.arr[id] == undefined) {
+        const x2 = PACKET.float();
+        const y2 = PACKET.float();
+        const r2 = PACKET.float();
+        const name_len = PACKET.byte();
+        const name = PACKET.string(name_len);
+        const dead = PACKET.byte();
+        let death_counter = 0;
+        if(dead) {
+          death_counter = PACKET.byte();
+        }
+        const chat_len = PACKET.byte();
+        if(chat_len > 0) {
+          CHAT.new(name, PACKET.string(chat_len));
+        }
+        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, is_player: true };
+        if(CLIENT.id == id) {
+          CAMERA.move(x2, y2);
+        }
+      } else {
+        let field = PACKET.byte();
+        if(field == 0) {
+          delete this.arr[id];
+          if(id == CLIENT.id && CLIENT.in_game) {
+            CLIENT.in_game = false;
+            CLIENT.ondeath();
+          }
+          continue;
+        }
+        do {
+          switch(field) {
+            case 1: {
+              this.arr[id].x2 = PACKET.float();
+              if(CLIENT.id == id) {
+                CAMERA.move_x(this.arr[id].x2);
+              }
+              break;
+            }
+            case 2: {
+              this.arr[id].y2 = PACKET.float();
+              if(CLIENT.id == id) {
+                CAMERA.move_y(this.arr[id].y2);
+              }
+              break;
+            }
+            case 3: {
+              this.arr[id].r2 = PACKET.float();
+              break;
+            }
+            case 4: {
+              this.arr[id].dead = PACKET.byte();
+              if(this.arr[id].dead) {
+                this.arr[id].death_counter = PACKET.byte();
+              }
+              break;
+            }
+            case 5: {
+              const chat_len = PACKET.byte();
+              CHAT.new(this.arr[id].name, PACKET.string(chat_len));
+              break;
+            }
+            default: throw new Error();
+          }
+          field = PACKET.byte();
+        } while(field);
+      }
+    }
+  }
+}
+
+/*
+ * BALLS
+ */
+
+/**
+ * @typedef {{
+ *            x: number,
+ *            y: number,
+ *            r: number,
+ *            x1: number,
+ *            y1: number,
+ *            r1: number,
+ *            x2: number,
+ *            y2: number,
+ *            r2: number,
+ *            type: number,
+ *            is_player: boolean
+ *          }}
+ */
+var Ball;
+
+class Balls {
+  constructor() {
+    /**
+     * @type {Array<Ball>}
+     */
+    this.arr = new Array(CONSTS.max_balls);
+
+    this.clear();
+  }
+  clear() {
+    this.arr = new Array(CONSTS.max_balls);
+  }
+  ip() {
+    for(let i = 0; i < CONSTS.max_balls; ++i) {
+      if(this.arr[i] == undefined) continue;
+      this.arr[i].x1 = this.arr[i].x2;
+      this.arr[i].y1 = this.arr[i].y2;
+      this.arr[i].r1 = this.arr[i].r2;
+    }
+  }
+  parse() {
+    const count = PACKET.short();
+    for(let i = 0; i < count; ++i) {
+      const id = PACKET.short();
+      if(this.arr[id] == undefined) {
+        const type = PACKET.byte() - 1;
+        const x2 = PACKET.float();
+        const y2 = PACKET.float();
+        const r2 = PACKET.float();
+        this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, is_player: false };
+      } else {
+        let field = PACKET.byte();
+        if(field == 0) {
+          delete this.arr[id];
+          continue;
+        }
+        do {
+          switch(field) {
+            case 1: {
+              this.arr[id].x2 = PACKET.float();
+              break;
+            }
+            case 2: {
+              this.arr[id].y2 = PACKET.float();
+              break;
+            }
+            case 3: {
+              this.arr[id].r2 = PACKET.float();
+              break;
+            }
+            default: throw new Error();
+          }
+          field = PACKET.byte();
+        } while(field);
+      }
+    }
+  }
+}
+
+/*
+ * KEY PROBER
+ */
+
+class Key_prober {
+  constructor() {
+    this.resolve = null;
+
+    this.probing = false;
+  }
+  probe() {
+    this.probing = true;
+    const that = this;
+    return new Promise(function(resolve) {
+      that.resolve = function(key) {
+        that.probing = false;
+        resolve(key);
+      };
+    });
+  }
+}
+
+/*
+ * SETTINGS
+ */
+
+class Settings {
+  constructor() {
+    this.div = getElementById("settings");
+    this.insert = getElementById("ss");
+
+    this.visible = false;
+    this.blocked = false;
+
+    this.table = null;
+
+    this.init();
+  }
+  block_show() {
+    if(!this.visible) {
+      this.blocked = false;
+      this.show();
+    }
+    this.blocked = true;
+  }
+  block_hide() {
+    if(this.visible) {
+      this.blocked = false;
+      this.hide();
+    }
+    this.blocked = true;
+  }
+  unblock() {
+    this.blocked = false;
+  }
+  show() {
+    if(this.blocked) {
+      return;
+    }
+    this.visible = true;
+    this.div.style.display = "block";
+    MOVEMENT.stop();
+    MOVEMENT.block();
+  }
+  hide() {
+    if(this.blocked) {
+      return;
+    }
+    this.visible = false;
+    this.div.style.display = "none";
+    MOVEMENT.unblock();
+    MOVEMENT.start();
+  }
+  show_el(el) {
+    this.insert.appendChild(el);
+  }
+  add(left, right) {
+    const tr = createElement("tr");
+    let td = createElement("td");
+    td.appendChild(left);
+    tr.appendChild(td);
+    td = createElement("td");
+    td.appendChild(right);
+    right.onchange = save_settings;
+    tr.appendChild(td);
+    this.table.appendChild(tr);
+  }
+  end() {
+    if(this.table != null) {
+      this.show_el(this.table);
+    }
+  }
+  new(name) {
+    this.end();
+    this.show_el(this.header(name));
+    this.table = createElement("table");
+  }
+  _create_h(which, content) {
+    const h = createElement(which);
+    h.innerHTML = content;
+    return h;
+  }
+  header(content) {
+    return this._create_h("h1", content);
+  }
+  text(content) {
+    return this._create_h("h3", content);
+  }
+  comment(content) {
+    return this._create_h("h5", content);
+  }
+  switch(name, cb=function(a){}) {
+    const btn = createElement("button");
+    settings[name] = !settings[name];
+    let first = true;
+    btn.onclick = function() {
+      settings[name] = !settings[name];
+      if(settings[name] == true) {
+        btn.innerHTML = "ON";
+        btn.style["background-color"] = "#23c552";
+      } else {
+        btn.innerHTML = "OFF";
+        btn.style["background-color"] = "#f84f31";
+      }
+      save_settings();
+      if(first) {
+        first = false;
+      } else {
+        cb(settings[name]);
+      }
+    };
+    btn.onclick();
+    return btn;
+  }
+  list(name) {
+    const select = createElement("select");
+    for(let option of settings[name]["options"]) {
+      const opt = createElement("option");
+      opt.value = option;
+      if(option == settings[name]["selected"]) {
+        opt.selected = 1;
+      }
+      opt.innerHTML = option;
+      select.appendChild(opt);
+    }
+    select.onchange = save_settings;
+    return select;
+  }
+  keybind(name) {
+    const btn = createElement("button");
+    btn.innerHTML = keybinds[name];
+    btn.onclick = async function() {
+      btn.innerHTML = "...";
+      const key = await KEY_PROBER.probe();
+      btn.innerHTML = key;
+      keybinds[name] = key;
+      save_keybinds();
+    };
+    btn.style.color = "#000";
+    return btn;
+  }
+  slider(name, suffix="", cb=function(){}) {
+    const div = createElement("div");
+    div.className = "input";
+    const input = createElement("input");
+    input.type = "range";
+    input.min = settings[name]["min"];
+    input.max = settings[name]["max"];
+    input.step = settings[name]["step"];
+    input.value = settings[name]["value"];
+    input.oninput = function() {
+      input.nextElementSibling.innerHTML = input.value + suffix;
+      settings[name]["value"] = input.valueAsNumber;
+      cb();
+    };
+    input.onchange = save_settings;
+    div.appendChild(input);
+    div.appendChild(this.text(input.value + suffix));
+    return div;
+  }
+  button(name, cb) {
+    const btn = createElement("button");
+    btn.innerHTML = name;
+    btn.onclick = cb;
+    return btn;
+  }
+  init() {
+    this.insert.innerHTML = "";
+    this.new("CHAT");
+    this.add(this.text("Show chat"), this.switch("chat_on", function(visible) {
+      console.log(visible);
+      if(visible) {
+        CHAT.show();
+      } else {
+        CHAT.hide();
+      }
+    }));
+    this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", CHAT.update));
+    this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update));
+
+    this.new("HELP");
+    this.add(this.text("Enable tutorial"), this.switch("show_tutorial"));
+
+    this.new("VISUALS");
+    this.add(this.text("Default FOV"), this.slider("fov"));
+    this.add(this.text("Draw balls' fill"), this.switch("draw_ball_fill"));
+    this.add(this.text("Draw balls' stroke"), this.switch("draw_ball_stroke"));
+    this.add(this.text("Draw stroke-only balls with brighter color"), this.switch("draw_ball_stroke_bright"));
+    this.add(this.text("Balls' stroke radius percentage"), this.slider("ball_stroke", "%"));
+    this.add(this.text("Draw players' fill"), this.switch("draw_player_fill"));
+    this.add(this.text("Draw players' stroke"), this.switch("draw_player_stroke"));
+    this.add(this.text("Draw stroke-only players with brighter color"), this.switch("draw_player_stroke_bright"));
+    this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
+    this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
+    this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
+    this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init));
+
+    this.new("KEYBINDS");
+    this.show_el(this.comment("To change, click a button on the right side and then press the key you want to asign to it."));
+    this.add(this.text("Settings"), this.keybind("settings"));
+    this.add(this.text("Move up"), this.keybind("up"));
+    this.add(this.text("Move left"), this.keybind("left"));
+    this.add(this.text("Move down"), this.keybind("down"));
+    this.add(this.text("Move right"), this.keybind("right"));
+    this.add(this.text("Move slowly"), this.keybind("slowwalk"));
+    this.add(this.text("Big minimap"), this.keybind("minimap"));
+
+    this.new("RESET");
+    this.add(this.text("Reset settings"), this.button("RESET", function() {
+      settings = default_settings;
+      save_settings();
+      this.init();
+    }.bind(this)));
+    this.add(this.text("Reset keybinds"), this.button("RESET", function() {
+      keybinds = default_keybinds;
+      save_keybinds();
+      this.init();
+    }.bind(this)));
+
+    this.end();
+  }
+}
+
+/*
+ * BACKGROUND
+ */
+
+class Background {
+  constructor() {
+    this.canvas = createElement("canvas");
+    this.ctx = this.canvas.getContext("2d");
+
+    this.light_canvas = createElement("canvas");
+    this.light_ctx = this.light_canvas.getContext("2d");
+
+    this.width = 0;
+    this.height = 0;
+
+    this.area_id = -1;
+  }
+  parse() {
+    this.area_id = PACKET.byte();
+    const w = PACKET.byte();
+    const h = PACKET.byte();
+    const cell_size = PACKET.byte();
+    const fov_max = settings["fov"]["max"];
+    const fov_cell_size = cell_size * fov_max;
+    const teleports = new Array(PACKET.byte());
+    for(let i = 0; i < teleports.length; ++i) {
+      teleports[i] = [
+        (PACKET.byte() + 0.5) * fov_cell_size,
+        (PACKET.byte() + 0.5) * fov_cell_size,
+        PACKET.byte()
+      ]
+    }
+    const fills = new Array(256);
+    const strokes = new Array(256);
+    for(let x = 0; x < w; ++x) {
+      for(let y = 0; y < h; ++y) {
+        const i = PACKET.u8[PACKET.idx];
+        if(fills[i] == undefined) {
+          fills[i] = new Path2D();
+          strokes[i] = new Path2D();
+        }
+        fills[i].rect(
+          (1.5 + x * cell_size) * fov_max,
+          (1.5 + y * cell_size) * fov_max,
+          (cell_size - 1.5 * 2) * fov_max,
+          (cell_size - 1.5 * 2) * fov_max
+        );
+        strokes[i].rect(
+          x * fov_cell_size,
+          y * fov_cell_size,
+          fov_cell_size,
+          fov_cell_size
+        );
+        ++PACKET.idx;
+      }
+    }
+
+    CLIENT.id = PACKET.byte() - 1;
+    const spectating = PACKET.byte();
+    if(spectating && !CLIENT.spectating) {
+      if(CLIENT.in_game) {
+        CLIENT.in_game = false;
+        CLIENT.ondeath();
+      }
+      CLIENT.spectating = true;
+      CLIENT.onspectatestart();
+    } else if(!spectating && CLIENT.spectating) {
+      CLIENT.spectating = false;
+      CLIENT.onspectatestop();
+    }
+
+    if(!CLIENT.in_game && !spectating && !CLIENT.spectating && CLIENT.id != -1) {
+      CLIENT.in_game = true;
+      CLIENT.onspawn();
+    }
+    
+    this.width = w * cell_size;
+    this.height = h * cell_size;
+
+    this.canvas.width = this.width * fov_max;
+    this.canvas.height = this.height * fov_max;
+    this.light_canvas.width = this.canvas.width;
+    this.light_canvas.height = this.canvas.height;
+    for(let i = 0; i < 256; ++i) {
+      if(fills[i] == undefined) continue;
+      this.ctx.fillStyle = Tile_colors[i] + "b0";
+      this.ctx.fill(strokes[i]);
+      this.ctx.fillStyle = Tile_colors[i];
+      this.ctx.fill(fills[i]);
+      this.light_ctx.fillStyle = Tile_colors[i];
+      this.light_ctx.fill(strokes[i]);
+    }
+    this.ctx.font = `700 ${cell_size}px Ubuntu`;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillStyle = Tile_colors[3].darken();
+    for(const tp of teleports) {
+      this.ctx.fillText(tp[2], tp[0], tp[1]);
+    }
+  }
+}
+
+/*
+ * CANVAS
+ */
+
+class Canvas {
+  constructor() {
+    this.canvas = getElementById("canvas");
+    this.ctx = this.canvas.getContext("2d");
+
+    this.width = 0;
+    this.height = 0;
+
+    this.fov = settings["fov"]["value"];
+    this.target_fov = this.fov;
+
+    this.x = 0;
+    this.y = 0;
+
+    this.stop_draw = false;
+    this.draw_at = 0;
+    this.last_draw_at = 0;
+
+    this.canvas.onwheel = this.wheel.bind(this);
+    this.canvas.onmousedown = this.mousedown.bind(this);
+    this.canvas.oncontextmenu = this.contextmenu.bind(this);
+  }
+  resize() {
+    this.width = WINDOW.innerWidth * WINDOW.devicePixelRatio;
+    this.height = WINDOW.innerHeight * WINDOW.devicePixelRatio;
+
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+  }
+  stop() {
+    this.stop_draw = true;
+    this.canvas.parentElement.removeChild(this.canvas);
+  }
+  wheel(e) {
+    const add = -Math.sign(e.deltaY) * 0.05;
+    if(this.target_fov > 1) {
+      this.target_fov += add * 3;
+    } else {
+      this.target_fov += add;
+    }
+    this.target_fov = Math.min(Math.max(this.target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
+  }
+  mousedown() {
+    MOVEMENT.mouse_movement = !MOVEMENT.mouse_movement;
+    MOVEMENT.send();
+  }
+  contextmenu(e) {
     e.preventDefault();
     return false;
-  };
-  function draw(when) {
-    if(updates[0] == 0) {
-      requestAnimationFrame(draw);
-      return;
-    }
-    if(settings["chat_on"] == !sees_chat) {
-      sees_chat = settings["chat_on"];
-      if(sees_chat) {
-        chat.style.display = "block";
-      } else {
-        chat.style.display = "none";
-      }
-    }
-    if(!now) {
-      now = updates[0];
-    } else if(now < updates[0]) {
-      now = updates[0];
-    } else if(now > updates[1]) {
-      now = updates[1];
-    }
-    let old = fov;
-    fov = lerp(fov, target_fov, 0.1);
-    if(fov != old) {
-      movement.distance = Math.hypot(mouse[0] - canvas.width * 0.5, mouse[1] - canvas.height * 0.5) / fov;
-      send_movement();
+  }
+  text(text, x, y) {
+    this.ctx.font = `700 20px Ubuntu`;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillStyle = "#fff";
+    this.ctx.strokeStyle = "#333";
+    this.ctx.lineWidth = 1;
+    this.ctx.fillText(text, x, y);
+    this.ctx.strokeText(text, x, y);
+  }
+  start_drawing() {
+    window.requestAnimationFrame(this.draw.bind(this));
+  }
+  draw(when) {
+    if(this.stop_draw) return;
+    this.draw_at = Math.min(Math.max(this.draw_at, SOCKET.updates[0]), SOCKET.updates[1]);
+    const old = this.fov;
+    this.fov = lerp(this.fov, this.target_fov, 0.1);
+    if(this.fov != old) {
+      MOVEMENT.send();
     }
     let by;
-    if(updates[0] == updates[1]) {
-      by = 0;
+    if(SOCKET.updates[0] == SOCKET.updates[1]) {
+      by = 1;
     } else {
-      by = (now - updates[0]) / (updates[1] - updates[0]);
+      by = (this.draw_at - SOCKET.updates[0]) / (SOCKET.updates[1] - SOCKET.updates[0]);
     }
-    now += when - last_draw;
-    last_draw = when;
-    if(!tutorial_running || tutorial_stage == 0) {
-      us.x = lerp(us.ip.x1, us.ip.x2, by);
-      us.y = lerp(us.ip.y1, us.ip.y2, by);
+    this.draw_at += when - this.last_draw_at;
+    this.last_draw_at = when;
+    CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
+    CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
+    //tutorial stuff here from git
+    this.ctx.resetTransform();
+    this.ctx.fillStyle = "#333";
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.translate(this.canvas.width * 0.5, this.canvas.height * 0.5);
+    this.ctx.scale(this.fov, this.fov);
+    this.ctx.translate(-CAMERA.x, -CAMERA.y);
+    this.ctx.drawImage(BACKGROUND.canvas, 0, 0, BACKGROUND.width, BACKGROUND.height);
+    if(this.fov < 1) {
+      this.ctx.globalAlpha = 1 - (this.fov - settings["fov"]["min"]) * 4 / 3;
+      this.ctx.drawImage(BACKGROUND.light_canvas, 0, 0, BACKGROUND.width, BACKGROUND.height);
+      this.ctx.globalAlpha = 1;
     }
-    ctx.resetTransform();
-    ctx.fillStyle = "#333";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.translate(canvas.width * 0.5, canvas.height * 0.5);
-    ctx.scale(fov, fov);
-    //ctx.drawImage(minimap, -minimap.width / 2 / settings["fov"]["max"], -minimap.height / 2 / settings["fov"]["max"], minimap.width / settings["fov"]["max"], minimap.height / settings["fov"]["max"]);
-    ctx.translate(-us.x, -us.y);
-    ctx.drawImage(background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
-    if(fov < 1) {
-      ctx.globalAlpha = 1 - (fov - settings["fov"]["min"]) * 4 / 3;
-      ctx.drawImage(light_background, 0, 0, background.width / settings["fov"]["max"], background.height / settings["fov"]["max"]);
-      ctx.globalAlpha = 1;
-    }
-    let sorted = [];
+    const sorted = new Array(CONSTS.max_players + CONSTS.max_balls);
+    let idx = 0;
     if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
-      for(let player of players) {
-        if(!player) continue;
-        player.x = lerp(player.ip.x1, player.ip.x2, by);
-        player.y = lerp(player.ip.y1, player.ip.y2, by);
-        player.r = lerp(player.ip.r1, player.ip.r2, by);
-        sorted[sorted.length] = { player };
+      for(let i = 0; i < CONSTS.max_players; ++i) {
+        if(PLAYERS.arr[i] == undefined) continue;
+        PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
+        PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
+        PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
+        sorted[idx++] = PLAYERS.arr[i];
       }
     }
     if(settings["draw_ball_fill"] || settings["draw_ball_stroke"]) {
-      for(let ball of balls) {
-        if(!ball) continue;
-        ball.x = lerp(ball.ip.x1, ball.ip.x2, by);
-        ball.y = lerp(ball.ip.y1, ball.ip.y2, by);
-        ball.r = lerp(ball.ip.r1, ball.ip.r2, by);
-        sorted[sorted.length] = { ball };
+      for(let i = 0; i < CONSTS.max_balls; ++i) {
+        if(BALLS.arr[i] == undefined) continue;
+        BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
+        BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
+        BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
+        sorted[idx++] = BALLS.arr[i];
       }
     }
-    sorted.sort((a, b) => a.r - b.r);
-    for(let { ball, player } of sorted) {
-      ctx.beginPath();
-      if(player) {
-        let r_sub = player.r * (settings["player_stroke"]["value"] / 200);
-        ctx.moveTo(player.x + player.r - r_sub, player.y);
-        ctx.arc(player.x, player.y, player.r - r_sub, 0, Math.PI * 2);
-        if(settings["draw_player_fill"]) {
-          ctx.fillStyle = "#ebecf0";
-          ctx.fill();
-        }
-        if(settings["draw_player_stroke"]) {
-          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
-            ctx.strokeStyle = "#ebecf0";
-          } else {
-            ctx.strokeStyle = darken("#ebecf0");
-          }
-          ctx.lineWidth = r_sub * 2;
-          ctx.stroke();
-        }
-        if(settings["draw_player_name"] && player.name.length != 0) {
-          ctx.font = `700 ${player.r / fov}px Ubuntu`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = "#00000080";
-          if(fov > 1) {
-            target_name_y = player.r * 0.5;
-          } else {
-            target_name_y = player.r * 0.5 + (2 / (fov * fov));
-          }
-          name_y = lerp(name_y, target_name_y, 0.1);
-          ctx.fillText(player.name, player.x, player.y - player.r - name_y);
-        }
-        if(player.dead) {
-          ctx.font = `700 ${player.r / Math.min(fov, 1)}px Ubuntu`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = "#f00";
-          ctx.fillText(player.death_counter, player.x, player.y);
-          if(settings["draw_death_arrow"]) {
-            let s_x = canvas.width * 0.5 + (player.x - us.x) * fov;
-            let s_y = canvas.height * 0.5 + (player.y - us.y) * fov;
-            let k = death_arrow.width * 0.75 * fov;
-            if(s_x < 0 || s_x > canvas.width || s_y < 0 || s_y > canvas.height) {
-              let t_x = Math.max(Math.min(s_x, canvas.width - k), k);
-              let t_y = Math.max(Math.min(s_y, canvas.height - k), k);
-              let angle;
-              if((s_x < k || s_x > canvas.width - k) && (s_y < k || s_y > canvas.height - k)) {
-                angle = Math.atan2(s_y - t_y, s_x - t_x);
-              } else {
-                angle = Math.atan2(s_y < k ? -1 : s_y > canvas.height - k ? 1 : 0, s_x < k ? -1 : s_x > canvas.width - k ? 1 : 0);
-              }
-              let r_x = (t_x - canvas.width * 0.5) / fov + us.x;
-              let r_y = (t_y - canvas.height * 0.5) / fov + us.y;
-              ctx.translate(r_x, r_y);
-              ctx.rotate(angle);
-              ctx.drawImage(death_arrow, -death_arrow.width * 0.5, -death_arrow.width * 0.5);
-              ctx.rotate(-angle);
-              ctx.font = `700 ${death_arrow.width * 0.3}px Ubuntu`;
-              ctx.textAlign = "center";
-              ctx.textBaseline = "middle";
-              ctx.fillStyle = "#f00";
-              ctx.fillText(player.death_counter, 0, 0);
-              ctx.translate(-r_x, -r_y);
-            }
-          }
-        }
+    sorted.sort((a, b) => b.r - a.r);
+    for(let i = 0; i < sorted.length; ++i) {
+      if(sorted[i] == undefined) continue;
+      this.ctx.beginPath();
+      const obj = sorted[i];
+      if(obj.is_player) {
       } else {
-        let r_sub = ball.r * (settings["ball_stroke"]["value"] / 200);
-        ctx.moveTo(ball.x + ball.r - r_sub, ball.y);
-        ctx.arc(ball.x, ball.y, ball.r - r_sub, 0, Math.PI * 2);
+        const r_sub = obj.r * (settings["ball_stroke"]["value"] / 200);
+        this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);
+        this.ctx.arc(obj.x, obj.y, obj.r - r_sub, 0, Math.PI * 2);
         if(settings["draw_ball_fill"]) {
-          ctx.fillStyle = ball_colors[ball.type];
-          ctx.fill();
+          this.ctx.fillStyle = Ball_colors[obj.type];
+          this.ctx.fill();
         }
         if(settings["draw_ball_stroke"]) {
           if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
-            ctx.strokeStyle = ball_colors[ball.type];
+            this.ctx.strokeStyle = Ball_colors[obj.type];
           } else {
-            ctx.strokeStyle = darken(ball_colors[ball.type]);
+            this.ctx.strokeStyle = Ball_colors[obj.type].darken();
           }
-          ctx.lineWidth = r_sub * 2;
-          ctx.stroke();
+          this.ctx.lineWidth = r_sub * 2;
+          this.ctx.stroke();
         }
       }
     }
-    if(!tutorial_running) {
-      if(bg_data.area_id == 0 && !saw_tutorial) {
-        draw_text("Need help? Press T for a tutorial.", bg_data.real_width * 0.5, bg_data.cell_size * 2.5);
-      }
-    } else {
-      switch(tutorial_stage) {
-        case 0: {
-          draw_text("<-- Your character", us.x + 110, us.y);
-          draw_text("Your character -->", us.x - 110, us.y);
-          draw_text("This is your character. You can control it with these keys:", us.x, us.y - 220);
-          draw_text(`${keybinds["up"]}: up`, us.x, us.y - 170);
-          draw_text(`${keybinds["left"]}: left`, us.x, us.y - 130);
-          draw_text(`${keybinds["down"]}: down`, us.x, us.y - 90);
-          draw_text(`${keybinds["right"]}: right`, us.x, us.y - 50);
-          draw_text("You can also control it with mouse. Just", us.x, us.y + 50);
-          draw_text("press any mouse button to start or stop moving.", us.x, us.y + 70);
-          draw_text("Scroll to change your field of view.", us.x, us.y + 110);
-          draw_text("Note that you won't be able to perform some", us.x, us.y + 150);
-          draw_text("of the above actions until the tutorial ends.", us.x, us.y + 170);
-          draw_text("Press T to continue", us.x, us.y + 220);
-          break;
-        }
-        case 1: {
-          const _x = bg_data.real_width * 0.5 - bg_data.cell_size * 6;
-          const _y = bg_data.real_height * 0.5;
-          us.x = lerp(us.x, _x, 0.2 * by);
-          us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text("-->", _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 1);
-          draw_text("-->", _x + bg_data.cell_size * 2, _y);
-          draw_text("-->", _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 1);
-          draw_text("<--", _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
-          draw_text("<--", _x - bg_data.cell_size * 3, _y - bg_data.cell_size * 1);
-          draw_text("<--", _x - bg_data.cell_size * 4, _y);
-          draw_text("<--", _x - bg_data.cell_size * 3, _y + bg_data.cell_size * 1);
-          draw_text("<--", _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
-          draw_text("These are safezones. Enemies can't", _x, _y - 130);
-          draw_text("reach you inside of these tiles.", _x, _y - 110);
-          draw_text("Press T to continue", _x, _y + 110);
-          break;
-        }
-        case 2: {
-          const _x = bg_data.real_width * 0.5 + bg_data.cell_size * 6;
-          const _y = bg_data.real_height * 0.5;
-          us.x = lerp(us.x, _x, 0.2 * by);
-          us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text("<--", _x - bg_data.cell_size * 2, _y - bg_data.cell_size * 2);
-          draw_text("<--", _x - bg_data.cell_size * 1, _y - bg_data.cell_size * 3);
-          draw_text("<--", _x, _y - bg_data.cell_size * 4);
-          draw_text("<--", _x - bg_data.cell_size * 2, _y + bg_data.cell_size * 2);
-          draw_text("<--", _x - bg_data.cell_size * 1, _y + bg_data.cell_size * 3);
-          draw_text("<--", _x, _y + bg_data.cell_size * 4);
-          draw_text("-->", _x + bg_data.cell_size * 2, _y - bg_data.cell_size * 3);
-          draw_text("-->", _x + bg_data.cell_size * 2, _y + bg_data.cell_size * 3);
-          draw_text("<--", _x + bg_data.cell_size * 5, _y - bg_data.cell_size * 2);
-          draw_text("<--", _x + bg_data.cell_size * 6, _y - bg_data.cell_size * 1);
-          draw_text("<--", _x + bg_data.cell_size * 7, _y);
-          draw_text("<--", _x + bg_data.cell_size * 6, _y + bg_data.cell_size * 1);
-          draw_text("<--", _x + bg_data.cell_size * 5, _y + bg_data.cell_size * 2);
-          draw_text("These are walls. Players can't walk over them.", _x, _y - 40);
-          draw_text("However, some types (colors) of enemies can.", _x, _y - 10);
-          draw_text("Press T to continue", _x, _y + 40);
-          break;
-        }
-        case 3: {
-          const _x = bg_data.cell_size * 0.5;
-          const _y = bg_data.real_height * 0.5;
-          us.x = lerp(us.x, _x, 0.2 * by);
-          us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text("-->", _x, _y);
-          draw_text("This is a teleport tile. If you walk on it, it will teleport you", _x, _y - 90);
-          draw_text("to an area it points to. Using the number on the tile, you can", _x, _y - 70);
-          draw_text("look at the minimap in the top left corner to see where that area is.", _x, _y - 50);
-          draw_text("Press T to continue", _x, _y + 50);
-          break;
-        }
-        case 4: {
-          let first_ball;
-          for(const ball of balls) {
-            if(ball) {
-              first_ball = ball;
-              break;
-            }
-          }
-          const _x = first_ball.x;
-          const _y = first_ball.y;
-          us.x = lerp(us.x, _x, 0.2 * by);
-          us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text("Enemy ball -->", _x - 110, _y);
-          draw_text("<-- Enemy ball", _x + 110, _y);
-          draw_text("This is an enemy, also called simply a ball. A grey ball", _x, _y - 110);
-          draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
-          draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
-          draw_text("there are lots of types of enemies, each having their own color.", _x, _y - 50);
-          draw_text("Coming in contact with an enemy downs you. While downed, you can't move,", _x, _y + 50);
-          draw_text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
-          draw_text("Press T to continue", _x, _y + 120);
-          break;
-        }
-        case 5: {
-          const _x = us.ip.x2;
-          const _y = us.ip.y2;
-          us.x = lerp(us.x, _x, 0.2 * by);
-          us.y = lerp(us.y, _y, 0.2 * by);
-          draw_text(`You can press ${keybinds["settings"]} to open settings.`, _x, _y - 80);
-          draw_text("There are a lot of cool options to change. Try it out later.", _x, _y - 60);
-          draw_text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
-          draw_text("GLHF!", _x, _y + 80);
-          draw_text("Press T to end the tutorial", _x, _y + 130);
-          break;
-        }
-        case 6: {
-          target_fov = old_fov;
-          tutorial_running = 0;
-          localStorage.setItem("tutorial", "1");
-          saw_tutorial = 1;
-          break;
-        }
-      }
-    }
-    requestAnimationFrame(draw);
+    window.requestAnimationFrame(this.draw.bind(this));
   }
-  function start_drawing() {
-    if(!drawing) {
-      requestAnimationFrame(draw);
-      drawing = 1;
+}
+
+/*
+ * WINDOW
+ */
+
+class _Window {
+  constructor() {
+    this.devicePixelRatio = 0;
+    this.innerWidth = 0;
+    this.innerHeight = 0;
+
+    this.mouse = [0, 0];
+
+    this.prevent_unload = true;
+
+    window.onresize = this.resize.bind(this);
+    window.onkeyup = this.keyup.bind(this);
+    window.onkeydown = this.keydown.bind(this);
+    window.onmousemove = this.mousemove.bind(this);
+    window.onbeforeunload = this.beforeunload.bind(this);
+  }
+  resize() {
+    if(window.devicePixelRatio != this.devicePixelRatio || window.innerWidth != this.innerWidth || window.innerHeight != this.innerHeight) {
+      this.devicePixelRatio = window.devicePixelRatio;
+      this.innerWidth = window.innerWidth;
+      this.innerHeight = window.innerHeight;
+      CANVAS.resize();
+    }
+  }
+  keydown(e) {
+    if(e.repeat) {
+      return;
+    }
+    if(KEY_PROBER.probing) {
+      e.preventDefault();
+      KEY_PROBER.resolve(e.code);
+      return;
+    }
+    if(e.code == keybinds["settings"]) {
+      if(SETTINGS.visible) {
+        SETTINGS.hide();
+      } else {
+        SETTINGS.show();
+      }
+      return;
+    }
+    switch(e.code) {
+      case "Enter": {
+        CHAT.focus(e);
+        break;
+      }
+      case keybinds["slowwalk"]: {
+        if(MOVEMENT.get_mult() == 1) {
+          MOVEMENT.upd_mult(0.5);
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["up"]: {
+        if(!MOVEMENT.up) {
+          MOVEMENT.up = 1;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["down"]: {
+        if(!MOVEMENT.down) {
+          MOVEMENT.down = 1;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["left"]: {
+        if(!MOVEMENT.left) {
+          MOVEMENT.left = 1;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["right"]: {
+        if(!MOVEMENT.right) {
+          MOVEMENT.right = 1;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case "KeyT": {
+        break;
+      }
+      default: break;
+    }
+  }
+  keyup(e) {
+    if(e.repeat) {
+      return;
+    }
+    switch(e.code) {
+      case keybinds["slowwalk"]: {
+        if(MOVEMENT.get_mult() == 0.5) {
+          MOVEMENT.upd_mult(1);
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["up"]: {
+        if(MOVEMENT.up) {
+          MOVEMENT.up = 0;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["down"]: {
+        if(MOVEMENT.down) {
+          MOVEMENT.down = 0;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["left"]: {
+        if(MOVEMENT.left) {
+          MOVEMENT.left = 0;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["right"]: {
+        if(MOVEMENT.right) {
+          MOVEMENT.right = 0;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+  mousemove(e) {
+    this.mouse = [e.clientX * this.devicePixelRatio, e.clientY * this.devicePixelRatio];
+    MOVEMENT.send();
+  }
+  beforeunload(e) {
+    if(!this.prevent_unload) {
+      return;
+    }
+    e.preventDefault();
+    e.returnValue = "Are you sure you want to quit?";
+    save_settings();
+    return "Are you sure you want to quit?";
+  }
+}
+
+/*
+ * MOVEMENT
+ */
+
+class Movement {
+  constructor() {
+    this.mouse_movement = false;
+
+    this.old_mult = 1;
+    this.mult = 1;
+
+    this.blocked = false;
+
+    this.up = 0;
+    this.down = 0;
+    this.left = 0;
+    this.right = 0;
+  }
+  block() {
+    this.blocked = true;
+  }
+  unblock() {
+    this.blocked = false;
+  }
+  stop() {
+    if(this.blocked) {
+      return;
+    }
+    this.old_mult = this.mult;
+    this.mult = 0;
+    this.send();
+  }
+  start() {
+    if(this.blocked) {
+      return;
+    }
+    this.mult = this.old_mult;
+    this.send();
+  }
+  upd_mult(mult) {
+    if(!this.blocked) {
+      this.mult = mult;
+    }
+    this.old_mult = mult;
+  }
+  get_mult() {
+    return this.old_mult;
+  }
+  send() {
+    if(CLIENT.id != -1 && !this.blocked) {
+      PACKET.create_movement_packet();
+      SOCKET.send();
     }
   }
 }
+
+/*
+ * CLIENT
+ */
+
+class Client {
+  constructor() {
+    this.in_game = false;
+    this.spectating = false;
+    this.id = -1;
+  }
+  onconnecting() {
+    status.innerHTML = "Connecting";
+    MENU.hide();
+    CHAT.hide();
+  }
+  onconnected() {
+    MENU.show();
+    CHAT.show();
+  }
+  ondisconnected() {
+    status.innerHTML = "Disconnected";
+    MENU.hide_name();
+    WINDOW.prevent_unload = false;
+  }
+  onspectatestart() {
+    MENU.hide();
+  }
+  onspectatestop() {
+    MENU.show();
+  }
+  onspawn() {
+    MENU.hide();
+  }
+  ondeath() {
+    MENU.show();
+  }
+}
+
+/*
+ * INIT
+ */
+
+const MENU = new Menu();
+const SOCKET = new Socket();
+const PACKET = new Packet();
+const DEATH_ARROW = new Death_arrow();
+const CHAT = new Chat();
+const CAMERA = new Camera();
+const PLAYERS = new Players();
+const BALLS = new Balls();
+const KEY_PROBER = new Key_prober();
+const SETTINGS = new Settings();
+const BACKGROUND = new Background();
+const CANVAS = new Canvas();
+const WINDOW = new _Window();
+const MOVEMENT = new Movement();
+const CLIENT = new Client();
+
+WINDOW.resize();
+
+(async function() {
+  CLIENT.onconnecting();
+  let resolver;
+  const promise = new Promise(function(resolve) {
+    resolver = resolve;
+  });
+  const latency_sockets = [];
+  for(const [players, max_players, ip] of window["s"]) {
+    latency_sockets[latency_sockets.length] = new Latency_socket(ip, resolver);
+  }
+  setTimeout(resolver, 2000, "");
+  const ret = await promise;
+  let url;
+  if(ret.length == 0) {
+    let max = 0;
+    for(const socket of latency_sockets) {
+      if(socket.ws.readyState == WebSocket.OPEN && socket.packets > max) {
+        max = socket.packets;
+        url = socket.ws.url;
+      }
+    }
+  } else {
+    url = ret;
+  }
+  if(url == undefined) {
+    status.innerHTML = "Couldn't connect to any server";
+    reload();
+    throw new Error(status.innerHTML);
+  }
+  for(const socket of latency_sockets) {
+    if(socket.ws.url != url) {
+      socket.stop();
+    } else {
+      SOCKET.takeover(socket);
+      const match = url.match(/\/\/(.*?)\.shadam\.xyz/);
+      const match2 = url.match(/\/\/(.*?)[\/:]/);
+      MENU.set_server_to(match ? match[1] : (match2 ? match2[1] : url));
+    }
+  }
+})();

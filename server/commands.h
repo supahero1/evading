@@ -5,9 +5,7 @@
 
 enum game_command {
   command_invalid,
-  command_respawn,
-
-  commands_len
+  command_respawn
 };
 
 struct command_def {
@@ -23,6 +21,6 @@ struct command_hashmap {
 
 extern void init_commands(void);
 
-extern uint16_t find_command(const char* const, const uint32_t);
+extern uint16_t find_command(const char*, uint32_t);
 
 #endif // game_commands_h

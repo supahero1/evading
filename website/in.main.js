@@ -8,9 +8,11 @@ function read(path) {
 const main_checksum = read("../client/main.checksum.txt").substring(15, 23) + ".js";
 const style_checksum = read("../client/style.checksum.txt").substring(15, 23) + ".css";
 
-const index_html = read("../client/index.html").replace("main.js", main_checksum).replace("style.css", style_checksum);
+const changelog_txt = read("../client/changelog.txt");
+const index_html = read("../client/index.html").replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
 const favicon = read("../client/favicon.ico");
-const main_js = read("../client/main.min2.js");
+const discord_svg = read("../client/discord.svg");
+const main_js = read("../client/main.js");
 const style_css = read("../client/style.min.css");
 
 const map_editor_main_checksum = read("../map_editor/main.checksum.txt").substring(15, 23) + ".js";
@@ -28,12 +30,11 @@ const options = {
 
 const servers = {};
 let servers_str = "[]";
+let replaced_index_html = index_html.replace("__SERVERS__", servers_str);
 function add_server(ip, players, max_players) {
-  const was = servers[ip] == null;
   servers[ip] = [new Date().getTime(), players, max_players, ip];
-  if(was) {
-    servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
-  }
+  servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
+  replaced_index_html = index_html.replace("__SERVERS__", servers_str);
 }
 setInterval(function() {
   let ok = 0;
@@ -45,6 +46,7 @@ setInterval(function() {
   }
   if(ok) {
     servers_str = JSON.stringify(Object.values(servers).map(r => r.slice(1)));
+    replaced_index_html = index_html.replace("__SERVERS__", servers_str);
   }
 }, 1000);
 
@@ -53,13 +55,18 @@ app.use(express.json());
 
 app.get(["/", "/index.html"], function(req, res) {
   res.set("Content-Type", "text/html");
-  res.status(200).end(index_html);
+  res.status(200).end(replaced_index_html);
 });
 
 app.get("/favicon.ico", function(req, res) {
   res.set("Content-Type", "image/vnd.microsoft.icon");
   res.status(200).end(favicon);
 });
+
+app.get("/discord.svg", function(req, res) {
+  res.set("Content-Type", "image/svg+xml");
+  res.status(200).end(discord_svg);
+})
 
 app.get("/" + main_checksum, function(req, res) {
   res.set("Content-Type", "text/javascript");
