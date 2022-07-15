@@ -178,11 +178,11 @@ button {
   background: #555;
 }
 
-input[type="text"]:disabled::placeholder {
+input:disabled::placeholder {
   color: #ddd;
 }
 
-input[type="text"]:disabled::-ms-input-placeholder {
+input:disabled::-ms-input-placeholder {
   color: #ddd;
 }
 

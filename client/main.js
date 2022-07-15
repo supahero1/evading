@@ -239,6 +239,7 @@ const CONSTS = {
   client_opcode_spawn: 0,
   client_opcode_movement: 1,
   client_opcode_chat: 2,
+  client_opcode_name: 3,
 
   max_players: 100,
   max_balls: 65535,
@@ -274,6 +275,9 @@ class Menu {
     this.refresh.onclick = location.reload.bind(location);
 
     this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
+    this.name.onchange = function() {
+      CLIENT.sent_name = false;
+    };
 
     this.visible = false;
     this.blocked = false;
@@ -292,6 +296,9 @@ class Menu {
         MENU.init_server_list();
       });
     }, 5000);
+  }
+  get_name() {
+    return new TextEncoder().encode(this.name.value);
   }
   block_show() {
     if(!this.visible) {
@@ -575,11 +582,17 @@ class Packet {
       this.len = token.length;
     }
   }
+  maybe_send_name() {
+    if(!CLIENT.sent_name) {
+      CLIENT.sent_name = true;
+      this.create_name_packet();
+      SOCKET.send();
+    }
+  }
   create_spawn_packet(name) {
+    this.maybe_send_name();
     this.u8[0] = CONSTS.client_opcode_spawn;
-    const encoded = new TextEncoder().encode(name);
-    this.u8.set(encoded, 1);
-    this.len = encoded.length + 1;
+    this.len = 1;
   }
   create_movement_packet() {
     let angle = 0;
@@ -605,9 +618,16 @@ class Packet {
     this.len = 6;
   }
   create_chat_packet(chat) {
+    this.maybe_send_name();
     this.u8[0] = CONSTS.client_opcode_chat;
     this.u8.set(chat, 1);
     this.len = chat.length + 1;
+  }
+  create_name_packet() {
+    this.u8[0] = CONSTS.client_opcode_name;
+    const name = MENU.get_name();
+    this.u8.set(name, 1);
+    this.len = name.length + 1;
   }
 }
 
@@ -659,10 +679,17 @@ class Chat {
 
     this.len = 0;
 
-    this.enabled = false;
-
     this.visible = false;
     this.blocked = false;
+
+    /**
+     * @type {string}
+     */
+    this.old = "";
+    /**
+     * @type {number}
+     */
+    this.timer = -1;
 
     this.sendmsg.onkeydown = function(e) {
       e.stopPropagation();
@@ -677,20 +704,14 @@ class Chat {
           const diff = this.timestamps[this.idx] - this.timestamps[next_idx];
           this.idx = next_idx;
           if(diff < CONSTS.max_chat_timestamps * 1000) {
-            const old = this.sendmsg.placeholder;
-            this.sendmsg.placeholder = "You are on cooldown for sending too many messages too fast";
-            this.sendmsg.oncooldown = true;
-            this.sendmsg.onkeypress = this.sendmsg.onpaste = null;
-            setTimeout(function() {
-              this.sendmsg.onkeypress = this.sendmsg.onpaste = this.limit;
-              this.sendmsg.oncooldown = false;
-              this.sendmsg.placeholder = old;
-            }, CONSTS.max_chat_timestamps * 1000 - diff);
+            this.disable("You are on cooldown for sending too many messages too fast");
+            this.timer = setTimeout(this.enable.bind(this), CONSTS.max_chat_timestamps * 1000 - diff);
+          } else {
+            this.sendmsg.value = "";
+            this.sendmsg.blur();
+            CANVAS.canvas.focus();
           }
         }
-        this.sendmsg.value = "";
-        this.sendmsg.blur();
-        CANVAS.canvas.focus();
       }
     }.bind(this);
     this.sendmsg.onkeyup = function(e) {
@@ -705,10 +726,23 @@ class Chat {
     this.messages.innerHTML = "";
     this.len = 0;
 
-    this.enabled = false;
-
     this.visible = false;
     this.blocked = false;
+  }
+  disable(msg) {
+    this.old = this.sendmsg.placeholder;
+    this.sendmsg.placeholder = msg;
+    this.sendmsg.disabled = true;
+    this.sendmsg.value = "";
+    CANVAS.canvas.focus();
+  }
+  enable() {
+    if(this.timer != -1) {
+      clearTimeout(this.timer);
+      this.timer = -1;
+    }
+    this.sendmsg.disabled = false;
+    this.sendmsg.placeholder = this.old;
   }
   block_show() {
     if(!this.visible) {
@@ -742,10 +776,7 @@ class Chat {
     this.div.style.display = "none";
   }
   focus(e) {
-    if(!this.sendmsg.oncooldown) {
-      this.sendmsg.focus();
-    }
-    e.preventDefault();
+    this.sendmsg.focus();
   }
   new(author, msg) {
     const p = createElement("p");
@@ -1061,7 +1092,7 @@ class Settings {
     this.blocked = false;
 
     /**
-     * @type {HTMLTableElement}
+     * @type {Element}
      */
     this.table = null;
 
@@ -1748,16 +1779,19 @@ class Client {
   constructor() {
     this.in_game = false;
     this.spectating = false;
+    this.sent_name = false;
     this.id = -1;
   }
   clear() {
     this.in_game = false;
     this.spectating = false;
+    this.sent_name = false;
     this.id = -1;
   }
   onconnecting() {
     status.innerHTML = "Connecting";
     MENU.hide_name();
+    CHAT.disable("Waiting for connection...");
     SETTINGS.block_hide();
   }
   onconnected() {
@@ -1765,6 +1799,7 @@ class Client {
     MENU.show_name();
     MENU.show();
     CHAT.show();
+    CHAT.enable();
     SETTINGS.unblock();
   }
   ondisconnected() {

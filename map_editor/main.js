@@ -243,10 +243,7 @@ window.onkeyup = function(x) {
   }
 };
 window.onbeforeunload = function(e) {
-  e.preventDefault();
-  e.returnValue = "Are you sure you want to quit?";
   localStorage.setItem("cache", export_tiles());
-  return "Are you sure you want to quit?";
 };
 canvas.oncontextmenu = function(e) {
   e.preventDefault();

@@ -35,7 +35,8 @@ enum server_opcodes {
 enum client_opcodes {
   client_opcode_spawn,
   client_opcode_movement,
-  client_opcode_chat
+  client_opcode_chat,
+  client_opcode_name
 };
 
 enum ball_type {
