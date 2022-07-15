@@ -127,17 +127,18 @@ if(typeof _token == "string") {
   token = _token.split(",").map(r => +r);
 }
 
-function soft_reload() {
-  setTimeout(location.reload.bind(location), 1000);
-}
-
 function reload() {
-  WINDOW.prevent_unload = false;
-  soft_reload();
+  setTimeout(location.reload.bind(location), 1000);
 }
 
 String.prototype.darken = function() {
   return "#" + (parseInt(this.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + this.substring(7);
+};
+
+String.prototype.get_server_name = function() {
+  const match = this.match(/\/\/(.*?)\.shadam\.xyz/);
+  const match2 = this.match(/\/\/(.*?)[\/:]/);
+  return match ? match[1] : (match2 ? match2[1] : this);
 };
 
 WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
@@ -219,7 +220,7 @@ function lerp(num, to, by) {
 
 if(window["s"].length == 0) {
   status.innerHTML = "No servers found";
-  soft_reload();
+  reload();
   throw new Error(status.innerHTML);
 }
 
@@ -259,7 +260,18 @@ class Menu {
     this.div = getElementById("ID_menu");
     this.name = getElementById("ID_name");
 
-    this.selected_server = getElementById("ID_selected_serv");
+    this.select_server = getElementById("ID_select_serv");
+    /**
+     * @type {HTMLOptionElement}
+     */
+    this.selected_server = null;
+    this.servers = window["s"];
+
+    this.play = getElementById("ID_play");
+    this.spec = getElementById("ID_spec");
+    this.refresh = getElementById("ID_refresh");
+
+    this.refresh.onclick = location.reload.bind(location);
 
     this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
 
@@ -270,6 +282,16 @@ class Menu {
     if(typeof cached_name == "string" && new TextEncoder().encode(cached_name).length <= CONSTS.max_name_len) {
       this.name.value = cached_name;
     }
+  }
+  init() {
+    this.init_server_list();
+
+    setInterval(function() {
+      fetch("servers.json").then(r => r.json()).then(function(res) {
+        MENU.servers = res;
+        MENU.init_server_list();
+      });
+    }, 5000);
   }
   block_show() {
     if(!this.visible) {
@@ -302,11 +324,58 @@ class Menu {
     this.visible = false;
     this.div.style.display = "none";
   }
+  show_name() {
+    this.name.style.display = "block";
+  }
   hide_name() {
     this.name.style.display = "none";
   }
-  set_server_to(name) {
-    this.selected_server.innerHTML = "Selected server: " + name;
+  show_refresh() {
+    this.play.style.display = "none";
+    this.spec.style.display = "none";
+    this.refresh.style.display = "block";
+  }
+  init_server_list() {
+    this.select_server.innerHTML = "";
+    for(const server of this.servers) {
+      const option = createElement("option");
+      option.value = server[2];
+      if(server[2] == SOCKET.ws.url) {
+        option.selected = true;
+        option.disabled = true;
+        this.selected_server = option;
+      }
+      if(server[0] >= server[1]) {
+        option.disabled = 1;
+      }
+      const server_name = server[2].get_server_name();
+      option.innerHTML = server_name[0].toUpperCase() + server_name.substring(1) + ` (${server[0]}/${server[1]})`;
+      this.select_server.appendChild(option);
+    }
+    this.select_server.onchange = async function() {
+      this.selected_server.disabled = false;
+      const old = this.selected_server;
+      this.selected_server = this.select_server.selectedOptions[0];
+      this.selected_server.disabled = true;
+      CLIENT.onconnecting();
+      let resolver;
+      const promise = new Promise(function(resolve) {
+        resolver = resolve;
+      });
+      const sock = new Latency_socket(this.selected_server.value, resolver, 1);
+      setTimeout(resolver, 2000);
+      await promise;
+      if(sock.packets == 0 || sock.ws.readyState != WebSocket.OPEN) {
+        sock.stop();
+        status.innerHTML = "Couldn't connect, returning to previous server";
+        this.selected_server.disabled = false;
+        this.selected_server = old;
+        this.selected_server.disabled = true;
+        setTimeout(CLIENT.onconnected.bind(CLIENT), 1000);
+      } else {
+        SOCKET.takeover(sock);
+      }
+    }.bind(this);
   }
 }
 
@@ -316,6 +385,9 @@ class Menu {
 
 class Socket {
   constructor() {
+    /**
+     * @type {WebSocket}
+     */
     this.ws = null;
 
     this.once = false;
@@ -325,6 +397,16 @@ class Socket {
     this.updates = [0, 0];
   }
   takeover(latency_sock) {
+    if(this.ws != null) {
+      this.stop();
+
+      this.once = false;
+
+      this.game_init = false;
+
+      this.updates = [0, 0];
+    }
+
     this.ws = latency_sock.ws;
     this.ws.onmessage = this.message.bind(this);
     this.ws.onclose = this.close.bind(this);
@@ -335,18 +417,28 @@ class Socket {
     this.open();
   }
   open() {
-    status.innerHTML = "";
     this.once = true;
+    CHAT.clear();
+    CAMERA.unblock();
+    PLAYERS.clear();
+    BALLS.clear();
+    BACKGROUND.clear();
+    CANVAS.clear();
+    MOVEMENT.clear();
+    CLIENT.clear();
   }
   message({ data }) {
     PACKET.set(new Uint8Array(data));
+    if(PACKET.len <= 1) {
+      return;
+    }
     PACKET.idx = 1;
     this.updates[0] = this.updates[1];
     this.updates[1] = performance.now();
     PLAYERS.ip();
     BALLS.ip();
     CAMERA.ip();
-    while(PACKET.idx != PACKET.len) {
+    while(PACKET.idx < PACKET.len) {
       switch(PACKET.byte()) {
         case CONSTS.server_opcode_area: {
           BALLS.clear();
@@ -369,6 +461,9 @@ class Socket {
         default: throw new Error();
       }
     }
+    if(PACKET.idx > PACKET.len) {
+      throw new Error();
+    }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
     } else {
@@ -387,6 +482,10 @@ class Socket {
       CLIENT.ondisconnected();
     }
   }
+  stop() {
+    this.ws.onopen = this.ws.onmessage = this.ws.onclose = null;
+    this.ws.close();
+  }
   send() {
     this.ws.send(PACKET.u8.subarray(0, PACKET.len));
   }
@@ -397,10 +496,11 @@ class Socket {
  */
 
 class Latency_socket extends Socket {
-  constructor(ip, resolver) {
+  constructor(ip, resolver, pings_to_finish=8) {
     super();
 
     this.packets = 0;
+    this.pings_to_finish = pings_to_finish;
     this.resolver = resolver;
     this.ip = ip;
 
@@ -417,7 +517,7 @@ class Latency_socket extends Socket {
     this.ws.send(new ArrayBuffer(0));
   }
   message() {
-    if(++this.packets == 8) {
+    if(++this.packets == this.pings_to_finish) {
       this.resolver(this.ws.url);
       return;
     }
@@ -425,10 +525,6 @@ class Latency_socket extends Socket {
   }
   close() {
     this.connect();
-  }
-  stop() {
-    this.ws.onopen = this.ws.onmessage = this.ws.onclose = null;
-    this.ws.close();
   }
 }
 
@@ -602,6 +698,18 @@ class Chat {
     };
     this.sendmsg.onkeypress = this.sendmsg.onpaste = this.limit;
   }
+  clear() {
+    this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
+    this.idx = 0;
+
+    this.messages.innerHTML = "";
+    this.len = 0;
+
+    this.enabled = false;
+
+    this.visible = false;
+    this.blocked = false;
+  }
   block_show() {
     if(!this.visible) {
       this.blocked = false;
@@ -752,6 +860,9 @@ class Players {
      */
     this.arr = new Array(CONSTS.max_players);
   }
+  clear() {
+    this.arr = new Array(CONSTS.max_players);
+  }
   ip() {
     for(let i = 0; i < CONSTS.max_players; ++i) {
       if(this.arr[i] == undefined) continue;
@@ -861,8 +972,6 @@ class Balls {
      * @type {Array<Ball>}
      */
     this.arr = new Array(CONSTS.max_balls);
-
-    this.clear();
   }
   clear() {
     this.arr = new Array(CONSTS.max_balls);
@@ -920,6 +1029,9 @@ class Balls {
 
 class Key_prober {
   constructor() {
+    /**
+     * @type {Function}
+     */
     this.resolve = null;
 
     this.probing = false;
@@ -948,6 +1060,9 @@ class Settings {
     this.visible = false;
     this.blocked = false;
 
+    /**
+     * @type {HTMLTableElement}
+     */
     this.table = null;
 
     this.init();
@@ -1174,6 +1289,9 @@ class Background {
 
     this.area_id = -1;
   }
+  clear() {
+    this.area_id = -1;
+  }
   parse() {
     this.area_id = PACKET.byte();
     const w = PACKET.byte();
@@ -1274,9 +1392,7 @@ class Canvas {
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
 
-    this.x = 0;
-    this.y = 0;
-
+    this.animation = -1;
     this.stop_draw = false;
     this.draw_at = 0;
     this.last_draw_at = 0;
@@ -1284,6 +1400,13 @@ class Canvas {
     this.canvas.onwheel = this.wheel.bind(this);
     this.canvas.onmousedown = this.mousedown.bind(this);
     this.canvas.oncontextmenu = this.contextmenu.bind(this);
+  }
+  clear() {
+    cancelAnimationFrame(this.animation);
+    this.animation = -1;
+    this.stop_draw = false;
+    this.draw_at = 0;
+    this.last_draw_at = 0;
   }
   resize() {
     this.width = WINDOW.innerWidth * WINDOW.devicePixelRatio;
@@ -1324,7 +1447,7 @@ class Canvas {
     this.ctx.strokeText(text, x, y);
   }
   start_drawing() {
-    window.requestAnimationFrame(this.draw.bind(this));
+    this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
   draw(when) {
     if(this.stop_draw) return;
@@ -1402,7 +1525,7 @@ class Canvas {
         }
       }
     }
-    window.requestAnimationFrame(this.draw.bind(this));
+    this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
 }
 
@@ -1417,8 +1540,6 @@ class _Window {
     this.innerHeight = 0;
 
     this.mouse = [0, 0];
-
-    this.prevent_unload = true;
 
     window.onresize = this.resize.bind(this);
     window.onkeyup = this.keyup.bind(this);
@@ -1545,7 +1666,7 @@ class _Window {
     MOVEMENT.send();
   }
   beforeunload(e) {
-    if(!this.prevent_unload) {
+    if(!CLIENT.in_game) {
       return;
     }
     e.preventDefault();
@@ -1572,6 +1693,14 @@ class Movement {
     this.down = 0;
     this.left = 0;
     this.right = 0;
+  }
+  clear() {
+    this.unblock();
+
+    this.mouse_movement = false;
+
+    this.old_mult = 1;
+    this.mult = 1;
   }
   block() {
     this.blocked = true;
@@ -1621,37 +1750,48 @@ class Client {
     this.spectating = false;
     this.id = -1;
   }
+  clear() {
+    this.in_game = false;
+    this.spectating = false;
+    this.id = -1;
+  }
   onconnecting() {
     status.innerHTML = "Connecting";
-    MENU.hide();
-    CHAT.hide();
+    MENU.hide_name();
+    SETTINGS.block_hide();
   }
   onconnected() {
-    const match = SOCKET.ws.url.match(/\/\/(.*?)\.shadam\.xyz/);
-    const match2 = SOCKET.ws.url.match(/\/\/(.*?)[\/:]/);
-    //MENU.set_server_to(match ? match[1] : (match2 ? match2[1] : SOCKET.ws.url));
+    status.innerHTML = "";
+    MENU.show_name();
     MENU.show();
     CHAT.show();
+    SETTINGS.unblock();
   }
   ondisconnected() {
+    this.in_game = false;
     status.innerHTML = "Disconnected";
     MENU.hide_name();
-    WINDOW.prevent_unload = false;
+    MENU.show_refresh();
   }
   onserverfull() {
+    this.in_game = false;
     this.ondisconnected();
     status.innerHTML = "Server is full";
   }
   onspectatestart() {
+    this.in_game = true;
     MENU.hide();
   }
   onspectatestop() {
+    this.in_game = false;
     MENU.show();
   }
   onspawn() {
+    this.in_game = true;
     MENU.hide();
   }
   ondeath() {
+    this.in_game = false;
     MENU.show();
   }
 }
@@ -1685,7 +1825,7 @@ WINDOW.resize();
     resolver = resolve;
   });
   const latency_sockets = [];
-  for(const [players, max_players, ip] of window["s"]) {
+  for(const [players, max_players, ip] of MENU.servers) {
     latency_sockets[latency_sockets.length] = new Latency_socket(ip, resolver);
   }
   setTimeout(resolver, 2000, "");
@@ -1714,4 +1854,5 @@ WINDOW.resize();
       SOCKET.takeover(socket);
     }
   }
+  MENU.init();
 })();

@@ -15,6 +15,7 @@ if(__SECURE_WEBSITE__) {
 const clients = [];
 let free = -1;
 function get_client_id() {
+  ++clients_len;
   if(free == -1) {
     return clients.length;
   } else {
@@ -26,7 +27,9 @@ function get_client_id() {
 function return_client_id(id) {
   clients[id] = free;
   free = id;
+  --clients_len;
 }
+let clients_len = 0;
 
 const net = require("net");
 const socket = net.createConnection(23456, "127.0.0.1");
@@ -142,7 +145,7 @@ function create_ws_server() {
           headers: { "Content-Type": "application/json" }
         }, function(){});
         req.on("error", function(){});
-        req.write(JSON.stringify({ ip: "ws__SECURE_SERVER_CHAR__://__SERVER_NAME__:8191", players: clients.length, max_players: max_players }));
+        req.write(JSON.stringify({ ip: "ws__SECURE_SERVER_CHAR__://__SERVER_NAME__:8191/", players: clients_len, max_players: max_players }));
         req.end();
       }
       setInterval(register_self, 5000);

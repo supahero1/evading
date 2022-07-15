@@ -26,7 +26,7 @@ html, body, #canvas, #settings_container, #menu {
   -webkit-user-select: none;
 }
 
-#settings, #name, #status, #splash, #play, #spec {
+#settings, #name, #status, #splash, #play, #spec, #refresh {
   top: 50%;
 	left: 50%;
   position: absolute;
@@ -117,16 +117,21 @@ button {
   top: calc(50% - 100px);
 }
 
-#play {
+#play, #spec, #refresh {
   width: 100px;
   top: calc(50% + 35px);
+}
+
+#play {
   left: calc(50% - 55px);
 }
 
 #spec {
-  width: 100px;
-  top: calc(50% + 35px);
   left: calc(50% + 55px);
+}
+
+#refresh {
+  display: none;
 }
 
 #discord {
@@ -146,11 +151,12 @@ button {
 #selected_serv {
   top: 0;
   right: 20px;
-  font-size: 14pt;
   position: absolute;
 }
 
-#select_serv {
+#selected_serv_text {
+  font-size: 14pt;
+  margin-right: 10px;
   display: inline-block;
 }
 

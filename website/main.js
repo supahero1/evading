@@ -12,21 +12,26 @@ const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
 const favicon = read("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-let main_js = read("../client/main.min2.js");
+let main_js = read("../client/main.js");
 let style_css = read("../client/style.min.css");
 
 const IDs = index_html.match(/ID_(\w+)/g);
 const ID_map = {};
-const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-let i = 0;
+const ID_sorted = [];
 for(const ID of IDs) {
   if(ID_map[ID] == undefined) {
     ID_map[ID] = 0;
-    index_html = index_html.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
-    main_js = main_js.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
-    style_css = style_css.replaceAll("#" + ID.substring(3), "#" + ID_chars[i]);
-    ++i;
+    ID_sorted[ID_sorted.length] = ID;
   }
+}
+ID_sorted.sort((a, b) => b.length - a.length);
+let i = 0;
+const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+for(const ID of ID_sorted) {
+  index_html = index_html.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
+  main_js = main_js.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
+  style_css = style_css.replaceAll("#" + ID.substring(3), "#" + ID_chars[i]);
+  ++i;
 }
 index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
 
