@@ -49,7 +49,7 @@ const options = {
 
   rejectUnauthorized: true,
   requestCert: true,
-  ca: [read("./cloudflare.pem")]
+  ca: [read("./cloudflare.pem"), read("./cloudflare2.pem")]
 };
 
 const servers = {};
