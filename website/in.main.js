@@ -49,7 +49,7 @@ const options = {
 
   rejectUnauthorized: true,
   requestCert: true,
-  ca: [read("./cloudflare.pem"), read("./cloudflare2.pem")]
+  ca: [read("./cloudflare.pem")]
 };
 
 const servers = {};
@@ -136,14 +136,18 @@ if(__SECURE_WEBSITE__) {
   const sessions = {};
   const server = require("https").createServer(options, app).listen(443, "0.0.0.0");
   server.on("newSession", function(id, data, cb) {
-    sessions[id.toString("hex")] = data;
+    id = id.toString("hex");
+    sessions[id] = data;
+    setTimeout(function() {
+      delete sessions[id];
+    }, 1000 * 60 * 5);
     cb();
   });
   server.on("resumeSession", function(id, cb) {
     cb(null, sessions[id.toString("hex")] || null);
   });
-  server.on("tlsClientError", function(err) {
-    console.log("tls error:\n" + err);
+  server.on("tlsClientError", function(err, socket) {
+    console.log("tls error:\n" + err + "\n", socket, "\n\n\n\n\n\n");
   });
 } else {
   require("http").createServer(app).listen(80, "0.0.0.0");
