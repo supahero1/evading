@@ -133,7 +133,18 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
 });
 
 if(__SECURE_WEBSITE__) {
-  require("https").createServer(options, app).listen(443, "0.0.0.0");
+  const sessions = {};
+  const server = require("https").createServer(options, app).listen(443, "0.0.0.0");
+  server.on("newSession", function(id, data, cb) {
+    sessions[id.toString("hex")] = data;
+    cb();
+  });
+  server.on("resumeSession", function(id, cb) {
+    cb(null, sessions[id.toString("hex")] || null);
+  });
+  server.on("tlsClientError", function(err) {
+    console.log("tls error:\n" + err);
+  });
 } else {
   require("http").createServer(app).listen(80, "0.0.0.0");
 }
