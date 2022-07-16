@@ -1,9 +1,11 @@
 /*
- * LOCALSTORAGE
+ * LOCAL STORAGE, LOCAL_STORAGE
  */
 const { localStorage } = window;
+const getItem = localStorage.getItem.bind(localStorage);
+const setItem = localStorage.setItem.bind(localStorage);
 
-const _keybinds = localStorage.getItem("keybinds");
+const _keybinds = getItem("keybinds");
 const default_keybinds = {
   ["settings"]: "Escape",
   ["up"]: "KeyW",
@@ -25,10 +27,10 @@ for(const prop in keybinds) {
   }
 }
 function save_keybinds() {
-  localStorage.setItem("keybinds", JSON.stringify(keybinds));
+  setItem("keybinds", JSON.stringify(keybinds));
 }
 
-const _settings = localStorage.getItem("settings");
+const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
@@ -109,7 +111,7 @@ for(const prop in settings) {
   settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
 function save_settings() {
-  localStorage.setItem("settings", JSON.stringify(settings));
+  setItem("settings", JSON.stringify(settings));
 }
 
 /*
@@ -121,7 +123,7 @@ const createElement = document.createElement.bind(document);
 
 const status = getElementById("ID_status");
 
-const _token = localStorage.getItem("token");
+const _token = getItem("token");
 let token = [];
 if(typeof _token == "string") {
   token = _token.split(",").map(r => +r);
@@ -185,27 +187,32 @@ function limit_input_to(n) {
  * @param {number} _x
  * @param {number} _y
  * @param {number} k
+ * @param {boolean} whole_out
  * @param {boolean} preserve_x
  * @param {boolean} preserve_y
  * @return {Array<number>}
  */
-function get_sticky_position(_x, _y, k, preserve_x, preserve_y) {
+function get_sticky_position(_x, _y, k, whole_out, preserve_x, preserve_y) {
   k *= CANVAS.fov;
   const s_x = CANVAS.width * 0.5 + (_x - CAMERA.x) * CANVAS.fov;
   const s_y = CANVAS.height * 0.5 + (_y - CAMERA.y) * CANVAS.fov;
   let t_x;
   let t_y;
-  if(preserve_x && (s_x < k || s_x > CANVAS.width - k)) {
+  const l = whole_out ? 0 : k;
+  let outside = false;
+  if(preserve_x && (s_x < l || s_x > CANVAS.width - l)) {
+    outside = true;
     t_x = Math.max(Math.min(s_x, CANVAS.width - k), k);
   } else {
     t_x = s_x;
   }
-  if(preserve_y && (s_y < k || s_y > CANVAS.height - k)) {
+  if(preserve_y && (s_y < l || s_y > CANVAS.height - l)) {
+    outside = true;
     t_y = Math.max(Math.min(s_y, CANVAS.height - k), k);
   } else {
     t_y = s_y;
   }
-  return [(t_x - CANVAS.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - CANVAS.height * 0.5) / CANVAS.fov + CAMERA.y];
+  return [(t_x - CANVAS.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - CANVAS.height * 0.5) / CANVAS.fov + CAMERA.y, outside];
 }
 
 /**
@@ -241,10 +248,13 @@ const CONSTS = {
   client_opcode_chat: 2,
   client_opcode_name: 3,
 
+  max_chat_throughput: 20,
+
   max_players: 100,
   max_balls: 65535,
   max_chat_message_len: 128,
   max_chat_timestamps: 5,
+  max_chat_sizes: 2,
   max_name_len: 16
 };
 
@@ -269,7 +279,6 @@ class Menu {
     this.servers = window["s"];
 
     this.play = getElementById("ID_play");
-    this.spec = getElementById("ID_spec");
     this.refresh = getElementById("ID_refresh");
 
     this.refresh.onclick = location.reload.bind(location);
@@ -277,20 +286,28 @@ class Menu {
     this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
     this.name.onchange = function() {
       CLIENT.sent_name = false;
+      setItem("name", this.value);
     };
 
     this.visible = false;
     this.blocked = false;
 
-    const cached_name = localStorage.getItem("name");
+    this.int = -1;
+
+    const cached_name = getItem("name");
     if(typeof cached_name == "string" && new TextEncoder().encode(cached_name).length <= CONSTS.max_name_len) {
       this.name.value = cached_name;
     }
+
+    this.play.onclick = function() {
+      PACKET.create_spawn_packet();
+      SOCKET.send();
+    };
   }
   init() {
     this.init_server_list();
 
-    setInterval(function() {
+    this.int = setInterval(function() {
       fetch("servers.json").then(r => r.json()).then(function(res) {
         MENU.servers = res;
         MENU.init_server_list();
@@ -338,9 +355,12 @@ class Menu {
     this.name.style.display = "none";
   }
   show_refresh() {
+    if(!SOCKET.once) {
+      reload();
+    }
     this.play.style.display = "none";
-    this.spec.style.display = "none";
     this.refresh.style.display = "block";
+    clearInterval(this.int);
   }
   init_server_list() {
     this.select_server.innerHTML = "";
@@ -473,8 +493,6 @@ class Socket {
     }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
-    } else {
-      CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x, PLAYERS.arr[CLIENT.id].y);
     }
     if(this.updates[0] != 0 && !this.game_init) {
       this.game_init = true;
@@ -499,7 +517,7 @@ class Socket {
 }
 
 /*
- * LATENCY SOCKET
+ * LATENCY SOCKET, LATENCY_SOCKET
  */
 
 class Latency_socket extends Socket {
@@ -589,7 +607,7 @@ class Packet {
       SOCKET.send();
     }
   }
-  create_spawn_packet(name) {
+  create_spawn_packet() {
     this.maybe_send_name();
     this.u8[0] = CONSTS.client_opcode_spawn;
     this.len = 1;
@@ -632,7 +650,7 @@ class Packet {
 }
 
 /*
- * DEATH ARROW
+ * DEATH ARROW, DEATH_ARROW
  */
 
 class Death_arrow {
@@ -640,10 +658,13 @@ class Death_arrow {
     this.canvas = createElement("canvas");
     this.ctx = this.canvas.getContext("2d");
 
+    this.size = 0;
+
     this.init();
   }
   init() {
-    this.canvas.width = this.canvas.height = settings["death_arrow_size"]["value"];
+    this.size = settings["death_arrow_size"]["value"];
+    this.canvas.width = this.canvas.height = this.size;
     const h = this.canvas.width * 0.5;
     const k = this.canvas.width;
     this.ctx.beginPath();
@@ -669,7 +690,9 @@ class Death_arrow {
 class Chat {
   constructor() {
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
-    this.idx = 0;
+    this.timestamps_idx = 0;
+    this.sizes = new Array(CONSTS.max_chat_sizes).fill(0);
+    this.sizes_idx = 0;
 
     this.div = getElementById("ID_chat");
     this.messages = getElementById("ID_messages");
@@ -682,14 +705,9 @@ class Chat {
     this.visible = false;
     this.blocked = false;
 
-    /**
-     * @type {string}
-     */
     this.old = "";
-    /**
-     * @type {number}
-     */
     this.timer = -1;
+    this.total_message_length = 0;
 
     this.sendmsg.onkeydown = function(e) {
       e.stopPropagation();
@@ -698,14 +716,26 @@ class Chat {
         if(encoded.length > 0) {
           PACKET.create_chat_packet(encoded);
           SOCKET.send();
-          /* MUST NOT BE performance.now() */
-          this.timestamps[this.idx] = new Date().getTime();
-          const next_idx = (this.idx + 1) % CONSTS.max_chat_timestamps;
-          const diff = this.timestamps[this.idx] - this.timestamps[next_idx];
-          this.idx = next_idx;
-          if(diff < CONSTS.max_chat_timestamps * 1000) {
+          /* Init */
+          this.timestamps[this.timestamps_idx] = new Date().getTime();
+          this.sizes[this.sizes_idx] = encoded.length;
+          const next_idx = (this.timestamps_idx + 1) % CONSTS.max_chat_timestamps;
+          const diff = this.timestamps[this.timestamps_idx] - this.timestamps[next_idx];
+          this.sizes_idx = (this.sizes_idx + 1) % CONSTS.max_chat_sizes;
+          /* Calc */
+          let total_size = 0;
+          for(let i = 0; i < CONSTS.max_chat_sizes; ++i) {
+            total_size += this.sizes[i];
+          }
+          total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - CONSTS.max_chat_sizes) % CONSTS.max_chat_timestamps]);
+          this.timestamps_idx = next_idx;
+          const ratelimit = (diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput);
+          console.log(`diff: ${diff}\ntotal_size ${total_size}\nratelimit: ${ratelimit}`);
+          /* Apply */
+          if(ratelimit) {
             this.disable("You are on cooldown for sending too many messages too fast");
-            this.timer = setTimeout(this.enable.bind(this), CONSTS.max_chat_timestamps * 1000 - diff);
+            const timeout = Math.max(CONSTS.max_chat_timestamps * 1000 - diff, (total_size - CONSTS.max_chat_throughput) * 100);
+            this.timer = setTimeout(this.enable.bind(this), timeout);
           } else {
             this.sendmsg.value = "";
             this.sendmsg.blur();
@@ -721,13 +751,20 @@ class Chat {
   }
   clear() {
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
-    this.idx = 0;
+    this.timestamps_idx = 0;
+    this.sizes = new Array(CONSTS.max_chat_sizes).fill(0);
+    this.sizes_idx = 0;
 
     this.messages.innerHTML = "";
     this.len = 0;
 
     this.visible = false;
     this.blocked = false;
+
+    this.old = "Press enter to chat";
+    this.total_message_length = 0;
+
+    this.enable();
   }
   disable(msg) {
     this.old = this.sendmsg.placeholder;
@@ -929,10 +966,6 @@ class Players {
         let field = PACKET.byte();
         if(field == 0) {
           delete this.arr[id];
-          if(id == CLIENT.id && CLIENT.in_game) {
-            CLIENT.in_game = false;
-            CLIENT.ondeath();
-          }
           continue;
         }
         do {
@@ -1055,7 +1088,7 @@ class Balls {
 }
 
 /*
- * KEY PROBER
+ * KEY PROBER, KEY_PROBER
  */
 
 class Key_prober {
@@ -1250,15 +1283,14 @@ class Settings {
     this.insert.innerHTML = "";
     this.new("CHAT");
     this.add(this.text("Show chat"), this.switch("chat_on", function(visible) {
-      console.log(visible);
       if(visible) {
         CHAT.show();
       } else {
         CHAT.hide();
       }
     }));
-    this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", CHAT.update));
-    this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update));
+    this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", CHAT.update.bind(CHAT)));
+    this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update.bind(CHAT)));
 
     this.new("HELP");
     this.add(this.text("Enable tutorial"), this.switch("show_tutorial"));
@@ -1275,7 +1307,7 @@ class Settings {
     this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
     this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
     this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
-    this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init));
+    this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
 
     this.new("KEYBINDS");
     this.show_el(this.comment("To change, click a button on the right side and then press the key you want to asign to it."));
@@ -1364,22 +1396,21 @@ class Background {
     }
 
     CLIENT.id = PACKET.byte() - 1;
+    const exists = PACKET.byte();
+    if(exists && !CLIENT.in_game) {
+      CLIENT.in_game = true;
+      CLIENT.onspawn();
+    } else if(!exists && CLIENT.in_game) {
+      CLIENT.in_game = false;
+      CLIENT.ondeath();
+    }
     const spectating = PACKET.byte();
     if(spectating && !CLIENT.spectating) {
-      if(CLIENT.in_game) {
-        CLIENT.in_game = false;
-        CLIENT.ondeath();
-      }
       CLIENT.spectating = true;
       CLIENT.onspectatestart();
     } else if(!spectating && CLIENT.spectating) {
       CLIENT.spectating = false;
       CLIENT.onspectatestop();
-    }
-
-    if(!CLIENT.in_game && !spectating && !CLIENT.spectating && CLIENT.id != -1) {
-      CLIENT.in_game = true;
-      CLIENT.onspawn();
     }
     
     this.width = w * cell_size;
@@ -1423,6 +1454,8 @@ class Canvas {
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
 
+    this.name_y = 0;
+
     this.animation = -1;
     this.stop_draw = false;
     this.draw_at = 0;
@@ -1433,6 +1466,11 @@ class Canvas {
     this.canvas.oncontextmenu = this.contextmenu.bind(this);
   }
   clear() {
+    this.fov = settings["fov"]["value"];
+    this.target_fov = this.fov;
+
+    this.name_y = 0;
+
     cancelAnimationFrame(this.animation);
     this.animation = -1;
     this.stop_draw = false;
@@ -1537,6 +1575,56 @@ class Canvas {
       this.ctx.beginPath();
       const obj = sorted[i];
       if(obj.is_player) {
+        let r_sub = obj.r * (settings["player_stroke"]["value"] / 200);
+        this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);
+        this.ctx.arc(obj.x, obj.y, obj.r - r_sub, 0, Math.PI * 2);
+        if(settings["draw_player_fill"]) {
+          this.ctx.fillStyle = "#ebecf0";
+          this.ctx.fill();
+        }
+        if(settings["draw_player_stroke"]) {
+          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
+            this.ctx.strokeStyle = "#ebecf0";
+          } else {
+            this.ctx.strokeStyle = "#ebecf0".darken();
+          }
+          this.ctx.lineWidth = r_sub * 2;
+          this.ctx.stroke();
+        }
+        if(settings["draw_player_name"] && obj.name.length != 0) {
+          this.ctx.font = `700 ${obj.r / this.fov}px Ubuntu`;
+          this.ctx.textAlign = "center";
+          this.ctx.textBaseline = "middle";
+          this.ctx.fillStyle = "#00000080";
+          let target_name_y;
+          if(this.fov > 1) {
+            target_name_y = obj.r * 0.5;
+          } else {
+            target_name_y = obj.r * 0.5 + (2 / (this.fov * this.fov));
+          }
+          this.name_y = lerp(this.name_y, target_name_y, 0.1);
+          this.ctx.fillText(obj.name, obj.x, obj.y - obj.r - this.name_y);
+        }
+        if(obj.dead) {
+          this.ctx.font = `700 ${obj.r / Math.min(this.fov, 1)}px Ubuntu`;
+          this.ctx.textAlign = "center";
+          this.ctx.textBaseline = "middle";
+          this.ctx.fillStyle = "#f00";
+          this.ctx.fillText(obj.death_counter, obj.x, obj.y);
+          if(settings["draw_death_arrow"]) {
+            const [x, y, out] = get_sticky_position(obj.x, obj.y, DEATH_ARROW.size * 0.75, true, true, true);
+            if(out) {
+              this.ctx.translate(x, y);
+              const angle = Math.atan2(obj.y - y, obj.x - x);
+              this.ctx.rotate(angle);
+              DEATH_ARROW.draw(this.ctx);
+              this.ctx.rotate(-angle);
+              this.ctx.font = `700 ${DEATH_ARROW.size * 0.3}px Ubuntu`;
+              this.ctx.fillText(obj.death_counter, 0, 0);
+              this.ctx.translate(-x, -y);
+            }
+          }
+        }
       } else {
         const r_sub = obj.r * (settings["ball_stroke"]["value"] / 200);
         this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);

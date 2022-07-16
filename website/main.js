@@ -45,7 +45,11 @@ const map_editor_style_css = read("../map_editor/style.min.css");
 const options = {
   key: read("./key.pem"),
   cert: read("./cert.pem"),
-  dhparam: read("./dhparams.pem")
+  dhparam: read("./dhparams.pem"),
+
+  rejectUnauthorized: true,
+  requestCert: true,
+  ca: [read("./cloudflare.pem")]
 };
 
 const servers = {};

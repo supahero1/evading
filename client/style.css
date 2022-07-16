@@ -26,7 +26,7 @@ html, body, #canvas, #settings_container, #menu {
   -webkit-user-select: none;
 }
 
-#settings, #name, #status, #splash, #play, #spec, #refresh {
+#settings, #name, #status, #splash, #play, #refresh {
   top: 50%;
 	left: 50%;
   position: absolute;
@@ -117,17 +117,9 @@ button {
   top: calc(50% - 100px);
 }
 
-#play, #spec, #refresh {
+#play, #refresh {
   width: 100px;
   top: calc(50% + 35px);
-}
-
-#play {
-  left: calc(50% - 55px);
-}
-
-#spec {
-  left: calc(50% + 55px);
 }
 
 #refresh {

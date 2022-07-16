@@ -1,5 +1,6 @@
 "use strict";
 
+const uWS = require("uWebSockets.js");
 const fs = require("fs");
 
 let http;
@@ -12,23 +13,8 @@ if(0) {
   port = 80;
 }
 
-const clients = [];
-let free = -1;
-function get_client_id() {
-  ++clients_len;
-  if(free == -1) {
-    return clients.length;
-  } else {
-    const ret = free;
-    free = clients[free];
-    return ret;
-  }
-}
-function return_client_id(id) {
-  clients[id] = free;
-  free = id;
-  --clients_len;
-}
+const clients = {};
+let clients_i = 1;
 let clients_len = 0;
 
 const net = require("net");
@@ -52,20 +38,19 @@ socket.on("data", function(data) {
   buffer_at += data.length;
   let len = buffer[0] | (buffer[1] << 8) | (buffer[2] << 16);
   while(len <= buffer_at) {
-    const id = buffer[3];
-    if(typeof clients[id] == "object" && clients[id].game_ready == 1 && clients[id].game_close == 0) {
-      if(len == 4) {
-        clients[id].game_close = 1;
-        clearInterval(clients[id].pinging);
-        clients[id].end();
-        return_client_id(id);
-      } else if(clients[id].send(buffer.subarray(4, len), true, false) == 2) {
-        clients[id].close();
+    const id = buffer[3] | (buffer[4] << 8) | (buffer[5] << 16);
+    const ws = clients[id];
+    if(typeof ws !== "undefined" && ws.game_ready == 1 && ws.game_close == 0) {
+      if(len == 6) {
+        ws.game_ready = 0;
+        ws.end();
+      } else if(ws.send(buffer.subarray(6, len), true, false) == 2) {
+        ws.close();
       }
     }
     buffer.copyWithin(0, len, buffer_at);
     buffer_at -= len;
-    if(buffer_at >= 4) {
+    if(buffer_at >= 6) {
       len = buffer[0] | (buffer[1] << 8) | (buffer[2] << 16);
     } else {
       break;
@@ -82,7 +67,6 @@ socket.on("end", function() {
 });
 
 function create_ws_server() {
-  const uWS = require("uWebSockets.js");
   let app;
   if(0) {
     app = uWS.SSLApp({
@@ -94,17 +78,21 @@ function create_ws_server() {
   }
   app.ws("/*", {
     compression: uWS.DISABLED,
-    maxPayloadLength: 1 + 1 + max_chat_message_len,
+    maxPayloadLength: 1 + max_chat_message_len,
     maxBackpressure: 4194304,
     idleTimeout: 0,
     open: function(ws) {
-      if(free == -1 && clients.length >= max_players) {
+      if(clients_len >= max_players) {
         ws.game_close = 1;
         return ws.end(4000);
       }
-      ws.game_id = get_client_id();
+      ws.game_ready = 0;
       ws.game_close = 0;
+      ws.pinging = -1;
+      ws.game_id = clients_i;
+      clients_i = Math.max((clients_i + 1) & ((1 << 24) - 1), 1);
       clients[ws.game_id] = ws;
+      ++clients_len;
     },
     message: function(ws, message, is_binary) {
       if(ws.game_close) {
@@ -116,12 +104,13 @@ function create_ws_server() {
       if(message.byteLength == 0) {
         return ws.send(new Uint8Array(0), true, false);
       }
+      const a = new Uint8Array([message.byteLength, ws.game_ready, ws.game_id, ws.game_id >> 8, ws.game_id >> 16]);
       if(!ws.game_ready) {
         ws.game_ready = 1;
         ws.pinging = setInterval(ws.ping.bind(ws), 1000);
       }
       socket.cork();
-      socket.write(new Uint8Array([message.byteLength, ws.game_id]));
+      socket.write(a);
       socket.write(new Uint8Array(message));
       socket.uncork();
     },
@@ -129,10 +118,11 @@ function create_ws_server() {
       if(ws.game_close) return;
       ws.game_close = 1;
       clearInterval(ws.pinging);
-      return_client_id(ws.game_id);
+      delete clients[ws.game_id];
       if(ws.game_ready == 1) {
-        socket.write(new Uint8Array([0, ws.game_id]));
+        socket.write(new Uint8Array([0, 2, ws.game_id, ws.game_id >> 8, ws.game_id >> 16]));
       }
+      --clients_len;
     }
   }).listen("0.0.0.0", 8191, function(token) {
     if(token) {
@@ -151,7 +141,7 @@ function create_ws_server() {
       setInterval(register_self, 5000);
       register_self();
     } else {
-      console.log("server couldn't start");
+      console.log("uWebSockets.js server failed to start");
       process.exit();
     }
   });

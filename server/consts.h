@@ -17,6 +17,7 @@ enum game_const {
   max_players = 100,
   max_chat_message_len = 128,
   max_chat_timestamps = 6, /* in main.js this is -1 */
+  max_chat_sizes = 3,
   max_name_len = 16
 };
 

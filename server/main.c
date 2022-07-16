@@ -49,7 +49,6 @@ struct client {
   uint8_t  sent_area:1;
   uint8_t  sent_balls:1;
   uint8_t  sent_minimap:1;
-  uint8_t  init:1;
   uint8_t  exists:1;
   uint8_t  in_area:1;
   uint8_t  spectating_a_player:1;
@@ -67,10 +66,10 @@ struct client {
   uint8_t  speed;
   uint8_t  death_counter;
   uint8_t  died_ticks_ago;
+  uint32_t js_id:24;
   float    movement_speed;
   float    angle;
   uint32_t last_meaningful_movement;
-  uint32_t last_message_at;
   uint32_t last_spectator_change;
   uint8_t  name_len;
   char     name[max_name_len];
@@ -78,10 +77,8 @@ struct client {
   uint8_t  chat_timestamp_idx;
   char     chat[max_chat_message_len];
   uint64_t chat_timestamps[max_chat_timestamps];
+  uint64_t chat_sizes[max_chat_timestamps];
 };
-
-static struct client clients[max_players] = {0};
-static uint8_t existing_clients_len = 0;
 
 struct ball {
   union {
@@ -172,6 +169,36 @@ static float randf(void) {
 
 static int angle_diff_turn_dir(const float a, const float b) {
   return fmodf(a - b + M_PI * 3, M_PI * 2) - M_PI > 0;
+}
+
+/*
+ * ================================== CLIENTS ==================================
+ */
+
+static uint8_t client_hash(uint32_t x) {
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = (x >> 16) ^ x;
+  return x % max_players;
+}
+
+static struct client clients[max_players] = {0};
+static uint8_t existing_clients_len = 0;
+
+static uint8_t create_client(const uint32_t js_id) {
+  uint8_t i = client_hash(js_id);
+  while(clients[i].js_id != 0) {
+    i = (i + 1) % max_players;
+  }
+  return i;
+}
+
+static uint8_t get_client(const uint32_t js_id) {
+  uint8_t i = client_hash(js_id);
+  while(clients[i].js_id != js_id) {
+    i = (i + 1) % max_players;
+  }
+  return i;
 }
 
 /*
@@ -453,6 +480,7 @@ static void send_arena(const uint8_t client_id) {
   } else {
     buf[buf_len++] = client_id + 1;
   }
+  buf[buf_len++] = client->exists;
   buf[buf_len++] = client->spectating_a_player;
 }
 
@@ -567,7 +595,7 @@ static void spectate(const uint8_t client_id) {
     if(!client->spectated_player_dced) {
       if(!clients[client->spectating_client_id].exists) {
         client->spectated_player_dced = 1;
-      } else if(client->area_id != clients[client->spectating_client_id].area_id) {
+      } else if(!client->in_area || client->area_id != clients[client->spectating_client_id].area_id) {
         add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
       }
     }
@@ -579,20 +607,18 @@ static void spectate(const uint8_t client_id) {
   }
 
   client->last_spectator_change = current_tick;
-  if(existing_clients_len <= 1) {
+  if(existing_clients_len == 0) {
     client->spectating_client_id = client_id;
     client->traverse_area_idx = (client->traverse_area_idx + 1) % area_infos_size;
     add_client_to_area(client_id, area_traversal[client->traverse_area_idx]);
-    printf("adding client to area info id %hhu\n", area_traversal[client->traverse_area_idx]);
   } else {
-    for(uint8_t i = (client->spectating_client_id + 1) % max_players; i != client->spectating_client_id; i = (i + 1) % max_players) {
-      if(clients[i].exists) {
-        client->spectating_client_id = i;
-        if(client->area_id != clients[i].area_id) {
-          add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
-        }
-        break;
+    for(uint8_t i = (client->spectating_client_id + 1) % max_players;; i = (i + 1) % max_players) {
+      if(!clients[i].exists) continue;
+      client->spectating_client_id = i;
+      if(!client->in_area || client->area_id != clients[i].area_id) {
+        add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
       }
+      break;
     }
   }
 }
@@ -1362,9 +1388,9 @@ static void tick(void* nil) {
   if(++current_tick % send_interval == 0) {
     tcp_socket_cork_on(&sock);
     for(uint8_t i = 0; i < max_players; ++i) {
-      if(!clients[i].init) continue;
-      buf[4] = 0;
-      buf_len = 5;
+      if(clients[i].js_id == 0) continue;
+      buf[6] = 0;
+      buf_len = 7;
       if(clients[i].in_area) {
         send_arena(i);
         send_players(i);
@@ -1372,10 +1398,12 @@ static void tick(void* nil) {
       }
       send_chat(i);
       //send_minimap(i);
-      buf[0] = buf_len & 255;
-      buf[1] = (buf_len >> 8) & 255;
-      buf[2] = (buf_len >> 16) & 255;
-      buf[3] = i;
+      buf[0] = buf_len;
+      buf[1] = buf_len >> 8;
+      buf[2] = buf_len >> 16;
+      buf[3] = clients[i].js_id;
+      buf[4] = clients[i].js_id >> 8;
+      buf[5] = clients[i].js_id >> 16;
       tcp_send(&sock, &((struct data_frame) {
         .data = (char*) buf,
         .len = buf_len,
@@ -1411,7 +1439,7 @@ static void tick(void* nil) {
     }
   }
   for(uint8_t i = 0; i < max_players; ++i) {
-    if(!clients[i].init) continue;
+    if(clients[i].js_id == 0) continue;
     player_tick(i);
   }
   for(uint8_t i = 0; i < areas_used; ++i) {
@@ -1489,16 +1517,18 @@ static void start_game(void) {
 }
 
 static void close_client(const uint8_t client_id) {
-  uint8_t deleted_by_above = clients[client_id].deleted_by_above;
-  if(clients[client_id].in_area) {
+  struct client* const client = clients + client_id;
+  if(client->in_area) {
     remove_client_from_its_area(client_id);
   }
-  if(clients[client_id].exists) {
+  if(client->exists) {
     --existing_clients_len;
   }
+  const uint8_t deleted_by_above = client->deleted_by_above;
+  const uint32_t js_id = client->js_id;
   memset(clients + client_id, 0, sizeof(*clients));
   if(!deleted_by_above) {
-    uint8_t payload[] = { 4, 0, 0, client_id };
+    uint8_t payload[] = { 6, 0, 0, js_id, js_id >> 8, js_id >> 16 };
     tcp_send(&sock, &((struct data_frame) {
       .data = (char*) payload,
       .len = payload[0],
@@ -1511,129 +1541,150 @@ static void close_client(const uint8_t client_id) {
 
 static void parse(void) {
   const uint8_t len = buffer[0];
-  const uint8_t client_id = buffer[1];
-  struct client* const client = clients + client_id;
-  if(len == 0) {
-    /* Delete the player */
-    client->deleted_by_above = 1;
-    goto close;
-  }
-  if(!client->init) {
-    if(token_required) {
-      if(len != sizeof(alpha_tokens[0])) {
+  const uint8_t method = buffer[1];
+  const uint32_t js_id = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16);
+  const uint8_t* msg = buffer + 5;
+  uint8_t client_id;
+  switch(method) {
+    case 0: { /* create */
+      client_id = create_client(js_id);
+      struct client* const client = clients + client_id;
+      client->js_id = js_id;
+      if(token_required) {
+        if(len != sizeof(alpha_tokens[0])) {
+          goto close;
+        }
+        uint8_t ok = 0;
+        for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
+          if(memcmp(msg, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
+            ok = 1;
+            break;
+          }
+        }
+        if(!ok) {
+          goto close;
+        }
+      } else if(len != 1) {
         goto close;
       }
-      uint8_t ok = 0;
-      for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
-        if(memcmp(buffer + 2, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
-          ok = 1;
+      client->last_spectator_change = -spectating_interval;
+      client->traverse_area_idx = fast_rand() % area_infos_size;
+      spectate(client_id);
+      break;
+    }
+    case 1: { /* update */
+      client_id = get_client(js_id);
+      struct client* const client = clients + client_id;
+      const uint8_t opcode = msg[0];
+      ++msg;
+      switch(opcode) {
+        case client_opcode_spawn: {
+          if(client->exists || !client->named) {
+            goto close;
+          }
+          client->entity.r = default_player_radius;
+          client->movement_speed = default_player_speed;
+          add_client_to_area(client_id, default_area_info_id);
+          set_player_pos_to_area_spawn_tiles(client_id);
+          client->exists = 1;
+          ++existing_clients_len;
           break;
         }
+        case client_opcode_movement: {
+          if(len != 6) {
+            goto close;
+          }
+          if(!client->spectating_a_player) {
+            memcpy(&client->angle, msg, sizeof(float));
+            client->speed = msg[4];
+          }
+          break;
+        }
+        case client_opcode_chat: {
+          if(!client->named) {
+            goto close;
+          }
+          uint8_t chat_len = len - 1;
+          if(chat_len > max_chat_message_len) {
+            goto close;
+          }
+          /* Number of messages ratelimit */
+          client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
+          const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
+          if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx] < time_sec_to_ns(1) * (max_chat_timestamps - 1)) {
+            goto close;
+          }
+          client->chat_timestamp_idx = next_idx;
+          if(chat_len == 0) {
+            goto out2;
+          }
+          /* Size of messages ratelimit */
+
+          /* Trim whitespace */
+          uint8_t start = 0;
+          uint8_t end = start + chat_len - 1;
+          while(whitespace_chars[msg[start]] && ++start == chat_len) goto out2;
+          while(whitespace_chars[msg[end]]) --end;
+          chat_len = end - start + 1;
+          /* Process */
+          memcpy(client->chat, msg + start, chat_len);
+          const struct command_def* command_def = find_command(client->chat, chat_len);
+          if(command_def == NULL || (!client->exists && !command_def->out_game) || (client->exists && !command_def->in_game)) {
+            client->chat_len = chat_len;
+            goto out2;
+          }
+          switch(command_def->command) {
+            case command_invalid: {
+              client->chat_len = chat_len;
+              break;
+            }
+            case command_respawn: {
+              if(default_area_info_id != areas[client->area_id].area_info_id) {
+                add_client_to_area(client_id, default_area_info_id);
+              }
+              set_player_pos_to_area_spawn_tiles(client_id);
+              if(client->dead != 0) {
+                client->dead = 0;
+                client->updated_dc = 1;
+              }
+              break;
+            }
+            default: assert(0);
+          }
+          out2:;
+          break;
+        }
+        case client_opcode_name: {
+          if(client->exists) {
+            goto close;
+          }
+          const uint8_t name_len = len - 1;
+          if(name_len > max_name_len) {
+            goto close;
+          }
+          if(name_len != 0) {
+            uint8_t start = 0;
+            uint8_t end = start + name_len - 1;
+            while(whitespace_chars[msg[start]] && ++start == name_len) goto out1;
+            while(whitespace_chars[msg[end]]) --end;
+            client->name_len = end - start + 1;
+            memcpy(client->name, msg + start, client->name_len);
+            out1:;
+          }
+          client->named = 1;
+          break;
+        }
+        default: goto close;
       }
-      if(!ok) {
-        goto close;
-      }
-    } else if(len != 1) {
+      break;
+    }
+    case 2: { /* delete */
+      client_id = get_client(js_id);
+      struct client* const client = clients + client_id;
+      client->deleted_by_above = 1;
       goto close;
     }
-    client->init = 1;
-    client->last_spectator_change = -spectating_interval;
-    client->traverse_area_idx = fast_rand() % area_infos_size;
-    spectate(client_id);
-    return;
-  }
-  switch(buffer[2]) {
-    case client_opcode_spawn: {
-      if(client->exists || !client->named) {
-        goto close;
-      }
-      client->entity.r = default_player_radius;
-      client->movement_speed = default_player_speed;
-      add_client_to_area(client_id, default_area_info_id);
-      set_player_pos_to_area_spawn_tiles(client_id);
-      client->exists = 1;
-      ++existing_clients_len;
-      break;
-    }
-    case client_opcode_movement: {
-      if(len != 6) {
-        goto close;
-      }
-      if(!client->spectating_a_player) {
-        memcpy(&client->angle, buffer + 3, sizeof(float));
-        client->speed = buffer[7];
-      }
-      break;
-    }
-    case client_opcode_chat: {
-      if(!client->named) {
-        goto close;
-      }
-      uint8_t chat_len = len - 1;
-      client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
-      const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
-      if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx]
-         < time_sec_to_ns(1) * (max_chat_timestamps - 1) || chat_len > max_chat_message_len) {
-        goto close;
-      }
-      client->chat_timestamp_idx = next_idx;
-      client->last_message_at = current_tick;
-      if(chat_len == 0) {
-        goto out2;
-      }
-      /* Trim whitespace */
-      uint8_t start = 3;
-      uint8_t end = start + chat_len - 1;
-      while(whitespace_chars[buffer[start]] && ++start == 3 + chat_len) goto out2;
-      while(whitespace_chars[buffer[end]]) --end;
-      chat_len = end - start + 1;
-      memcpy(client->chat, buffer + start, chat_len);
-      const uint16_t command = find_command(client->chat, chat_len);
-      if(command != command_invalid && !client->exists) {
-        goto out2;
-      }
-      switch(command) {
-        case command_invalid: {
-          client->chat_len = chat_len;
-          break;
-        }
-        case command_respawn: {
-          if(default_area_info_id != areas[client->area_id].area_info_id) {
-            add_client_to_area(client_id, default_area_info_id);
-          }
-          set_player_pos_to_area_spawn_tiles(client_id);
-          if(client->dead != 0) {
-            client->dead = 0;
-            client->updated_dc = 1;
-          }
-          break;
-        }
-        default: assert(0);
-      }
-      out2:;
-      break;
-    }
-    case client_opcode_name: {
-      if(client->exists) {
-        goto close;
-      }
-      const uint8_t name_len = len - 1;
-      if(name_len > max_name_len) {
-        goto close;
-      }
-      if(name_len != 0) {
-        uint8_t start = 3;
-        uint8_t end = start + name_len - 1;
-        while(whitespace_chars[buffer[start]] && ++start == 3 + name_len) goto out1;
-        while(whitespace_chars[buffer[end]]) --end;
-        client->name_len = end - start + 1;
-        memcpy(client->name, buffer + start, client->name_len);
-        out1:;
-      }
-      client->named = 1;
-      break;
-    }
-    default: goto close;
+    default: assert(0);
   }
   return;
   
@@ -1646,14 +1697,12 @@ static void parse(void) {
  */
 
 static void consume_data(void) {
-  if(buffer_len == 0) {
-    return;
-  }
-  while(1) {
-    const uint8_t len = buffer[0];
-    if(len + 2 <= buffer_len) {
+  while(buffer_len > 0) {
+    const uint8_t len = buffer[0] + 5;
+    if(len <= buffer_len) {
       parse();
-      buffer_len -= len + 2;
+      memmove(buffer, buffer + len, buffer_len - len);
+      buffer_len -= len;
     } else {
       break;
     }

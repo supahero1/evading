@@ -5,8 +5,8 @@
 #include <assert.h>
 
 static struct command_def command_defs[] = (struct command_def[]) {
-  { "respawn", command_respawn },
-  { "r", command_respawn },
+  { "respawn", command_respawn, .in_game = 1 },
+  { "r", command_respawn, .in_game = 1 },
   {0}
 };
 
@@ -44,20 +44,20 @@ void init_commands(void) {
   }
 }
 
-uint16_t find_command(const char* cmd, uint32_t len) {
+const struct command_def* find_command(const char* cmd, uint32_t len) {
   if(len == 0 || cmd[0] != '/') {
-    return command_invalid;
+    return NULL;
   }
   ++cmd;
   --len;
   uint32_t idx = FNV_1a(cmd, len) % commands_hashmap_len;
   while(1) {
     if(commands[idx].command == command_invalid) {
-      return command_invalid;
+      return NULL;
     }
     const uint16_t id = commands[idx].command_id;
     if(command_defs[id].command_len == len && strncasecmp(command_defs[id].command_char, cmd, len) == 0) {
-      return commands[idx].command;
+      return command_defs + id;
     }
     idx = (idx + 1) % commands_hashmap_len;
   }

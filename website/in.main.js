@@ -12,7 +12,7 @@ const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
 const favicon = read("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-let main_js = read("../client/main.js");
+let main_js = read("../client/main.min2.js");
 let style_css = read("../client/style.min.css");
 
 const IDs = index_html.match(/ID_(\w+)/g);
@@ -45,7 +45,11 @@ const map_editor_style_css = read("../map_editor/style.min.css");
 const options = {
   key: read("./key.pem"),
   cert: read("./cert.pem"),
-  dhparam: read("./dhparams.pem")
+  dhparam: read("./dhparams.pem"),
+
+  rejectUnauthorized: true,
+  requestCert: true,
+  ca: [read("./cloudflare.pem")]
 };
 
 const servers = {};

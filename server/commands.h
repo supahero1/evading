@@ -10,8 +10,10 @@ enum game_command {
 
 struct command_def {
   const char* const command_char;
-  const uint32_t command;
-  uint32_t command_len;
+  const enum game_command command;
+  uint8_t command_len;
+  uint8_t in_game:1;
+  uint8_t out_game:1;
 };
 
 struct command_hashmap {
@@ -21,6 +23,6 @@ struct command_hashmap {
 
 extern void init_commands(void);
 
-extern uint16_t find_command(const char*, uint32_t);
+extern const struct command_def* find_command(const char*, uint32_t);
 
 #endif // game_commands_h
