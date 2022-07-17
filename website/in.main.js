@@ -30,7 +30,7 @@ const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 for(const ID of ID_sorted) {
   index_html = index_html.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
   main_js = main_js.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
-  style_css = style_css.replaceAll("#" + ID.substring(3), "#" + ID_chars[i]);
+  style_css = style_css.replace(new RegExp(`([#\.])${ID.substring(3)}`, "g"), "$1" + ID_chars[i]);
   ++i;
 }
 index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
@@ -145,9 +145,6 @@ if(__SECURE_WEBSITE__) {
   });
   server.on("resumeSession", function(id, cb) {
     cb(null, sessions[id.toString("hex")] || null);
-  });
-  server.on("tlsClientError", function(err, socket) {
-    console.log("tls error:\n" + err + "\n", socket, "\n\n\n\n\n\n");
   });
 } else {
   require("http").createServer(app).listen(80, "0.0.0.0");

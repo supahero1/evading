@@ -12,7 +12,7 @@ const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
 const favicon = read("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-let main_js = read("../client/main.js");
+let main_js = read("../client/main.min2.js");
 let style_css = read("../client/style.min.css");
 
 const IDs = index_html.match(/ID_(\w+)/g);
@@ -30,7 +30,7 @@ const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 for(const ID of ID_sorted) {
   index_html = index_html.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
   main_js = main_js.replaceAll(`"${ID}"`, `"${ID_chars[i]}"`);
-  style_css = style_css.replaceAll("#" + ID.substring(3), "#" + ID_chars[i]);
+  style_css = style_css.replace(new RegExp(`([#\.])${ID.substring(3)}`, "g"), "$1" + ID_chars[i]);
   ++i;
 }
 index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
@@ -133,7 +133,19 @@ app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", fu
 });
 
 if(0) {
-  require("https").createServer(options, app).listen(443, "0.0.0.0");
+  const sessions = {};
+  const server = require("https").createServer(options, app).listen(443, "0.0.0.0");
+  server.on("newSession", function(id, data, cb) {
+    id = id.toString("hex");
+    sessions[id] = data;
+    setTimeout(function() {
+      delete sessions[id];
+    }, 1000 * 60 * 5);
+    cb();
+  });
+  server.on("resumeSession", function(id, cb) {
+    cb(null, sessions[id.toString("hex")] || null);
+  });
 } else {
   require("http").createServer(app).listen(80, "0.0.0.0");
 }

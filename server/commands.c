@@ -7,6 +7,8 @@
 static struct command_def command_defs[] = (struct command_def[]) {
   { "respawn", command_respawn, .in_game = 1 },
   { "r", command_respawn, .in_game = 1 },
+  { "die", command_die, .in_game = 1 },
+  { "menu", command_menu, .in_game = 1 },
   {0}
 };
 

@@ -80,6 +80,8 @@ struct client {
   uint64_t chat_sizes[max_chat_timestamps];
 };
 
+static struct client clients[max_players] = {0};
+
 struct ball {
   union {
     uint32_t next;
@@ -133,7 +135,6 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   { 176,  49,  92, 210, 130, 209,  79, 142 }, /* dimsi */
   { 149,  59, 209, 117,  50,  40,  58,  86 }, /* hydra */
   { 174, 252, 182,  48, 104,  74,  62,  94 }, /* kirame */
-  { 190,   2, 209, 240, 163,   5, 234, 188 }, /* altanis */
   {  12,  58,  94,  83, 191,  65,  73, 152 }, /* alph2h */
   {  19, 167,  67, 202,  56, 220, 231,  79 }
 };
@@ -143,8 +144,6 @@ static struct data_frame area_info_serials[area_infos_size];
 static uint8_t area_traversal[area_infos_size];
 
 static int ball_tick(struct grid* const, const uint16_t);
-
-static void close_client(const uint8_t);
 
 static uint32_t r_seed;
 
@@ -169,36 +168,6 @@ static float randf(void) {
 
 static int angle_diff_turn_dir(const float a, const float b) {
   return fmodf(a - b + M_PI * 3, M_PI * 2) - M_PI > 0;
-}
-
-/*
- * ================================== CLIENTS ==================================
- */
-
-static uint8_t client_hash(uint32_t x) {
-  x = ((x >> 16) ^ x) * 0x45d9f3b;
-  x = ((x >> 16) ^ x) * 0x45d9f3b;
-  x = (x >> 16) ^ x;
-  return x % max_players;
-}
-
-static struct client clients[max_players] = {0};
-static uint8_t existing_clients_len = 0;
-
-static uint8_t create_client(const uint32_t js_id) {
-  uint8_t i = client_hash(js_id);
-  while(clients[i].js_id != 0) {
-    i = (i + 1) % max_players;
-  }
-  return i;
-}
-
-static uint8_t get_client(const uint32_t js_id) {
-  uint8_t i = client_hash(js_id);
-  while(clients[i].js_id != js_id) {
-    i = (i + 1) % max_players;
-  }
-  return i;
 }
 
 /*
@@ -581,10 +550,35 @@ static const struct teleport_dest* dereference_teleport(const uint8_t area_info_
 }
 
 /*
- * =================================== TICK ===================================
+ * ================================== CLIENTS ==================================
  */
 
-static void spectate(const uint8_t client_id) {
+static uint8_t client_hash(uint32_t x) {
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = ((x >> 16) ^ x) * 0x45d9f3b;
+  x = (x >> 16) ^ x;
+  return x % max_players;
+}
+
+static uint8_t existing_clients_len = 0;
+
+static uint8_t create_client(const uint32_t js_id) {
+  uint8_t i = client_hash(js_id);
+  while(clients[i].js_id != 0) {
+    i = (i + 1) % max_players;
+  }
+  return i;
+}
+
+static uint8_t get_client(const uint32_t js_id) {
+  uint8_t i = client_hash(js_id);
+  while(clients[i].js_id != js_id) {
+    i = (i + 1) % max_players;
+  }
+  return i;
+}
+
+static void client_spectate(const uint8_t client_id) {
   struct client* const client = clients + client_id;
 
   if(client->exists) {
@@ -622,6 +616,52 @@ static void spectate(const uint8_t client_id) {
     }
   }
 }
+
+static void client_set_nonexisting(const uint8_t client_id) {
+  remove_client_from_its_area(client_id);
+  struct client* const client = clients + client_id;
+  client->exists = 0;
+  --existing_clients_len;
+  client->dead = 0;
+  client->death_counter = 0;
+  client->died_ticks_ago = 0;
+  client->updated_x = 0;
+  client->updated_y = 0;
+  client->updated_r = 0;
+  client->updated_dc = 0;
+  client->speed = 0;
+  client->last_spectator_change = -spectating_interval;
+  client->last_meaningful_movement = current_tick;
+  client->traverse_area_idx = fast_rand() % area_infos_size;
+  client_spectate(client_id);
+}
+
+static void client_close(const uint8_t client_id) {
+  struct client* const client = clients + client_id;
+  if(client->in_area) {
+    remove_client_from_its_area(client_id);
+  }
+  if(client->exists) {
+    --existing_clients_len;
+  }
+  const uint8_t deleted_by_above = client->deleted_by_above;
+  const uint32_t js_id = client->js_id;
+  memset(clients + client_id, 0, sizeof(*clients));
+  if(!deleted_by_above) {
+    uint8_t payload[] = { 6, 0, 0, js_id, js_id >> 8, js_id >> 16 };
+    tcp_send(&sock, &((struct data_frame) {
+      .data = (char*) payload,
+      .len = payload[0],
+      .read_only = 0,
+      .dont_free = 1,
+      .free_onerr = 0
+    }));
+  }
+}
+
+/*
+ * =================================== TICK ===================================
+ */
 
 static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
   struct grid_entity* entity = grid->entities + entity_id;
@@ -929,6 +969,11 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
 static void player_tick(const uint8_t client_id) {
   struct client* const client = clients + client_id;
 
+  if(!client->spectating_a_player && current_tick - client->last_meaningful_movement > idle_timeout) {
+    client_close(client_id);
+    return;
+  }
+
   if(current_tick % send_interval == 0) {
     client->updated_x = 0;
     client->updated_y = 0;
@@ -936,18 +981,13 @@ static void player_tick(const uint8_t client_id) {
     client->chat_len = 0;
   }
 
-  spectate(client_id);
+  client_spectate(client_id);
 
   if(client->exists) {
     struct grid_entity* const entity = &client->entity;
     const struct area* const area = areas + client->area_id;
     const struct grid* const grid = &area->grid;
     const struct tile_info* const info = area_infos[area->area_info_id]->tile_info;
-    
-    if(current_tick - client->last_meaningful_movement > idle_timeout) {
-      close_client(client_id);
-      return;
-    }
 
     struct {
       uint8_t x:1;
@@ -964,7 +1004,7 @@ static void player_tick(const uint8_t client_id) {
     if(client->dead) {
       if(++client->died_ticks_ago * tick_interval >= 1000) {
         if(client->death_counter-- == 0) {
-          close_client(client_id);
+          client_set_nonexisting(client_id);
           return;
         }
         client->died_ticks_ago = 0;
@@ -1516,29 +1556,6 @@ static void start_game(void) {
   })));
 }
 
-static void close_client(const uint8_t client_id) {
-  struct client* const client = clients + client_id;
-  if(client->in_area) {
-    remove_client_from_its_area(client_id);
-  }
-  if(client->exists) {
-    --existing_clients_len;
-  }
-  const uint8_t deleted_by_above = client->deleted_by_above;
-  const uint32_t js_id = client->js_id;
-  memset(clients + client_id, 0, sizeof(*clients));
-  if(!deleted_by_above) {
-    uint8_t payload[] = { 6, 0, 0, js_id, js_id >> 8, js_id >> 16 };
-    tcp_send(&sock, &((struct data_frame) {
-      .data = (char*) payload,
-      .len = payload[0],
-      .read_only = 0,
-      .dont_free = 1,
-      .free_onerr = 0
-    }));
-  }
-}
-
 static void parse(void) {
   const uint8_t len = buffer[0];
   const uint8_t method = buffer[1];
@@ -1568,8 +1585,9 @@ static void parse(void) {
         goto close;
       }
       client->last_spectator_change = -spectating_interval;
+      client->last_meaningful_movement = current_tick;
       client->traverse_area_idx = fast_rand() % area_infos_size;
-      spectate(client_id);
+      client_spectate(client_id);
       break;
     }
     case 1: { /* update */
@@ -1649,6 +1667,19 @@ static void parse(void) {
               }
               break;
             }
+            case command_die: {
+              if(client->dead == 0) {
+                client->dead = 1;
+                client->death_counter = 60;
+                client->died_ticks_ago = 0;
+                client->updated_dc = 1;
+              }
+              break;
+            }
+            case command_menu: {
+              client_set_nonexisting(client_id);
+              break;
+            }
             default: assert(0);
           }
           out2:;
@@ -1689,7 +1720,7 @@ static void parse(void) {
   return;
   
   close:;
-  close_client(client_id);
+  client_close(client_id);
 }
 
 /*

@@ -86,7 +86,8 @@ const default_settings = {
     ["value"]: 40,
     ["step"]: 1
   },
-  ["show_tutorial"]: true
+  ["show_tutorial"]: true,
+  ["show_ping"]: false
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
 for(const prop in default_settings) {
@@ -165,6 +166,7 @@ WebSocket.prototype.close = new Proxy(WebSocket.prototype.close, {
 
 function limit_input_to(n) {
   return function(e) {
+    console.log(e);
     const is_clipboard = e instanceof ClipboardEvent;
     if(is_clipboard && e.type != "paste") {
       return;
@@ -248,13 +250,13 @@ const CONSTS = {
   client_opcode_chat: 2,
   client_opcode_name: 3,
 
-  max_chat_throughput: 20,
-
   max_players: 100,
   max_balls: 65535,
+  max_chat_throughput: 20,
   max_chat_message_len: 128,
   max_chat_timestamps: 5,
   max_chat_sizes: 2,
+  max_pings: 10,
   max_name_len: 16
 };
 
@@ -277,6 +279,12 @@ class Menu {
      */
     this.selected_server = null;
     this.servers = window["s"];
+
+    this.picked_server_div = getElementById("ID_picked_server_for_you");
+    this.picked_server_tooltip = getElementById("ID_picked_server_for_you_tooltip");
+
+    this.ping = getElementById("ID_ping");
+    this.ping.style.display = settings["show_ping"] ? "block" : "none";
 
     this.play = getElementById("ID_play");
     this.refresh = getElementById("ID_refresh");
@@ -379,6 +387,9 @@ class Menu {
       option.innerHTML = server_name[0].toUpperCase() + server_name.substring(1) + ` (${server[0]}/${server[1]})`;
       this.select_server.appendChild(option);
     }
+    this.select_server.onfocus = function() {
+      this.picked_server_div.style.display = "none";
+    }.bind(this);
     this.select_server.onchange = async function() {
       this.selected_server.disabled = false;
       const old = this.selected_server;
@@ -403,6 +414,11 @@ class Menu {
         SOCKET.takeover(sock);
       }
     }.bind(this);
+    if(!getItem("psfy_tooltip")) {
+      this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
+      this.picked_server_div.style.display = "table";
+      //setItem("psfy_tooltip");
+    }
   }
 }
 
@@ -421,6 +437,11 @@ class Socket {
 
     this.game_init = false;
 
+    this.pings = new Array(CONSTS.max_pings).fill(0);
+    this.ping_sent_at = 0;
+    this.cached_ping = 0;
+    this.idx = 0;
+
     this.updates = [0, 0];
   }
   takeover(latency_sock) {
@@ -433,6 +454,11 @@ class Socket {
 
       this.updates = [0, 0];
     }
+
+    this.pings = latency_sock.pings;
+    this.ping_sent_at = latency_sock.ping_sent_at;
+    this.cached_ping = latency_sock.cached_ping;
+    this.idx = latency_sock.idx;
 
     this.ws = latency_sock.ws;
     this.ws.onmessage = this.message.bind(this);
@@ -456,7 +482,8 @@ class Socket {
   }
   message({ data }) {
     PACKET.set(new Uint8Array(data));
-    if(PACKET.len <= 1) {
+    if(PACKET.len == 0) {
+      this.onping();
       return;
     }
     PACKET.idx = 1;
@@ -507,6 +534,31 @@ class Socket {
       CLIENT.ondisconnected();
     }
   }
+  onping() {
+    this.pings[this.idx] = new Date().getTime() - this.ping_sent_at;
+    this.calculate_ping();
+    this.idx = (this.idx + 1) % CONSTS.max_pings;
+    setTimeout(this.ping.bind(this), 10);
+  }
+  ping() {
+    this.ping_sent_at = new Date().getTime();
+    this.ws.send(new Uint8Array(0));
+  }
+  calculate_ping() {
+    this.cached_ping = 0;
+    let idx = this.idx;
+    let total = 0;
+    for(let i = 0; i < CONSTS.max_pings; ++i) {
+      if(this.pings[idx] != 0) {
+        this.cached_ping += this.pings[idx] * ((CONSTS.max_pings - total) / (CONSTS.max_pings + 1));
+        ++total;
+      }
+      idx = (idx + 1) % CONSTS.max_pings;
+    }
+    if(total != 0) {
+      this.cached_ping /= total * 0.5;
+    }
+  }
   stop() {
     this.ws.onopen = this.ws.onmessage = this.ws.onclose = null;
     this.ws.close();
@@ -539,14 +591,13 @@ class Latency_socket extends Socket {
     this.ws.onclose = this.close.bind(this);
   }
   open() {
-    this.ws.send(new ArrayBuffer(0));
+    this.ping();
   }
   message() {
+    this.onping();
     if(++this.packets == this.pings_to_finish) {
       this.resolver(this.ws.url);
-      return;
     }
-    this.ws.send(new ArrayBuffer(0));
   }
   close() {
     this.connect();
@@ -629,9 +680,9 @@ class Packet {
     this.u8[0] = CONSTS.client_opcode_movement;
     this.view.setFloat32(1, angle, true);
     if(distance >= 160 * WINDOW.devicePixelRatio) {
-      this.u8[5] = 255 * MOVEMENT.get_mult();
+      this.u8[5] = 255 * MOVEMENT.mult;
     } else {
-      this.u8[5] = distance * 1.59375 / WINDOW.devicePixelRatio * MOVEMENT.get_mult();
+      this.u8[5] = distance * 1.59375 / WINDOW.devicePixelRatio * MOVEMENT.mult;
     }
     this.len = 6;
   }
@@ -730,10 +781,9 @@ class Chat {
           total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - CONSTS.max_chat_sizes) % CONSTS.max_chat_timestamps]);
           this.timestamps_idx = next_idx;
           const ratelimit = (diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput);
-          console.log(`diff: ${diff}\ntotal_size ${total_size}\nratelimit: ${ratelimit}`);
           /* Apply */
           if(ratelimit) {
-            this.disable("You are on cooldown for sending too many messages too fast");
+            this.disable("You are on cooldown for sending too many messages too quickly");
             const timeout = Math.max(CONSTS.max_chat_timestamps * 1000 - diff, (total_size - CONSTS.max_chat_throughput) * 100);
             this.timer = setTimeout(this.enable.bind(this), timeout);
           } else {
@@ -799,7 +849,7 @@ class Chat {
     this.blocked = false;
   }
   show() {
-    if(this.blocked) {
+    if(this.blocked || !settings["chat_on"]) {
       return;
     }
     this.visible = true;
@@ -1292,7 +1342,12 @@ class Settings {
     this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", CHAT.update.bind(CHAT)));
     this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update.bind(CHAT)));
 
-    this.new("HELP");
+    this.new("MENU");
+    this.add(this.text("Show latency"), this.switch("show_ping", function(visible) {
+      MENU.ping.style.display = visible ? "block" : "none";
+    }));
+
+    this.new("GAME");
     this.add(this.text("Enable tutorial"), this.switch("show_tutorial"));
 
     this.new("VISUALS");
@@ -1375,22 +1430,24 @@ class Background {
     for(let x = 0; x < w; ++x) {
       for(let y = 0; y < h; ++y) {
         const i = PACKET.u8[PACKET.idx];
-        if(fills[i] == undefined) {
-          fills[i] = new Path2D();
-          strokes[i] = new Path2D();
+        if(i != 2) {
+          if(fills[i] == undefined) {
+            fills[i] = new Path2D();
+            strokes[i] = new Path2D();
+          }
+          fills[i].rect(
+            (1.5 + x * cell_size) * fov_max,
+            (1.5 + y * cell_size) * fov_max,
+            (cell_size - 1.5 * 2) * fov_max,
+            (cell_size - 1.5 * 2) * fov_max
+          );
+          strokes[i].rect(
+            x * fov_cell_size,
+            y * fov_cell_size,
+            fov_cell_size,
+            fov_cell_size
+          );
         }
-        fills[i].rect(
-          (1.5 + x * cell_size) * fov_max,
-          (1.5 + y * cell_size) * fov_max,
-          (cell_size - 1.5 * 2) * fov_max,
-          (cell_size - 1.5 * 2) * fov_max
-        );
-        strokes[i].rect(
-          x * fov_cell_size,
-          y * fov_cell_size,
-          fov_cell_size,
-          fov_cell_size
-        );
         ++PACKET.idx;
       }
     }
@@ -1463,7 +1520,6 @@ class Canvas {
 
     this.canvas.onwheel = this.wheel.bind(this);
     this.canvas.onmousedown = this.mousedown.bind(this);
-    this.canvas.oncontextmenu = this.contextmenu.bind(this);
   }
   clear() {
     this.fov = settings["fov"]["value"];
@@ -1501,10 +1557,6 @@ class Canvas {
     MOVEMENT.mouse_movement = !MOVEMENT.mouse_movement;
     MOVEMENT.send();
   }
-  contextmenu(e) {
-    e.preventDefault();
-    return false;
-  }
   text(text, x, y) {
     this.ctx.font = `700 20px Ubuntu`;
     this.ctx.textAlign = "center";
@@ -1534,6 +1586,9 @@ class Canvas {
     }
     this.draw_at += when - this.last_draw_at;
     this.last_draw_at = when;
+    if(settings["show_ping"]) {
+      MENU.ping.innerHTML = SOCKET.cached_ping.toFixed(1) + "ms";
+    }
     CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
     CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
     //tutorial stuff here from git
@@ -1789,9 +1844,10 @@ class _Window {
       return;
     }
     e.preventDefault();
-    e.returnValue = "Are you sure you want to quit?";
+    const str = "Are you sure you want to quit?";
+    e.returnValue = str;
     save_settings();
-    return "Are you sure you want to quit?";
+    return str;
   }
 }
 
@@ -1842,6 +1898,9 @@ class Movement {
     this.mult = this.old_mult;
     this.send();
   }
+  zero() {
+    this.mouse_movement = false;
+  }
   upd_mult(mult) {
     if(!this.blocked) {
       this.mult = mult;
@@ -1852,7 +1911,7 @@ class Movement {
     return this.old_mult;
   }
   send() {
-    if(CLIENT.id != -1 && !this.blocked) {
+    if(CLIENT.in_game && !this.blocked) {
       PACKET.create_movement_packet();
       SOCKET.send();
     }
@@ -1877,45 +1936,44 @@ class Client {
     this.id = -1;
   }
   onconnecting() {
-    status.innerHTML = "Connecting";
+    MENU.show();
     MENU.hide_name();
+    status.innerHTML = "Connecting";
+    CHAT.show();
     CHAT.disable("Waiting for connection...");
     SETTINGS.block_hide();
   }
   onconnected() {
-    status.innerHTML = "";
-    MENU.show_name();
     MENU.show();
-    CHAT.show();
+    MENU.show_name();
+    status.innerHTML = "";
     CHAT.enable();
     SETTINGS.unblock();
   }
   ondisconnected() {
     this.in_game = false;
-    status.innerHTML = "Disconnected";
+    MENU.show();
     MENU.hide_name();
+    status.innerHTML = "Disconnected";
     MENU.show_refresh();
   }
   onserverfull() {
-    this.in_game = false;
     this.ondisconnected();
     status.innerHTML = "Server is full";
   }
   onspectatestart() {
-    this.in_game = true;
     MENU.hide();
   }
   onspectatestop() {
-    this.in_game = false;
     MENU.show();
+    MOVEMENT.zero();
   }
   onspawn() {
-    this.in_game = true;
     MENU.hide();
   }
   ondeath() {
-    this.in_game = false;
     MENU.show();
+    MOVEMENT.zero();
   }
 }
 

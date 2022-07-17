@@ -11,11 +11,12 @@
     <link rel="icon" type="image/vnd.microsoft.icon" href="favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,400,0,0">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://frankfurt.shadam.xyz">
   </head>
-  <body>
+  <body oncontextmenu="return false;">
     <script>window.s=__SERVERS__</script>
     <canvas id="ID_canvas"></canvas>
     <div id="ID_menu">
@@ -24,8 +25,19 @@
       <input id="ID_name" autocomplete="off" placeholder="Your nickname">
       <button id="ID_play">Play</button>
       <button id="ID_refresh">Refresh</button>
-      <div id="ID_selected_serv"><h5 id="ID_selected_serv_text">Selected server:</h5><select id="ID_select_serv"></select></div>
-      <a id="ID_discord" href="https://discord.gg/3DYbXcKc3j" target="_blank" rel="noopener noreferrer"><img src="discord.svg" width="50"></a>
+      <div id="ID_selected_serv">
+        <h5 id="ID_selected_serv_text">Selected server:</h5>
+        <select id="ID_select_serv"></select>
+        <h5 id="ID_ping"></h5>
+        <div id="ID_picked_server_for_you">
+          <span id="ID_google1" class="material-symbols-outlined">arrow_upward</span>
+          <h5 id="ID_picked_server_for_you_tooltip"></h5>
+        </div>
+      </div>
+      <a id="ID_discord" href="https://discord.gg/3DYbXcKc3j" target="_blank" rel="noopener noreferrer">
+        <img src="discord.svg" width="50">
+      </a>
+      <h5 id="ID_inspired_by">Inspired by <a href="https://evades.io" target="_blank" rel="noopener noreferrer" style="color:#fff">evades.io</a></h5>
     </div>
     <div id="ID_chat">
       <div id="ID_messages"></div>

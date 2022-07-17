@@ -1,6 +1,7 @@
 * {
   font-weight: 700;
   font-family: 'Ubuntu';
+  text-decoration: none;
 }
 
 body {
@@ -73,7 +74,7 @@ button {
 #chat {
   left: 20px;
   bottom: 40px;
-  width: 400px;
+  width: 412px;
   height: 200px;
   display: none;
   position: absolute;
@@ -126,13 +127,6 @@ button {
   display: none;
 }
 
-#discord {
-  right: 0;
-  bottom: 0;
-  position: absolute;
-  transform: translate(-50%, -50%);
-}
-
 #chlog {
   top: 0;
   left: 20px;
@@ -149,9 +143,54 @@ button {
 #selected_serv_text {
   font-size: 14pt;
   margin-right: 10px;
+  margin-bottom: 5px;
   display: inline-block;
 }
 
+#ping {
+  right: 0;
+  margin-top: 5px;
+  position: absolute;
+}
+
+#discord {
+  top: 205px;
+  left: 400px;
+  position: absolute;
+}
+
+#picked_server_for_you {
+  display: none;
+  margin-right: 0;
+  margin-top: 20px;
+  margin-left: auto;
+  text-align: center;
+  animation: up_and_down 1.5s alternate infinite ease-in-out;
+}
+
+@keyframes up_and_down {
+  from {
+    margin-top: 20px;
+  }
+  to {
+    margin-top: 40px;
+  }
+}
+
+#picked_server_for_you_tooltip {
+  margin: 0;
+}
+
+#inspired_by {
+  margin: 0;
+  right: 20px;
+  bottom: 20px;
+  position: absolute;
+}
+
+#inspired_by a {
+  text-decoration: underline !important;
+}
 
 
 
@@ -171,11 +210,11 @@ button {
 }
 
 input:disabled::placeholder {
-  color: #ddd;
+  color: #fff;
 }
 
 input:disabled::-ms-input-placeholder {
-  color: #ddd;
+  color: #fff;
 }
 
 h1 {
@@ -216,4 +255,8 @@ h5 {
 
 #settings .input {
   display: flex;
+}
+
+#google1 {
+  color: #fff;
 }
