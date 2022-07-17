@@ -485,7 +485,29 @@ class Socket {
       this.onping();
       return;
     }
-    PACKET.idx = 1;
+    const id = PACKET.byte() - 1;
+    let updated_id = false;
+    if(id != CLIENT.id) {
+      CLIENT.id = id;
+      updated_id = true;
+    }
+    const info = PACKET.byte();
+    const exists = info & 0x01;
+    if(exists && !CLIENT.in_game) {
+      CLIENT.in_game = true;
+      CLIENT.onspawn();
+    } else if(!exists && CLIENT.in_game) {
+      CLIENT.in_game = false;
+      CLIENT.ondeath();
+    }
+    const spectating = info & 0x02;
+    if(spectating && !CLIENT.spectating) {
+      CLIENT.spectating = true;
+      CLIENT.onspectatestart();
+    } else if(!spectating && CLIENT.spectating) {
+      CLIENT.spectating = false;
+      CLIENT.onspectatestop();
+    }
     this.updates[0] = this.updates[1];
     this.updates[1] = performance.now();
     PLAYERS.ip();
@@ -519,6 +541,8 @@ class Socket {
     }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
+    } else if(updated_id) {
+      CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
     }
     if(this.updates[0] != 0 && !this.game_init) {
       this.game_init = true;
@@ -779,11 +803,10 @@ class Chat {
           }
           total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - 1) % CONSTS.max_chat_timestamps]);
           this.timestamps_idx = next_idx;
-          const ratelimit = (diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput);
           /* Apply */
-          if(ratelimit) {
+          if((diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput)) {
             this.disable("You are on cooldown for sending too many messages too quickly");
-            const timeout = Math.max(CONSTS.max_chat_timestamps * 1000 - diff, (total_size - CONSTS.max_chat_throughput) * 100);
+            const timeout = Math.max(CONSTS.max_chat_timestamps * 1000 - diff, (total_size - CONSTS.max_chat_throughput) * 100); // todo this needs refactoring
             this.timer = setTimeout(this.enable.bind(this), timeout);
           } else {
             this.sendmsg.value = "";
@@ -1232,6 +1255,7 @@ class Settings {
   end() {
     if(this.table != null) {
       this.show_el(this.table);
+      this.table = null;
     }
   }
   new(name) {
@@ -1364,7 +1388,7 @@ class Settings {
     this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
 
     this.new("KEYBINDS");
-    this.show_el(this.comment("To change, click a button on the right side and then press the key you want to asign to it."));
+    this.show_el(this.comment("To change, click a button on the right side and then press the key you want to assign to it."));
     this.add(this.text("Settings"), this.keybind("settings"));
     this.add(this.text("Move up"), this.keybind("up"));
     this.add(this.text("Move left"), this.keybind("left"));
@@ -1449,24 +1473,6 @@ class Background {
         }
         ++PACKET.idx;
       }
-    }
-
-    CLIENT.id = PACKET.byte() - 1;
-    const exists = PACKET.byte();
-    if(exists && !CLIENT.in_game) {
-      CLIENT.in_game = true;
-      CLIENT.onspawn();
-    } else if(!exists && CLIENT.in_game) {
-      CLIENT.in_game = false;
-      CLIENT.ondeath();
-    }
-    const spectating = PACKET.byte();
-    if(spectating && !CLIENT.spectating) {
-      CLIENT.spectating = true;
-      CLIENT.onspectatestart();
-    } else if(!spectating && CLIENT.spectating) {
-      CLIENT.spectating = false;
-      CLIENT.onspectatestop();
     }
     
     this.width = w * cell_size;
@@ -1843,7 +1849,6 @@ class _Window {
     e.preventDefault();
     const str = "Are you sure you want to quit?";
     e.returnValue = str;
-    save_settings();
     return str;
   }
 }
@@ -1963,6 +1968,7 @@ class Client {
     MENU.hide_name();
     status.innerHTML = "Disconnected";
     MENU.show_refresh();
+    SETTINGS.block_hide();
   }
   onserverfull() {
     this.ondisconnected();

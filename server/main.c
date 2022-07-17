@@ -75,9 +75,10 @@ struct client {
   char     name[max_name_len];
   uint8_t  chat_len;
   uint8_t  chat_timestamp_idx;
+  uint8_t  chat_sizes_idx;
   char     chat[max_chat_message_len];
   uint64_t chat_timestamps[max_chat_timestamps];
-  uint64_t chat_sizes[max_chat_timestamps];
+  uint64_t chat_sizes[max_chat_sizes];
 };
 
 static struct client clients[max_players] = {0};
@@ -440,17 +441,6 @@ static void send_arena(const uint8_t client_id) {
   const struct data_frame* const serial = area_info_serials + area->area_info_id;
   memcpy(buf + buf_len, serial->data, serial->len);
   buf_len += serial->len;
-  if(!client->exists) {
-    if(client->spectating_client_id == client_id) {
-      buf[buf_len++] = 0;
-    } else {
-      buf[buf_len++] = client->spectating_client_id + 1;
-    }
-  } else {
-    buf[buf_len++] = client_id + 1;
-  }
-  buf[buf_len++] = client->exists;
-  buf[buf_len++] = client->spectating_a_player;
 }
 
 static uint8_t create_area(const uint8_t area_info_id) {
@@ -1427,23 +1417,34 @@ static void tick(void* nil) {
   pthread_mutex_lock(&mutex);
   if(++current_tick % send_interval == 0) {
     tcp_socket_cork_on(&sock);
-    for(uint8_t i = 0; i < max_players; ++i) {
-      if(clients[i].js_id == 0) continue;
-      buf[6] = 0;
-      buf_len = 7;
-      if(clients[i].in_area) {
-        send_arena(i);
-        send_players(i);
-        send_balls(i);
+    for(uint8_t client_id = 0; client_id < max_players; ++client_id) {
+      struct client* const client = clients + client_id;
+      if(client->js_id == 0) continue;
+      if(!client->exists) {
+        if(client->spectating_client_id == client_id) {
+          buf[6] = 0;
+        } else {
+          buf[6] = client->spectating_client_id + 1;
+        }
+      } else {
+        buf[6] = client_id + 1;
       }
-      send_chat(i);
-      //send_minimap(i);
+      buf[7] = client->exists;
+      buf[7] |= client->spectating_a_player << 1;
+      buf_len = 8;
+      if(client->in_area) {
+        send_arena(client_id);
+        send_players(client_id);
+        send_balls(client_id);
+      }
+      send_chat(client_id);
+      //send_minimap(client_id);
       buf[0] = buf_len;
       buf[1] = buf_len >> 8;
       buf[2] = buf_len >> 16;
-      buf[3] = clients[i].js_id;
-      buf[4] = clients[i].js_id >> 8;
-      buf[5] = clients[i].js_id >> 16;
+      buf[3] = client->js_id;
+      buf[4] = client->js_id >> 8;
+      buf[5] = client->js_id >> 16;
       tcp_send(&sock, &((struct data_frame) {
         .data = (char*) buf,
         .len = buf_len,
@@ -1597,6 +1598,7 @@ static void parse(void) {
       ++msg;
       switch(opcode) {
         case client_opcode_spawn: {
+          spawn:;
           if(client->exists || !client->named) {
             goto close;
           }
@@ -1629,7 +1631,8 @@ static void parse(void) {
           /* Number of messages ratelimit */
           client->chat_timestamps[client->chat_timestamp_idx] = time_get_time();
           const uint8_t next_idx = (client->chat_timestamp_idx + 1) % max_chat_timestamps;
-          if(client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx] < time_sec_to_ns(1) * (max_chat_timestamps - 1)) {
+          const uint64_t diff = client->chat_timestamps[client->chat_timestamp_idx] - client->chat_timestamps[next_idx];
+          if(diff < time_sec_to_ns(1) * (max_chat_timestamps - 1)) {
             goto close;
           }
           client->chat_timestamp_idx = next_idx;
@@ -1637,7 +1640,30 @@ static void parse(void) {
             goto out2;
           }
           /* Size of messages ratelimit */
-
+          client->chat_sizes[client->chat_sizes_idx] = chat_len;
+          client->chat_sizes_idx = (client->chat_sizes_idx + 1) % max_chat_sizes;
+          /* Can only perform calculations if there are at least 2 messages */
+          uint8_t idx = (client->chat_timestamp_idx + max_chat_timestamps - 2) % max_chat_timestamps;
+          if(client->chat_timestamps[idx] != 0) {
+            uint64_t time_total = client->chat_timestamps[(idx + 1) % max_chat_timestamps];
+            for(uint8_t i = 0; i < max_chat_sizes; ++i) {
+              uint8_t old = idx;
+              idx = (idx + max_chat_timestamps - 1) % max_chat_timestamps;
+              if(client->chat_timestamps[idx] == 0 || i + 1 == max_chat_sizes) {
+                time_total -= client->chat_timestamps[old];
+                break;
+              }
+            }
+            double total = 0;
+            for(uint8_t i = 0; i < max_chat_sizes; ++i) {
+              total += client->chat_sizes[i];
+            }
+            printf("total %lf\n\n", total * ((double) 1000.0 / time_ns_to_ms(time_total)));
+            total *= (double) 1000.0 / time_ns_to_ms(time_total);
+            if(total > max_chat_throughput) {
+              //goto close;
+            }
+          }
           /* Trim whitespace */
           uint8_t start = 0;
           uint8_t end = start + chat_len - 1;
@@ -1647,16 +1673,21 @@ static void parse(void) {
           /* Process */
           memcpy(client->chat, msg + start, chat_len);
           const struct command_def* command_def = find_command(client->chat, chat_len);
+          enum game_command command;
           if(command_def == NULL || (!client->exists && !command_def->out_game) || (client->exists && !command_def->in_game)) {
-            client->chat_len = chat_len;
-            goto out2;
+            command = command_invalid;
+          } else {
+            command = command_def->command;
           }
-          switch(command_def->command) {
+          switch(command) {
             case command_invalid: {
               client->chat_len = chat_len;
               break;
             }
             case command_respawn: {
+              if(!client->exists) {
+                goto spawn;
+              }
               if(default_area_info_id != areas[client->area_id].area_info_id) {
                 add_client_to_area(client_id, default_area_info_id);
               }
