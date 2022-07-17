@@ -166,13 +166,12 @@ WebSocket.prototype.close = new Proxy(WebSocket.prototype.close, {
 
 function limit_input_to(n) {
   return function(e) {
-    console.log(e);
     const is_clipboard = e instanceof ClipboardEvent;
     if(is_clipboard && e.type != "paste") {
       return;
     }
     const new_val = e.target.value + (is_clipboard ? e.clipboardData.getData("text") : e.key);
-    if(new TextEncoder().encode(new_val).byteLength > n) {
+    if(new TextEncoder().encode(new_val).byteLength - e.target.selectionEnd + e.target.selectionStart > n) {
       if(e.target.value == "" && is_clipboard) {
         const old = e.target.placeholder;
         e.target.placeholder = "Text too long to paste!";
@@ -252,7 +251,7 @@ const CONSTS = {
 
   max_players: 100,
   max_balls: 65535,
-  max_chat_throughput: 20,
+  max_chat_throughput: 16,
   max_chat_message_len: 128,
   max_chat_timestamps: 5,
   max_chat_sizes: 2,
@@ -778,7 +777,7 @@ class Chat {
           for(let i = 0; i < CONSTS.max_chat_sizes; ++i) {
             total_size += this.sizes[i];
           }
-          total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - CONSTS.max_chat_sizes) % CONSTS.max_chat_timestamps]);
+          total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - 1) % CONSTS.max_chat_timestamps]);
           this.timestamps_idx = next_idx;
           const ratelimit = (diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput);
           /* Apply */
@@ -1525,8 +1524,6 @@ class Canvas {
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
 
-    this.name_y = 0;
-
     cancelAnimationFrame(this.animation);
     this.animation = -1;
     this.stop_draw = false;
@@ -1919,6 +1916,16 @@ class Movement {
 }
 
 /*
+ * TUTORIAL
+ */
+
+class Tutorial {
+  constructor() {
+    this.running = false;
+  }
+}
+
+/*
  * CLIENT
  */
 
@@ -1969,6 +1976,7 @@ class Client {
     MOVEMENT.zero();
   }
   onspawn() {
+    CANVAS.name_y = 0;
     MENU.hide();
   }
   ondeath() {
@@ -1995,6 +2003,7 @@ const BACKGROUND = new Background();
 const CANVAS = new Canvas();
 const WINDOW = new _Window();
 const MOVEMENT = new Movement();
+const TUTORIAL = new Tutorial();
 const CLIENT = new Client();
 
 WINDOW.resize();
