@@ -796,11 +796,13 @@ class Chat {
         const val = this.sendmsg.value.trim();
         switch(val) {
           case "/help": {
+            this.new(null, ">", true);
             this.new(null, "Available commands:", true);
             this.new(null, "/clear /c => clear the chat", true);
             this.new(null, "/respawn /r => tp to the first area", true);
             this.new(null, "/die /d => become downed", true);
             this.new(null, "/menu /m => quit the game and open the menu", true);
+            this.new(null, ">", true);
             this.post_send();
             setItem("tth_tooltip", "");
             this.try_typing_help_div.style.display = "none";
