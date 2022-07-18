@@ -4,6 +4,7 @@
 const { localStorage } = window;
 const getItem = localStorage.getItem.bind(localStorage);
 const setItem = localStorage.setItem.bind(localStorage);
+const removeItem = localStorage.removeItem.bind(localStorage);
 
 const _keybinds = getItem("keybinds");
 const default_keybinds = {
@@ -13,7 +14,7 @@ const default_keybinds = {
   ["right"]: "KeyD",
   ["down"]: "KeyS",
   ["slowwalk"]: "ShiftLeft",
-  ["minimap"]: "KeyM"
+  //["minimap"]: "KeyM"
 };
 let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
 for(const prop in default_keybinds) {
@@ -242,7 +243,7 @@ const CONSTS = {
   server_opcode_players: 1,
   server_opcode_balls: 2,
   server_opcode_chat: 3,
-  server_opcode_minimap: 4,
+  //server_opcode_minimap: 4,
 
   client_opcode_spawn: 0,
   client_opcode_movement: 1,
@@ -251,10 +252,8 @@ const CONSTS = {
 
   max_players: 100,
   max_balls: 65535,
-  max_chat_throughput: 16,
   max_chat_message_len: 128,
   max_chat_timestamps: 5,
-  max_chat_sizes: 2,
   max_pings: 10,
   max_name_len: 16
 };
@@ -283,7 +282,7 @@ class Menu {
     this.picked_server_tooltip = getElementById("ID_picked_server_for_you_tooltip");
 
     this.ping = getElementById("ID_ping");
-    this.ping.style.display = settings["show_ping"] ? "block" : "none";
+    this.ping_update();
 
     this.play = getElementById("ID_play");
     this.refresh = getElementById("ID_refresh");
@@ -369,6 +368,15 @@ class Menu {
     this.refresh.style.display = "block";
     clearInterval(this.int);
   }
+  ping_update() {
+    this.ping.style.display = settings["show_ping"] ? "block" : "none";
+  }
+  init_tooltip() {
+    if(getItem("psfy_tooltip") == undefined) {
+      this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
+      this.picked_server_div.style.display = "table";
+    }
+  }
   init_server_list() {
     this.select_server.innerHTML = "";
     for(const server of this.servers) {
@@ -387,6 +395,7 @@ class Menu {
       this.select_server.appendChild(option);
     }
     this.select_server.onfocus = function() {
+      setItem("psfy_tooltip", "");
       this.picked_server_div.style.display = "none";
     }.bind(this);
     this.select_server.onchange = async function() {
@@ -413,11 +422,7 @@ class Menu {
         SOCKET.takeover(sock);
       }
     }.bind(this);
-    if(!getItem("psfy_tooltip")) {
-      this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
-      this.picked_server_div.style.display = "table";
-      //setItem("psfy_tooltip");
-    }
+    this.init_tooltip();
   }
 }
 
@@ -765,12 +770,14 @@ class Chat {
   constructor() {
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
     this.timestamps_idx = 0;
-    this.sizes = new Array(CONSTS.max_chat_sizes).fill(0);
-    this.sizes_idx = 0;
 
     this.div = getElementById("ID_chat");
     this.messages = getElementById("ID_messages");
     this.sendmsg = getElementById("ID_sendmsg");
+
+    this.try_typing_help_div = getElementById("ID_try_typing_help");
+    this.try_typing_help_tooltip = getElementById("ID_try_typing_help_tooltip");
+    this.init_tooltip();
 
     this.limit = limit_input_to(CONSTS.max_chat_message_len);
 
@@ -786,32 +793,43 @@ class Chat {
     this.sendmsg.onkeydown = function(e) {
       e.stopPropagation();
       if(e.code == "Enter") {
-        const encoded = new TextEncoder().encode(this.sendmsg.value.trim());
+        const val = this.sendmsg.value.trim();
+        switch(val) {
+          case "/help": {
+            this.new(null, "Available commands:", true);
+            this.new(null, "/clear /c => clear the chat", true);
+            this.new(null, "/respawn /r => tp to the first area", true);
+            this.new(null, "/die /d => become downed", true);
+            this.new(null, "/menu /m => quit the game and open the menu", true);
+            this.post_send();
+            setItem("tth_tooltip", "");
+            this.try_typing_help_div.style.display = "none";
+            return;
+          }
+          case "/c":
+          case "/clear": {
+            this.messages.innerHTML = "";
+            this.len = 0;
+            this.post_send();
+            return;
+          }
+          default: break;
+        }
+        const encoded = new TextEncoder().encode(val);
         if(encoded.length > 0) {
           PACKET.create_chat_packet(encoded);
           SOCKET.send();
           /* Init */
           this.timestamps[this.timestamps_idx] = new Date().getTime();
-          this.sizes[this.sizes_idx] = encoded.length;
           const next_idx = (this.timestamps_idx + 1) % CONSTS.max_chat_timestamps;
-          const diff = this.timestamps[this.timestamps_idx] - this.timestamps[next_idx];
-          this.sizes_idx = (this.sizes_idx + 1) % CONSTS.max_chat_sizes;
-          /* Calc */
-          let total_size = 0;
-          for(let i = 0; i < CONSTS.max_chat_sizes; ++i) {
-            total_size += this.sizes[i];
-          }
-          total_size *= 1000 / (this.timestamps[this.timestamps_idx] - this.timestamps[(this.timestamps_idx + CONSTS.max_chat_timestamps - 1) % CONSTS.max_chat_timestamps]);
+          const timeout = CONSTS.max_chat_timestamps * 1000 - this.timestamps[this.timestamps_idx] + this.timestamps[next_idx];
           this.timestamps_idx = next_idx;
           /* Apply */
-          if((diff < CONSTS.max_chat_timestamps * 1000) || (total_size > CONSTS.max_chat_throughput)) {
+          if(timeout > 0) {
             this.disable("You are on cooldown for sending too many messages too quickly");
-            const timeout = Math.max(CONSTS.max_chat_timestamps * 1000 - diff, (total_size - CONSTS.max_chat_throughput) * 100); // todo this needs refactoring
             this.timer = setTimeout(this.enable.bind(this), timeout);
           } else {
-            this.sendmsg.value = "";
-            this.sendmsg.blur();
-            CANVAS.canvas.focus();
+            this.post_send();
           }
         }
       }
@@ -824,8 +842,6 @@ class Chat {
   clear() {
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
     this.timestamps_idx = 0;
-    this.sizes = new Array(CONSTS.max_chat_sizes).fill(0);
-    this.sizes_idx = 0;
 
     this.messages.innerHTML = "";
     this.len = 0;
@@ -887,9 +903,14 @@ class Chat {
   focus(e) {
     this.sendmsg.focus();
   }
-  new(author, msg) {
+  post_send() {
+    this.sendmsg.value = "";
+    this.sendmsg.blur();
+    CANVAS.canvas.focus();
+  }
+  new(author, msg, no_author = false) {
     const p = createElement("p");
-    p.appendChild(document.createTextNode(author + ": " + msg));
+    p.appendChild(document.createTextNode((no_author ? "" : (author + ": ")) + msg));
     this.messages.insertBefore(p, this.messages.firstChild);
     if(++this.len > settings["max_chat_messages"]["value"]) {
       this.messages.removeChild(this.messages.lastChild);
@@ -903,6 +924,12 @@ class Chat {
   }
   font_update() {
     this.messages.style["font-size"] = settings["chat_text_scale"]["value"] + "em";
+  }
+  init_tooltip() {
+    if(getItem("tth_tooltip") == undefined) {
+      this.try_typing_help_tooltip.innerHTML = "Try \"/help\"";
+      this.try_typing_help_div.style.display = "inline-block";
+    }
   }
   parse() {
     const count = PACKET.byte();
@@ -1030,7 +1057,7 @@ class Players {
         if(chat_len > 0) {
           CHAT.new(name, PACKET.string(chat_len));
         }
-        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, is_player: true };
+        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_y: 0, is_player: true };
         if(CLIENT.id == id) {
           CAMERA.move(x2, y2);
         }
@@ -1366,9 +1393,7 @@ class Settings {
     this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update.bind(CHAT)));
 
     this.new("MENU");
-    this.add(this.text("Show latency"), this.switch("show_ping", function(visible) {
-      MENU.ping.style.display = visible ? "block" : "none";
-    }));
+    this.add(this.text("Show latency"), this.switch("show_ping", MENU.ping_update.bind(MENU)));
 
     this.new("GAME");
     this.add(this.text("Enable tutorial"), this.switch("show_tutorial"));
@@ -1395,7 +1420,7 @@ class Settings {
     this.add(this.text("Move down"), this.keybind("down"));
     this.add(this.text("Move right"), this.keybind("right"));
     this.add(this.text("Move slowly"), this.keybind("slowwalk"));
-    this.add(this.text("Big minimap"), this.keybind("minimap"));
+    //this.add(this.text("Big minimap"), this.keybind("minimap"));
 
     this.new("RESET");
     this.add(this.text("Reset settings"), this.button("RESET", function() {
@@ -1408,6 +1433,12 @@ class Settings {
       save_keybinds();
       this.init();
     }.bind(this)));
+    this.add(this.text("Reset all tooltips"), this.button("RESET", function() {
+      removeItem("psfy_tooltip");
+      MENU.init_tooltip();
+      removeItem("tth_tooltip");
+      CHAT.init_tooltip();
+    }));
 
     this.end();
   }
@@ -1515,8 +1546,6 @@ class Canvas {
 
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
-
-    this.name_y = 0;
 
     this.animation = -1;
     this.stop_draw = false;
@@ -1660,8 +1689,8 @@ class Canvas {
           } else {
             target_name_y = obj.r * 0.5 + (2 / (this.fov * this.fov));
           }
-          this.name_y = lerp(this.name_y, target_name_y, 0.1);
-          this.ctx.fillText(obj.name, obj.x, obj.y - obj.r - this.name_y);
+          obj.name_y = lerp(obj.name_y, target_name_y, 0.1);
+          this.ctx.fillText(obj.name, obj.x, obj.y - obj.r - obj.name_y);
         }
         if(obj.dead) {
           this.ctx.font = `700 ${obj.r / Math.min(this.fov, 1)}px Ubuntu`;
@@ -1982,7 +2011,6 @@ class Client {
     MOVEMENT.zero();
   }
   onspawn() {
-    CANVAS.name_y = 0;
     MENU.hide();
   }
   ondeath() {

@@ -75,10 +75,8 @@ struct client {
   char     name[max_name_len];
   uint8_t  chat_len;
   uint8_t  chat_timestamp_idx;
-  uint8_t  chat_sizes_idx;
   char     chat[max_chat_message_len];
   uint64_t chat_timestamps[max_chat_timestamps];
-  uint64_t chat_sizes[max_chat_sizes];
 };
 
 static struct client clients[max_players] = {0};
@@ -1638,31 +1636,6 @@ static void parse(void) {
           client->chat_timestamp_idx = next_idx;
           if(chat_len == 0) {
             goto out2;
-          }
-          /* Size of messages ratelimit */
-          client->chat_sizes[client->chat_sizes_idx] = chat_len;
-          client->chat_sizes_idx = (client->chat_sizes_idx + 1) % max_chat_sizes;
-          /* Can only perform calculations if there are at least 2 messages */
-          uint8_t idx = (client->chat_timestamp_idx + max_chat_timestamps - 2) % max_chat_timestamps;
-          if(client->chat_timestamps[idx] != 0) {
-            uint64_t time_total = client->chat_timestamps[(idx + 1) % max_chat_timestamps];
-            for(uint8_t i = 0; i < max_chat_sizes; ++i) {
-              uint8_t old = idx;
-              idx = (idx + max_chat_timestamps - 1) % max_chat_timestamps;
-              if(client->chat_timestamps[idx] == 0 || i + 1 == max_chat_sizes) {
-                time_total -= client->chat_timestamps[old];
-                break;
-              }
-            }
-            double total = 0;
-            for(uint8_t i = 0; i < max_chat_sizes; ++i) {
-              total += client->chat_sizes[i];
-            }
-            printf("total %lf\n\n", total * ((double) 1000.0 / time_ns_to_ms(time_total)));
-            total *= (double) 1000.0 / time_ns_to_ms(time_total);
-            if(total > max_chat_throughput) {
-              //goto close;
-            }
           }
           /* Trim whitespace */
           uint8_t start = 0;

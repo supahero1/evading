@@ -107,10 +107,10 @@ button {
 
 #sendmsg {
   border: 0;
-  width: 100%;
   height: 20px;
   outline-width: 0;
-  box-sizing: border-box;
+  padding: 1px 2px;
+  width: calc(412px - 4px);
 }
 
 #splash {
@@ -162,7 +162,6 @@ button {
 #picked_server_for_you {
   display: none;
   margin-right: 0;
-  margin-top: 20px;
   margin-left: auto;
   text-align: center;
   animation: up_and_down 1.5s alternate infinite ease-in-out;
@@ -177,8 +176,40 @@ button {
   }
 }
 
-#picked_server_for_you_tooltip {
+#picked_server_for_you_tooltip, #try_typing_help_tooltip {
   margin: 0;
+}
+
+#try_typing_help_tooltip {
+  margin-bottom: 4px;
+  display: inline-block;
+}
+
+#try_typing_help {
+  display: none;
+  margin-bottom: 0px;
+  margin-right: auto;
+  text-align: center;
+  vertical-align: middle;
+  animation: left_and_right 1.5s alternate infinite ease-in-out;
+}
+
+#try_typing_help2 {
+  display: flex;
+  align-items: center;
+}
+
+@keyframes left_and_right {
+  from {
+    margin-left: 0px;
+  }
+  to {
+    margin-left: 20px;
+  }
+}
+
+#chat_fix {
+  width: 200%;
 }
 
 #inspired_by {
@@ -257,6 +288,6 @@ h5 {
   display: flex;
 }
 
-#google1 {
+.material-symbols-outlined {
   color: #fff;
 }
