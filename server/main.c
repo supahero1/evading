@@ -1755,7 +1755,14 @@ static void parse(void) {
             }
             uint8_t i = client->spectating_client_id;
             while(1) {
-              i = (uint8_t)(i + op) % max_players;
+              if(op == 1) {
+                i = (i + 1) % max_players;
+              } else {
+                i = i + 255;
+                if(i == 255) {
+                  i = max_players - 1;
+                }
+              }
               if(!clients[i].exists) continue;
               client_set_spectated_player(client_id, i);
               break;
