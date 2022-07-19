@@ -1342,6 +1342,9 @@ class Tutorial {
         break;
       }
       case 1: {
+        const _x = PLAYERS.arr[CLIENT.id].x2;
+        const _y = PLAYERS.arr[CLIENT.id].y2;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
         draw_text("<-- Your character", CAMERA.x + 110, CAMERA.y);
         draw_text("Your character -->", CAMERA.x - 110, CAMERA.y);
         draw_text("This is your character. You can control it with these keys:", CAMERA.x, CAMERA.y - 220);
