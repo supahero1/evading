@@ -132,7 +132,7 @@ button {
 }
 
 #spec:disabled {
-  cursor: not-allowed;
+  cursor: default;
 }
 
 #spec_help {

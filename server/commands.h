@@ -7,7 +7,8 @@ enum game_command {
   command_invalid,
   command_respawn,
   command_die,
-  command_menu
+  command_menu,
+  command_spectate
 };
 
 struct command_def {

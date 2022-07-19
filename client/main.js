@@ -881,6 +881,7 @@ class Chat {
             this.new(null, "/respawn /r => tp to the first area", true);
             this.new(null, "/die /d => become downed", true);
             this.new(null, "/menu /m => quit the game and open the menu", true);
+            this.new(null, "/spectate /s => start/stop spectating", true);
             this.new(null, ">", true);
             this.post_send();
             setItem("tth_tooltip", "");
@@ -1426,7 +1427,7 @@ class Tutorial {
         CAMERA.move_f_by(_x, _y, 0.2 * by);
         draw_text("Enemy ball -->", _x - 110, _y);
         draw_text("<-- Enemy ball", _x + 110, _y);
-        draw_text("This is an enemy, also called simply a ball. A grey ball", _x, _y - 110);
+        draw_text("This is an enemy, also simply called a ball. A grey ball", _x, _y - 110);
         draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
         draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
         draw_text("there are lots of types of enemies, each having their own color.", _x, _y - 50);

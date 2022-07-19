@@ -52,7 +52,6 @@ struct client {
   uint8_t  exists:1;
   uint8_t  in_area:1;
   uint8_t  spectating_a_player:1;
-  uint8_t  spectated_player_dced:1;
   uint8_t  dead:1;
   uint8_t  deleted_by_above:1;
   uint8_t  targetable:1;
@@ -584,15 +583,11 @@ static void client_spectate(const uint8_t client_id) {
   }
 
   if(client->spectating_a_player) {
-    if(!client->spectated_player_dced) {
-      if(!clients[client->spectating_client_id].exists) {
-        client->spectated_player_dced = 1;
-      } else if(!client->in_area || client->area_id != clients[client->spectating_client_id].area_id) {
-        add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
-      }
-    } else {
+    if(!clients[client->spectating_client_id].exists) {
       client->spectating_a_player = 0;
       client_start_spectating(client_id);
+    } else if(!client->in_area || client->area_id != clients[client->spectating_client_id].area_id) {
+      add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
     }
     return;
   }
@@ -1575,7 +1570,7 @@ static void parse(void) {
   const uint8_t len = buffer[0];
   const uint8_t method = buffer[1];
   const uint32_t js_id = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16);
-  const uint8_t* msg = buffer + 5;
+  uint8_t* msg = buffer + 5;
   uint8_t client_id;
   switch(method) {
     case 0: { /* create */
@@ -1701,6 +1696,10 @@ static void parse(void) {
               client->spectating_a_player = 0;
               break;
             }
+            case command_spectate: {
+              msg[0] = 0;
+              goto spectate;
+            }
             default: assert(0);
           }
           out2:;
@@ -1727,6 +1726,7 @@ static void parse(void) {
           break;
         }
         case client_opcode_spec: {
+          spectate:;
           if(existing_clients_len == 0) {
             break;
           }
