@@ -14,6 +14,8 @@ const default_keybinds = {
   ["right"]: "KeyD",
   ["down"]: "KeyS",
   ["slowwalk"]: "ShiftLeft",
+  ["spec_prev"]: "KeyA",
+  ["spec_next"]: "KeyD",
   //["minimap"]: "KeyM"
 };
 let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
@@ -227,6 +229,22 @@ function lerp(num, to, by) {
   return num + (to - num) * by;
 }
 
+/**
+ * @param {string} text 
+ * @param {number} _x 
+ * @param {number} _y 
+ */
+function draw_text(text, _x, _y) {
+  CANVAS.ctx.font = `700 20px Ubuntu`;
+  CANVAS.ctx.textAlign = "center";
+  CANVAS.ctx.textBaseline = "middle";
+  CANVAS.ctx.fillStyle = "#fff";
+  CANVAS.ctx.strokeStyle = "#333";
+  CANVAS.ctx.lineWidth = 1;
+  CANVAS.ctx.fillText(text, _x, _y);
+  CANVAS.ctx.strokeText(text, _x, _y);
+}
+
 if(window["s"].length == 0) {
   status.innerHTML = "No servers found";
   reload();
@@ -249,13 +267,16 @@ const CONSTS = {
   client_opcode_movement: 1,
   client_opcode_chat: 2,
   client_opcode_name: 3,
+  client_opcode_spec: 4,
 
   max_players: 100,
   max_balls: 65535,
   max_chat_message_len: 128,
   max_chat_timestamps: 5,
   max_pings: 10,
-  max_name_len: 16
+  max_name_len: 16,
+
+  default_area_id: 0
 };
 
 const Tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
@@ -285,7 +306,18 @@ class Menu {
     this.ping_update();
 
     this.play = getElementById("ID_play");
+    this.spec = getElementById("ID_spec");
+    /**
+     * @type {Element}
+     */
+    this.spec_help = null;
+    this.spec_help_text = "";
+    this.init_spec_help_text();
+    this.spectating = getElementById("ID_spectating");
     this.refresh = getElementById("ID_refresh");
+    
+    const spec_help = getElementById("ID_spec_help");
+    spec_help.parentElement.removeChild(spec_help);
 
     this.refresh.onclick = location.reload.bind(location);
 
@@ -307,6 +339,11 @@ class Menu {
 
     this.play.onclick = function() {
       PACKET.create_spawn_packet();
+      SOCKET.send();
+    };
+
+    this.spec.onclick = function() {
+      PACKET.create_spec_packet(0);
       SOCKET.send();
     };
   }
@@ -364,9 +401,34 @@ class Menu {
     if(!SOCKET.once) {
       reload();
     }
+    this.hide_name();
     this.play.style.display = "none";
+    this.spec.style.display = "none";
     this.refresh.style.display = "block";
     clearInterval(this.int);
+  }
+  init_spec_help_text() {
+    this.spec_help_text = `Press ${keybinds["spec_prev"]} or ${keybinds["spec_next"]} to switch between players<br><br>Type "/menu" in chat to return to the main menu`;
+  }
+  show_spec_help() {
+    const h5 = createElement("h5");
+    h5.id = "ID_spec_help";
+    h5.innerHTML = this.spec_help_text;
+    setTimeout(function() {
+      h5.style.opacity = 0;
+    }, 3000);
+    h5.addEventListener("transitionend", this.hide_spec_help.bind(this));
+    document.body.insertBefore(h5, MENU.div);
+    this.spec_help = h5;
+  }
+  hide_spec_help() {
+    if(this.spec_help != null) {
+      this.spec_help.parentElement.removeChild(this.spec_help);
+      this.spec_help = null;
+    }
+  }
+  can_spectate_state(on) {
+    this.spec.disabled = on;
   }
   ping_update() {
     this.ping.style.display = settings["show_ping"] ? "block" : "none";
@@ -465,7 +527,14 @@ class Socket {
     this.idx = latency_sock.idx;
 
     this.ws = latency_sock.ws;
-    this.ws.onmessage = this.message.bind(this);
+    this.ws.onmessage = function({ data }) {
+      try {
+        this.message({ data });
+      } catch(err) {
+        console.log(err);
+        console.log(Array.from(new Uint8Array(data)).map(r => r.toString(16).padStart(2, "0")).join(" "));
+      }
+    }.bind(this);
     this.ws.onclose = this.close.bind(this);
 
     PACKET.create_init_packet();
@@ -497,15 +566,7 @@ class Socket {
       updated_id = true;
     }
     const info = PACKET.byte();
-    const exists = info & 0x01;
-    if(exists && !CLIENT.in_game) {
-      CLIENT.in_game = true;
-      CLIENT.onspawn();
-    } else if(!exists && CLIENT.in_game) {
-      CLIENT.in_game = false;
-      CLIENT.ondeath();
-    }
-    const spectating = info & 0x02;
+    const spectating = info & 0x01;
     if(spectating && !CLIENT.spectating) {
       CLIENT.spectating = true;
       CLIENT.onspectatestart();
@@ -513,16 +574,26 @@ class Socket {
       CLIENT.spectating = false;
       CLIENT.onspectatestop();
     }
+    const exists = info & 0x02;
+    if(exists && !CLIENT.in_game) {
+      CLIENT.in_game = true;
+      CLIENT.onspawn();
+    } else if(!exists && CLIENT.in_game) {
+      CLIENT.in_game = false;
+      CLIENT.ondeath();
+    }
+    MENU.can_spectate_state(info & 0x04);
     this.updates[0] = this.updates[1];
     this.updates[1] = performance.now();
     PLAYERS.ip();
     BALLS.ip();
     CAMERA.ip();
+    let updated_background = false;
     while(PACKET.idx < PACKET.len) {
       switch(PACKET.byte()) {
         case CONSTS.server_opcode_area: {
+          updated_background = true;
           BALLS.clear();
-          CAMERA.ip();
           BACKGROUND.parse();
           break;
         }
@@ -548,6 +619,9 @@ class Socket {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
     } else if(updated_id) {
       CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
+      if(updated_background) {
+        CAMERA.ip();
+      }
     }
     if(this.updates[0] != 0 && !this.game_init) {
       this.game_init = true;
@@ -725,6 +799,11 @@ class Packet {
     const name = MENU.get_name();
     this.u8.set(name, 1);
     this.len = name.length + 1;
+  }
+  create_spec_packet(id) {
+    this.u8[0] = CONSTS.client_opcode_spec;
+    this.u8[1] = id;
+    this.len = 2;
   }
 }
 
@@ -993,6 +1072,10 @@ class Camera {
     this.x2 = x;
     this.y2 = y;
   }
+  move_f_by(x, y, by) {
+    this.x2 = lerp(this.x2, x, by);
+    this.y2 = lerp(this.y2, y, by);
+  }
   ip() {
     this.x1 = this.x2;
     this.y1 = this.y2;
@@ -1214,6 +1297,155 @@ class Key_prober {
 }
 
 /*
+ * TUTORIAL
+ */
+
+class Tutorial {
+  constructor() {
+    this.stage = 0;
+    this.stage_max = 7;
+
+    this.old_fov = 0;
+
+    /**
+     * @type {Element}
+     */
+    this.btn = null;
+  }
+  progress() {
+    if(this.stage == 0) {
+      if(settings["show_tutorial"] && CLIENT.in_game) {
+        this.stage = 1;
+        this.old_fov = CANVAS.target_fov;
+        CANVAS.target_fov = settings["fov"]["max"];
+        CAMERA.block();
+        SETTINGS.block_hide();
+        MOVEMENT.block();
+      }
+    } else if(++this.stage == this.stage_max) {
+      this.btn.click();
+      this.stage = 0;
+      CANVAS.target_fov = this.old_fov;
+      CAMERA.unblock();
+      SETTINGS.unblock();
+      MOVEMENT.unblock();
+    }
+  }
+  run(by) {
+    switch(this.stage) {
+      case 0: {
+        if(settings["show_tutorial"] && BACKGROUND.area_id == CONSTS.default_area_id) {
+          draw_text("Need help? Press KeyT for a tutorial.", BACKGROUND.width * 0.5, BACKGROUND.cell_size * 2.5);
+        }
+        break;
+      }
+      case 1: {
+        draw_text("<-- Your character", CAMERA.x + 110, CAMERA.y);
+        draw_text("Your character -->", CAMERA.x - 110, CAMERA.y);
+        draw_text("This is your character. You can control it with these keys:", CAMERA.x, CAMERA.y - 220);
+        draw_text(`${keybinds["up"]}: up`, CAMERA.x, CAMERA.y - 170);
+        draw_text(`${keybinds["left"]}: left`, CAMERA.x, CAMERA.y - 130);
+        draw_text(`${keybinds["down"]}: down`, CAMERA.x, CAMERA.y - 90);
+        draw_text(`${keybinds["right"]}: right`, CAMERA.x, CAMERA.y - 50);
+        draw_text("You can also control it with mouse. Just", CAMERA.x, CAMERA.y + 50);
+        draw_text("press any mouse button to start or stop moving.", CAMERA.x, CAMERA.y + 70);
+        draw_text("Scroll to change your field of view.", CAMERA.x, CAMERA.y + 110);
+        draw_text("Note that you won't be able to perform some", CAMERA.x, CAMERA.y + 150);
+        draw_text("of the above actions until the tutorial ends.", CAMERA.x, CAMERA.y + 170);
+        draw_text("Press KeyT to continue", CAMERA.x, CAMERA.y + 220);
+        break;
+      }
+      case 2: {
+        const _x = BACKGROUND.width * 0.5 - BACKGROUND.cell_size * 6;
+        const _y = BACKGROUND.height * 0.5;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
+        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1);
+        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y);
+        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 1);
+        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
+        draw_text("<--", _x - BACKGROUND.cell_size * 3, _y - BACKGROUND.cell_size * 1);
+        draw_text("<--", _x - BACKGROUND.cell_size * 4, _y);
+        draw_text("<--", _x - BACKGROUND.cell_size * 3, _y + BACKGROUND.cell_size * 1);
+        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
+        draw_text("These are safezones. Enemies can't", _x, _y - 130);
+        draw_text("reach you inside of these tiles.", _x, _y - 110);
+        draw_text("Press KeyT to continue", _x, _y + 110);
+        break;
+      }
+      case 3: {
+        const _x = BACKGROUND.width * 0.5 + BACKGROUND.cell_size * 6;
+        const _y = BACKGROUND.height * 0.5;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
+        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
+        draw_text("<--", _x - BACKGROUND.cell_size * 1, _y - BACKGROUND.cell_size * 3);
+        draw_text("<--", _x, _y - BACKGROUND.cell_size * 4);
+        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
+        draw_text("<--", _x - BACKGROUND.cell_size * 1, _y + BACKGROUND.cell_size * 3);
+        draw_text("<--", _x, _y + BACKGROUND.cell_size * 4);
+        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 3);
+        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 3);
+        draw_text("<--", _x + BACKGROUND.cell_size * 5, _y - BACKGROUND.cell_size * 2);
+        draw_text("<--", _x + BACKGROUND.cell_size * 6, _y - BACKGROUND.cell_size * 1);
+        draw_text("<--", _x + BACKGROUND.cell_size * 7, _y);
+        draw_text("<--", _x + BACKGROUND.cell_size * 6, _y + BACKGROUND.cell_size * 1);
+        draw_text("<--", _x + BACKGROUND.cell_size * 5, _y + BACKGROUND.cell_size * 2);
+        draw_text("These are walls. Players can't walk over them.", _x, _y - 40);
+        draw_text("However, some types (colors) of enemies can.", _x, _y - 10);
+        draw_text("Press KeyT to continue", _x, _y + 40);
+        break;
+      }
+      case 4: {
+        const _x = BACKGROUND.cell_size * 0.5;
+        const _y = BACKGROUND.height * 0.5;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
+        draw_text("-->", _x, _y);
+        draw_text("This is a teleport tile. If you walk on it,", _x, _y - 130);
+        draw_text("you will be teleported to the area it points to.", _x, _y - 110);
+        draw_text("Minimap is not yet implemented, but once it is, you", _x, _y - 70);
+        draw_text("will be able to see where any area is located at.", _x, _y - 50);
+        draw_text("If a teleport doesn't have a number on it, it doesn't point", _x, _y + 50);
+        draw_text("anywhere (perhaps because the next area is under construction).", _x, _y + 70);
+        draw_text("Press KeyT to continue", _x, _y + 120);
+        break;
+      }
+      case 5: {
+        let first_ball;
+        for(let i = 0; i < CONSTS.max_balls; ++i) {
+          if(BALLS.arr[i]) {
+            first_ball = BALLS.arr[i];
+            break;
+          }
+        }
+        const _x = first_ball.x2;
+        const _y = first_ball.y2;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
+        draw_text("Enemy ball -->", _x - 110, _y);
+        draw_text("<-- Enemy ball", _x + 110, _y);
+        draw_text("This is an enemy, also called simply a ball. A grey ball", _x, _y - 110);
+        draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
+        draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
+        draw_text("there are lots of types of enemies, each having their own color.", _x, _y - 50);
+        draw_text("Coming in contact with an enemy downs you. While downed, you can't move,", _x, _y + 50);
+        draw_text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
+        draw_text("Press KeyT to continue", _x, _y + 120);
+        break;
+      }
+      case 6: {
+        const _x = PLAYERS.arr[CLIENT.id].x2;
+        const _y = PLAYERS.arr[CLIENT.id].y2;
+        CAMERA.move_f_by(_x, _y, 0.2 * by);
+        draw_text(`You can press ${keybinds["settings"]} to open settings.`, _x, _y - 80);
+        draw_text("There are a lot of cool options to change. Try it out later.", _x, _y - 60);
+        draw_text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
+        draw_text("GLHF!", _x, _y + 80);
+        draw_text("Press KeyT to end the tutorial", _x, _y + 130);
+        break;
+      }
+    }
+  }
+}
+
+/*
  * SETTINGS
  */
 
@@ -1343,7 +1575,7 @@ class Settings {
     select.onchange = save_settings;
     return select;
   }
-  keybind(name) {
+  keybind(name, cb=function(){}) {
     const btn = createElement("button");
     btn.innerHTML = keybinds[name];
     btn.onclick = async function() {
@@ -1352,6 +1584,7 @@ class Settings {
       btn.innerHTML = key;
       keybinds[name] = key;
       save_keybinds();
+      cb();
     };
     btn.style.color = "#000";
     return btn;
@@ -1398,7 +1631,8 @@ class Settings {
     this.add(this.text("Show latency"), this.switch("show_ping", MENU.ping_update.bind(MENU)));
 
     this.new("GAME");
-    this.add(this.text("Enable tutorial"), this.switch("show_tutorial"));
+    TUTORIAL.btn = this.switch("show_tutorial");
+    this.add(this.text("Enable tutorial"), TUTORIAL.btn);
 
     this.new("VISUALS");
     this.add(this.text("Default FOV"), this.slider("fov"));
@@ -1422,16 +1656,18 @@ class Settings {
     this.add(this.text("Move down"), this.keybind("down"));
     this.add(this.text("Move right"), this.keybind("right"));
     this.add(this.text("Move slowly"), this.keybind("slowwalk"));
+    this.add(this.text("Spectate previous player"), this.keybind("spec_prev", MENU.init_spec_help_text.bind(MENU)));
+    this.add(this.text("Spectate next player"), this.keybind("spec_next", MENU.init_spec_help_text.bind(MENU)));
     //this.add(this.text("Big minimap"), this.keybind("minimap"));
 
     this.new("RESET");
     this.add(this.text("Reset settings"), this.button("RESET", function() {
-      settings = default_settings;
+      settings = JSON.parse(JSON.stringify(default_settings));
       save_settings();
       this.init();
     }.bind(this)));
     this.add(this.text("Reset keybinds"), this.button("RESET", function() {
-      keybinds = default_keybinds;
+      keybinds = JSON.parse(JSON.stringify(default_keybinds));
       save_keybinds();
       this.init();
     }.bind(this)));
@@ -1455,11 +1691,18 @@ class Background {
     this.canvas = createElement("canvas");
     this.ctx = this.canvas.getContext("2d");
 
+    /*this.tiles = new Array(Tile_colors.length);
+    for(let i = 0; i < Tile_colors.length; ++i) {
+      const c = createElement("canvas");
+      this.tiles[i] = [c, c.getContext("2d")];
+    }*/
+
     this.light_canvas = createElement("canvas");
     this.light_ctx = this.light_canvas.getContext("2d");
 
     this.width = 0;
     this.height = 0;
+    this.cell_size = 0;
 
     this.area_id = -1;
   }
@@ -1510,6 +1753,7 @@ class Background {
     
     this.width = w * cell_size;
     this.height = h * cell_size;
+    this.cell_size = cell_size;
 
     this.canvas.width = this.width * fov_max;
     this.canvas.height = this.height * fov_max;
@@ -1733,6 +1977,7 @@ class Canvas {
         }
       }
     }
+    TUTORIAL.run(by);
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
 }
@@ -1780,16 +2025,22 @@ class _Window {
       }
       return;
     }
+    if(CLIENT.spectating) {
+      switch(e.code) {
+        case keybinds["spec_prev"]: {
+          PACKET.create_spec_packet(-1);
+          SOCKET.send();
+        }
+        case keybinds["spec_next"]: {
+          PACKET.create_spec_packet(1);
+          SOCKET.send();
+        }
+        default: break;
+      }
+    }
     switch(e.code) {
       case "Enter": {
         CHAT.focus(e);
-        break;
-      }
-      case keybinds["slowwalk"]: {
-        if(MOVEMENT.get_mult() == 1) {
-          MOVEMENT.upd_mult(0.5);
-          MOVEMENT.send();
-        }
         break;
       }
       case keybinds["up"]: {
@@ -1820,7 +2071,15 @@ class _Window {
         }
         break;
       }
+      case keybinds["slowwalk"]: {
+        if(MOVEMENT.get_mult() == 1) {
+          MOVEMENT.upd_mult(0.5);
+          MOVEMENT.send();
+        }
+        break;
+      }
       case "KeyT": {
+        TUTORIAL.progress();
         break;
       }
       default: break;
@@ -1831,13 +2090,6 @@ class _Window {
       return;
     }
     switch(e.code) {
-      case keybinds["slowwalk"]: {
-        if(MOVEMENT.get_mult() == 0.5) {
-          MOVEMENT.upd_mult(1);
-          MOVEMENT.send();
-        }
-        break;
-      }
       case keybinds["up"]: {
         if(MOVEMENT.up) {
           MOVEMENT.up = 0;
@@ -1862,6 +2114,13 @@ class _Window {
       case keybinds["right"]: {
         if(MOVEMENT.right) {
           MOVEMENT.right = 0;
+          MOVEMENT.send();
+        }
+        break;
+      }
+      case keybinds["slowwalk"]: {
+        if(MOVEMENT.get_mult() == 0.5) {
+          MOVEMENT.upd_mult(1);
           MOVEMENT.send();
         }
         break;
@@ -1952,16 +2211,6 @@ class Movement {
 }
 
 /*
- * TUTORIAL
- */
-
-class Tutorial {
-  constructor() {
-    this.running = false;
-  }
-}
-
-/*
  * CLIENT
  */
 
@@ -1996,7 +2245,6 @@ class Client {
   ondisconnected() {
     this.in_game = false;
     MENU.show();
-    MENU.hide_name();
     status.innerHTML = "Disconnected";
     MENU.show_refresh();
     SETTINGS.block_hide();
@@ -2007,9 +2255,13 @@ class Client {
   }
   onspectatestart() {
     MENU.hide();
+    MENU.show_spec_help();
+    MENU.spectating.style.display = "block";
   }
   onspectatestop() {
     MENU.show();
+    MENU.hide_spec_help();
+    MENU.spectating.style.display = "none";
     MOVEMENT.zero();
   }
   onspawn() {
@@ -2034,12 +2286,12 @@ const CAMERA = new Camera();
 const PLAYERS = new Players();
 const BALLS = new Balls();
 const KEY_PROBER = new Key_prober();
+const TUTORIAL = new Tutorial();
 const SETTINGS = new Settings();
 const BACKGROUND = new Background();
 const CANVAS = new Canvas();
 const WINDOW = new _Window();
 const MOVEMENT = new Movement();
-const TUTORIAL = new Tutorial();
 const CLIENT = new Client();
 
 WINDOW.resize();

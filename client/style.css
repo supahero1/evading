@@ -27,7 +27,7 @@ html, body, #canvas, #settings_container, #menu {
   -webkit-user-select: none;
 }
 
-#settings, #name, #status, #splash, #play, #refresh {
+#settings, #name, #status, #splash, #play, #spec, #refresh, #spec_help {
   top: 50%;
 	left: 50%;
   position: absolute;
@@ -118,10 +118,34 @@ button {
   top: calc(50% - 100px);
 }
 
-#play, #refresh {
+#play, #spec, #refresh {
   width: 100px;
   top: calc(50% + 35px);
 }
+
+#play {
+  left: calc(50% - 55px);
+}
+
+#spec {
+  left: calc(50% + 55px);
+}
+
+#spec_help {
+  top: 50px;
+  font-size: 16pt;
+  transition: opacity 3s;
+}
+
+#spectating {
+  top: 10px;
+  right: 10px;
+  margin: 0px;
+  display: none;
+  position: absolute;
+}
+
+
 
 #refresh {
   display: none;

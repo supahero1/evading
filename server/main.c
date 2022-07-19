@@ -566,6 +566,16 @@ static uint8_t get_client(const uint32_t js_id) {
   return i;
 }
 
+static void client_set_spectated_player(const uint8_t client_id, const uint8_t i) {
+  struct client* const client = clients + client_id;
+  client->spectating_client_id = i;
+  if(!client->in_area || client->area_id != clients[i].area_id) {
+    add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
+  }
+}
+
+static void client_start_spectating(const uint8_t);
+
 static void client_spectate(const uint8_t client_id) {
   struct client* const client = clients + client_id;
 
@@ -580,6 +590,9 @@ static void client_spectate(const uint8_t client_id) {
       } else if(!client->in_area || client->area_id != clients[client->spectating_client_id].area_id) {
         add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
       }
+    } else {
+      client->spectating_a_player = 0;
+      client_start_spectating(client_id);
     }
     return;
   }
@@ -596,13 +609,18 @@ static void client_spectate(const uint8_t client_id) {
   } else {
     for(uint8_t i = (client->spectating_client_id + 1) % max_players;; i = (i + 1) % max_players) {
       if(!clients[i].exists) continue;
-      client->spectating_client_id = i;
-      if(!client->in_area || client->area_id != clients[i].area_id) {
-        add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
-      }
+      client_set_spectated_player(client_id, i);
       break;
     }
   }
+}
+
+static void client_start_spectating(const uint8_t client_id) {
+  struct client* const client = clients + client_id;
+  client->last_spectator_change = -spectating_interval;
+  client->last_meaningful_movement = current_tick;
+  client->traverse_area_idx = fast_rand() % area_infos_size;
+  client_spectate(client_id);
 }
 
 static void client_set_nonexisting(const uint8_t client_id) {
@@ -618,10 +636,7 @@ static void client_set_nonexisting(const uint8_t client_id) {
   client->updated_r = 0;
   client->updated_dc = 0;
   client->speed = 0;
-  client->last_spectator_change = -spectating_interval;
-  client->last_meaningful_movement = current_tick;
-  client->traverse_area_idx = fast_rand() % area_infos_size;
-  client_spectate(client_id);
+  client_start_spectating(client_id);
 }
 
 static void client_close(const uint8_t client_id) {
@@ -639,7 +654,7 @@ static void client_close(const uint8_t client_id) {
     uint8_t payload[] = { 6, 0, 0, js_id, js_id >> 8, js_id >> 16 };
     tcp_send(&sock, &((struct data_frame) {
       .data = (char*) payload,
-      .len = payload[0],
+      .len = sizeof(payload),
       .read_only = 0,
       .dont_free = 1,
       .free_onerr = 0
@@ -1427,8 +1442,9 @@ static void tick(void* nil) {
       } else {
         buf[6] = client_id + 1;
       }
-      buf[7] = client->exists;
-      buf[7] |= client->spectating_a_player << 1;
+      buf[7] = client->spectating_a_player;
+      buf[7] |= client->exists << 1;
+      buf[7] |= (existing_clients_len == 0) << 2;
       buf_len = 8;
       if(client->in_area) {
         send_arena(client_id);
@@ -1583,10 +1599,7 @@ static void parse(void) {
       } else if(len != 1) {
         goto close;
       }
-      client->last_spectator_change = -spectating_interval;
-      client->last_meaningful_movement = current_tick;
-      client->traverse_area_idx = fast_rand() % area_infos_size;
-      client_spectate(client_id);
+      client_start_spectating(client_id);
       break;
     }
     case 1: { /* update */
@@ -1600,6 +1613,7 @@ static void parse(void) {
           if(client->exists || !client->named) {
             goto close;
           }
+          client->spectating_a_player = 0;
           client->entity.r = default_player_radius;
           client->movement_speed = default_player_speed;
           add_client_to_area(client_id, default_area_info_id);
@@ -1681,7 +1695,10 @@ static void parse(void) {
               break;
             }
             case command_menu: {
-              client_set_nonexisting(client_id);
+              if(client->exists) {
+                client_set_nonexisting(client_id);
+              }
+              client->spectating_a_player = 0;
               break;
             }
             default: assert(0);
@@ -1707,6 +1724,45 @@ static void parse(void) {
             out1:;
           }
           client->named = 1;
+          break;
+        }
+        case client_opcode_spec: {
+          if(existing_clients_len == 0) {
+            break;
+          }
+          if(client->exists) {
+            goto close;
+          }
+          const uint8_t op = msg[0];
+          if(op == 0) {
+            if(client->spectating_a_player) {
+              client->spectating_a_player = 0;
+              client_start_spectating(client_id);
+            } else {
+              client->spectating_a_player = 1;
+              for(uint8_t i = 0;; ++i) {
+                if(!clients[i].exists) continue;
+                client_set_spectated_player(client_id, i);
+                break;
+              }
+            }
+          } else if(client->spectating_a_player) {
+            if(op != 1 && op != 255) {
+              goto close;
+            }
+            if(existing_clients_len == 1) {
+              break;
+            }
+            uint8_t i = client->spectating_client_id;
+            while(1) {
+              i = (i + max_players + op) % max_players;
+              if(!clients[i].exists) continue;
+              client_set_spectated_player(client_id, i);
+              break;
+            }
+          } else {
+            goto close;
+          }
           break;
         }
         default: goto close;
