@@ -131,6 +131,10 @@ button {
   left: calc(50% + 55px);
 }
 
+#spec:disabled {
+  cursor: not-allowed;
+}
+
 #spec_help {
   top: 50px;
   font-size: 16pt;

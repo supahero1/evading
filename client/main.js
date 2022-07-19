@@ -1320,6 +1320,7 @@ class Tutorial {
         CANVAS.target_fov = settings["fov"]["max"];
         CAMERA.block();
         SETTINGS.block_hide();
+        MOVEMENT.stop();
         MOVEMENT.block();
       }
     } else if(++this.stage == this.stage_max) {
@@ -1329,6 +1330,7 @@ class Tutorial {
       CAMERA.unblock();
       SETTINGS.unblock();
       MOVEMENT.unblock();
+      MOVEMENT.start();
     }
   }
   run(by) {
