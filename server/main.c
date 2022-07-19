@@ -1727,11 +1727,8 @@ static void parse(void) {
         }
         case client_opcode_spec: {
           spectate:;
-          if(existing_clients_len == 0) {
+          if(existing_clients_len == 0 || client->exists) {
             break;
-          }
-          if(client->exists) {
-            goto close;
           }
           const uint8_t op = msg[0];
           if(op == 0) {
@@ -1773,8 +1770,6 @@ static void parse(void) {
                 break;
               }
             }
-          } else {
-            goto close;
           }
           break;
         }
