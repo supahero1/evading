@@ -1754,18 +1754,24 @@ static void parse(void) {
               break;
             }
             uint8_t i = client->spectating_client_id;
-            while(1) {
-              if(op == 1) {
+            if(op == 1) {
+              while(1) {
                 i = (i + 1) % max_players;
-              } else {
-                i = i + 255;
-                if(i == 255) {
-                  i = max_players - 1;
-                }
+                if(!clients[i].exists) continue;
+                client_set_spectated_player(client_id, i);
+                break;
               }
-              if(!clients[i].exists) continue;
-              client_set_spectated_player(client_id, i);
-              break;
+            } else {
+              while(1) {
+                if(i == 0) {
+                  i = max_players - 1;
+                } else {
+                  --i;
+                }
+                if(!clients[i].exists) continue;
+                client_set_spectated_player(client_id, i);
+                break;
+              }
             }
           } else {
             goto close;
