@@ -1662,8 +1662,8 @@ class Settings {
     this.add(this.text("Move down"), this.keybind("down"));
     this.add(this.text("Move right"), this.keybind("right"));
     this.add(this.text("Move slowly"), this.keybind("slowwalk"));
-    this.add(this.text("Spectate previous player"), this.keybind("spec_prev", MENU.init_spec_help_text.bind(MENU)));
-    this.add(this.text("Spectate next player"), this.keybind("spec_next", MENU.init_spec_help_text.bind(MENU)));
+    this.add(this.text("Spectate the previous player"), this.keybind("spec_prev", MENU.init_spec_help_text.bind(MENU)));
+    this.add(this.text("Spectate the next player"), this.keybind("spec_next", MENU.init_spec_help_text.bind(MENU)));
     //this.add(this.text("Big minimap"), this.keybind("minimap"));
 
     this.new("RESET");
@@ -2036,10 +2036,12 @@ class _Window {
         case keybinds["spec_prev"]: {
           PACKET.create_spec_packet(-1);
           SOCKET.send();
+          break;
         }
         case keybinds["spec_next"]: {
           PACKET.create_spec_packet(1);
           SOCKET.send();
+          break;
         }
         default: break;
       }
