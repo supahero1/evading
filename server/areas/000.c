@@ -34,9 +34,13 @@ const struct area_info area_000 = {
     {0}
   },
   (struct pos[]){ { 55, 5 }, { 55, 6 }, { 55, 7 } },
-  (struct teleport[]){ { { 1, 6 }, { 0 } }, { { 109, 6 }, { 1 } } },
-  (struct teleport_min[]){ { 1, 6, 0 }, { 109, 6, 1 } },
-  3, 2
+  (struct teleport[]){ { { 1, 6 }, { 4 } }, { { 109, 6 }, { 1 } } },
+  (struct teleport_min[]){ { 1, 6, 4 }, { 109, 6, 1 } },
+  3, 2,
+  .right = 1,
+  .has_right = 1,
+  .left = 4,
+  .has_left = 1
 };
 
 static const struct tile_info t = { 111, 13, 40, (uint8_t[]){

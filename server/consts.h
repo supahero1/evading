@@ -227,7 +227,7 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-#define area_infos_size 4
+#define area_infos_size 5
 
 extern const struct area_info* area_infos[area_infos_size];
 

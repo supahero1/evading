@@ -515,6 +515,9 @@ static void remove_client_from_its_area(const uint8_t client_id) {
 static void add_client_to_area(const uint8_t client_id, const uint8_t area_info_id) {
   struct client* const client = clients + client_id;
   if(client->in_area) {
+    if(areas[client->area_id].area_info_id == area_info_id) {
+      return;
+    }
     remove_client_from_its_area(client_id);
   }
   const uint8_t area_id = find_or_create_area(area_info_id);
@@ -568,9 +571,7 @@ static uint8_t get_client(const uint32_t js_id) {
 static void client_set_spectated_player(const uint8_t client_id, const uint8_t i) {
   struct client* const client = clients + client_id;
   client->spectating_client_id = i;
-  if(!client->in_area || client->area_id != clients[i].area_id) {
-    add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
-  }
+  add_client_to_area(client_id, areas[clients[i].area_id].area_info_id);
 }
 
 static void client_start_spectating(const uint8_t);
@@ -586,7 +587,7 @@ static void client_spectate(const uint8_t client_id) {
     if(!clients[client->spectating_client_id].exists) {
       client->spectating_a_player = 0;
       client_start_spectating(client_id);
-    } else if(!client->in_area || client->area_id != clients[client->spectating_client_id].area_id) {
+    } else {
       add_client_to_area(client_id, areas[clients[client->spectating_client_id].area_id].area_info_id);
     }
     return;
@@ -1670,9 +1671,7 @@ static void parse(void) {
               if(!client->exists) {
                 goto spawn;
               }
-              if(default_area_info_id != areas[client->area_id].area_info_id) {
-                add_client_to_area(client_id, default_area_info_id);
-              }
+              add_client_to_area(client_id, default_area_info_id);
               set_player_pos_to_area_spawn_tiles(client_id);
               if(client->dead != 0) {
                 client->dead = 0;
