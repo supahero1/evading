@@ -56,6 +56,8 @@ struct client {
   uint8_t  deleted_by_above:1;
   uint8_t  targetable:1;
   uint8_t  named:1;
+  uint8_t  admin:1;
+  uint8_t  godmode:1;
   uint8_t  updated_x:1;
   uint8_t  updated_y:1;
   uint8_t  updated_r:1;
@@ -136,6 +138,8 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
   {  12,  58,  94,  83, 191,  65,  73, 152 }, /* alph2h */
   {  19, 167,  67, 202,  56, 220, 231,  79 }
 };
+
+#define alpha_tokens_len (sizeof(alpha_tokens) / sizeof(alpha_tokens[0]))
 
 static struct data_frame area_info_serials[area_infos_size];
 
@@ -1200,7 +1204,7 @@ static void player_collide_ball(const uint8_t client_id, struct grid_entity* con
   struct client* const client = clients + client_id;
   struct ball* const ball = balls + ball_entity->ref;
 
-  if(!client->dead && !ball->updated_removed) {
+  if(!client->dead && !ball->updated_removed && !client->godmode) {
     client->dead = 1;
     client->death_counter = 60;
     client->died_ticks_ago = 0;
@@ -1578,19 +1582,22 @@ static void parse(void) {
       client_id = create_client(js_id);
       struct client* const client = clients + client_id;
       client->js_id = js_id;
-      if(token_required) {
+      if(token_required || len == sizeof(alpha_tokens[0])) {
         if(len != sizeof(alpha_tokens[0])) {
           goto close;
         }
-        uint8_t ok = 0;
-        for(uint8_t i = 0; i < sizeof(alpha_tokens) / sizeof(alpha_tokens[0]); ++i) {
+        uint8_t ok = alpha_tokens_len;
+        for(uint8_t i = 0; i < alpha_tokens_len; ++i) {
           if(memcmp(msg, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
-            ok = 1;
+            ok = i;
             break;
           }
         }
-        if(!ok) {
+        if(ok == alpha_tokens_len) {
           goto close;
+        }
+        if(ok == 0) {
+          client->admin = 1;
         }
       } else if(len != 1) {
         goto close;
@@ -1657,7 +1664,10 @@ static void parse(void) {
           memcpy(client->chat, msg + start, chat_len);
           const struct command_def* command_def = find_command(client->chat, chat_len);
           enum game_command command;
-          if(command_def == NULL || (!client->exists && !command_def->out_game) || (client->exists && !command_def->in_game)) {
+          if(command_def == NULL ||
+             (!client->exists && !command_def->out_game) ||
+             (client->exists && !command_def->in_game) ||
+             (!client->admin && command_def->admin)) {
             command = command_invalid;
           } else {
             command = command_def->command;
@@ -1698,6 +1708,14 @@ static void parse(void) {
             case command_spectate: {
               msg[0] = 0;
               goto spectate;
+            }
+            case command_godmode: {
+              client->godmode ^= 1;
+              if(client->godmode && client->dead) {
+                client->dead = 0;
+                client->updated_dc = 1;
+              }
+              break;
             }
             default: assert(0);
           }

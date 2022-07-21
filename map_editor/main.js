@@ -371,10 +371,10 @@ function paint_bg() {
   }
   background.width = cell_size * width * fov_max;
   background.height = cell_size * height * fov_max;
-  light_background.width = cell_size * width * fov_max;
-  light_background.height = cell_size * height * fov_max;
+  light_background.width = background.width;
+  light_background.height = background.height;
   for(let i = 0; i < 256; ++i) {
-    if(!bg_data.fills[i]) continue;
+    if(!bg_data.fills[i] || i == 2) continue;
     bg_ctx.fillStyle = tile_colors[i] + "b0";
     bg_ctx.fill(bg_data.strokes[i]);
     bg_ctx.fillStyle = tile_colors[i];
@@ -393,6 +393,16 @@ function paint_bg_explicit(idx) {
     cell_size * fov_max,
     cell_size * fov_max
   );
+  lbg_ctx.clearRect(
+    x * cell_size * fov_max,
+    y * cell_size * fov_max,
+    cell_size * fov_max,
+    cell_size * fov_max
+  );
+  if(tile_type == 2) {
+    resized = 1;
+    return;
+  }
   bg_ctx.fillStyle = tile_colors[tile_type] + "b0";
   bg_ctx.fillRect(
     x * cell_size * fov_max,
@@ -483,6 +493,12 @@ gen_map();
     let old = width;
     width = height;
     height = old;
+    let a = getElementById("w");
+    a.value = width;
+    a.oninput();
+    a = getElementById("h");
+    a.value = height;
+    a.oninput();
     u8 = new_u8;
     paint_bg();
   };
@@ -519,6 +535,7 @@ gen_map();
   h.value = width;
   h.min = 1;
   h.max = 200;
+  h.id = "w";
   h.oninput = function() {
     width = this[van] ? Math.max(Math.min(this[van], this.max), this.min) : 1;
     this[van] = width;
@@ -560,6 +577,7 @@ gen_map();
   h.value = height;
   h.min = 1;
   h.max = 200;
+  h.id = "h";
   h.oninput = function() {
     height = this[van] ? Math.max(Math.min(this[van], this.max), this.min) : 1;
     this[van] = height;

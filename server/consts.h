@@ -227,7 +227,7 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-#define area_infos_size 5
+#define area_infos_size 8
 
 extern const struct area_info* area_infos[area_infos_size];
 
@@ -243,5 +243,15 @@ extern const struct area_info area_006;
 extern const struct area_info area_007;
 extern const struct area_info area_008;
 extern const struct area_info area_009;
+extern const struct area_info area_010;
+extern const struct area_info area_011;
+extern const struct area_info area_012;
+extern const struct area_info area_013;
+extern const struct area_info area_014;
+extern const struct area_info area_015;
+extern const struct area_info area_016;
+extern const struct area_info area_017;
+extern const struct area_info area_018;
+extern const struct area_info area_019;
 
 #endif // game_consts_h

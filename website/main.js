@@ -32,14 +32,14 @@ for(const ID of ID_sorted) {
   style_css = style_css.replace(new RegExp(`([#\.])${ID.substring(3)}`, "g"), "$1" + ID_chars[i]);
   ++i;
 }
-const main_checksum = createHash("sha256").update(main_js).digest("hex").substring(0, 8);
-const style_checksum = createHash("sha256").update(style_css).digest("hex").substring(0, 8);
+const main_checksum = createHash("sha256").update(main_js).digest("hex").substring(0, 8) + ".js";
+const style_checksum = createHash("sha256").update(style_css).digest("hex").substring(0, 8) + ".css";
 index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
 
 const map_editor_main_js = read("../map_editor/main.min2.js");
 const map_editor_style_css = read("../map_editor/style.min.css");
-const map_editor_main_checksum = createHash("sha256").update(map_editor_main_js).digest("hex").substring(0, 8);
-const map_editor_style_checksum = createHash("sha256").update(map_editor_style_css).digest("hex").substring(0, 8);
+const map_editor_main_checksum = createHash("sha256").update(map_editor_main_js).digest("hex").substring(0, 8) + ".js";
+const map_editor_style_checksum = createHash("sha256").update(map_editor_style_css).digest("hex").substring(0, 8) + ".css";
 const map_editor_index_html = read("../map_editor/index.html").replace("main.js", map_editor_main_checksum).replace("style.css", map_editor_style_checksum);
 
 const options = {

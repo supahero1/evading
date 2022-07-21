@@ -8,7 +8,8 @@ enum game_command {
   command_respawn,
   command_die,
   command_menu,
-  command_spectate
+  command_spectate,
+  command_godmode
 };
 
 struct command_def {
@@ -17,6 +18,7 @@ struct command_def {
   uint8_t command_len;
   uint8_t in_game:1;
   uint8_t out_game:1;
+  uint8_t admin:1;
 };
 
 struct command_hashmap {

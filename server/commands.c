@@ -13,6 +13,8 @@ static struct command_def command_defs[] = (struct command_def[]) {
   { "m", command_menu, .in_game = 1, .out_game = 1 },
   { "spectate", command_spectate, .out_game = 1 },
   { "s", command_spectate, .out_game = 1 },
+  { "godmode", command_godmode, .in_game = 1, .admin = 1 },
+  { "gm", command_godmode, .in_game = 1, .admin = 1 },
   {0}
 };
 

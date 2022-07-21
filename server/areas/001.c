@@ -15,15 +15,17 @@ const struct area_info area_001 = {
     {0}
   },
   (struct pos[]){ { 0, 15 } },
-  (struct teleport[]){ { { 1, 18 }, { 0 } }, { { 50, 15 }, { 2 } }, { { 25, 0 }, { 3 } } },
-  (struct teleport_min[]){ { 1, 18, 0 }, { 50, 15, 2 }, { 25, 0, 3 } },
-  1, 3,
+  (struct teleport[]){ { { 1, 18 }, { 0 } }, { { 50, 15 }, { 2 } }, { { 25, 0 }, { 3 } }, { { 25, 30 }, { 7 } } },
+  (struct teleport_min[]){ { 1, 18, 0 }, { 50, 15, 2 }, { 25, 0, 3 }, { 25, 30, 7 } },
+  1, 4,
   .top = 3,
   .has_top = 1,
   .left = 0,
   .has_left = 1,
   .right = 2,
-  .has_right = 1
+  .has_right = 1,
+  .bottom = 7,
+  .has_bottom = 1
 };
 
 static const struct tile_info t = { 51, 31, 40, (uint8_t[]){
