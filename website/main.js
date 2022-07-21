@@ -1,12 +1,10 @@
 const { readFileSync } = require("fs");
 const express = require("express");
+const { createHash } = require("crypto");
 
 function read(path) {
   return readFileSync(path, "utf8");
 };
-
-const main_checksum = read("../client/main.checksum.txt").substring(15, 23) + ".js";
-const style_checksum = read("../client/style.checksum.txt").substring(15, 23) + ".css";
 
 const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
@@ -34,14 +32,15 @@ for(const ID of ID_sorted) {
   style_css = style_css.replace(new RegExp(`([#\.])${ID.substring(3)}`, "g"), "$1" + ID_chars[i]);
   ++i;
 }
+const main_checksum = createHash("sha256").update(main_js).digest("hex").substring(0, 8);
+const style_checksum = createHash("sha256").update(style_css).digest("hex").substring(0, 8);
 index_html = index_html.replace("main.js", main_checksum).replace("style.css", style_checksum).replace("__CHANGELOG__", changelog_txt);
 
-const map_editor_main_checksum = read("../map_editor/main.checksum.txt").substring(15, 23) + ".js";
-const map_editor_style_checksum = read("../map_editor/style.checksum.txt").substring(15, 23) + ".css";
-
-const map_editor_index_html = read("../map_editor/index.html").replace("main.js", map_editor_main_checksum).replace("style.css", map_editor_style_checksum);
 const map_editor_main_js = read("../map_editor/main.min2.js");
 const map_editor_style_css = read("../map_editor/style.min.css");
+const map_editor_main_checksum = createHash("sha256").update(map_editor_main_js).digest("hex").substring(0, 8);
+const map_editor_style_checksum = createHash("sha256").update(map_editor_style_css).digest("hex").substring(0, 8);
+const map_editor_index_html = read("../map_editor/index.html").replace("main.js", map_editor_main_checksum).replace("style.css", map_editor_style_checksum);
 
 const options = {
   key: read("./key.pem"),
