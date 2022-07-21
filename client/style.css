@@ -187,6 +187,18 @@ button {
   position: absolute;
 }
 
+#map_editor {
+  top: 50%;
+  right: 20px;
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+#map_editor_img {
+  width: 203px;
+  border: solid #fff 4px;
+}
+
 #picked_server_for_you {
   display: none;
   margin-right: 0;

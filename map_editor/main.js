@@ -464,6 +464,29 @@ gen_map();
     }
   };
   tiles["a"](h);
+  h = createElement("button");
+  h[ih] = "Rotate";
+  h.onclick = function() {
+    let new_u8 = new Uint8Array(width * height);
+    for(let x = 0; x < width; ++x) {
+      for(let y = 0; y < height; ++y) {
+        new_u8[y * width + x] = u8[(width - x - 1) * height + y];
+      }
+    }
+    spawns = {};
+    for(let i = 0; i < cached_vals.length; ++i) {
+      let x = cached_vals[i][0];
+      cached_vals[i][0] = cached_vals[i][1];
+      cached_vals[i][1] = width - x - 1;
+      spawns[`${cached_vals[i][0]},${cached_vals[i][1]}`] = [cached_vals[i][0], cached_vals[i][1]];
+    }
+    let old = width;
+    width = height;
+    height = old;
+    u8 = new_u8;
+    paint_bg();
+  };
+  tiles["a"](h);
   h = createElement("h4");
   h[ih] = "Width";
   h.style[mb] = px2;

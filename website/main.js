@@ -14,6 +14,7 @@ const favicon = read("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
 let main_js = read("../client/main.min2.js");
 let style_css = read("../client/style.min.css");
+const map_editor_png = readFileSync("../client/map_editor.png");
 
 const IDs = index_html.match(/ID_(\w+)/g);
 const ID_map = {};
@@ -100,6 +101,11 @@ app.get("/" + main_checksum, function(req, res) {
 app.get("/" + style_checksum, function(req, res) {
   res.set("Content-Type", "text/css");
   res.status(200).end(style_css);
+});
+
+app.get("/map_editor.png", function(req, res) {
+  res.set("Content-Type", "image/png");
+  res.status(200).end(map_editor_png);
 });
 
 app.get(["/map_editor/", "/map_editor/index.html"], function(req, res) {
