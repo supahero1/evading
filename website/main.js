@@ -29,8 +29,8 @@ ID_sorted.sort((a, b) => b.length - a.length);
 let i = 0;
 const ID_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 for(const ID of ID_sorted) {
-  index_html = index_html.replaceAll(`"([#\.]?)${ID}"`, `"$1${ID_chars[i]}"`);
-  main_js = main_js.replaceAll(`"([#\.]?)${ID}"`, `"$1${ID_chars[i]}"`);
+  index_html = index_html.replace(new RegExp(`"([#\.]?)${ID}"`, "g"), `"$1${ID_chars[i]}"`);
+  main_js = main_js.replace(new RegExp(`"([#\.]?)${ID}"`, "g"), `"$1${ID_chars[i]}"`);
   style_css = style_css.replace(new RegExp(`([#\.])${ID.substring(3)}`, "g"), "$1" + ID_chars[i]);
   ++i;
 }
