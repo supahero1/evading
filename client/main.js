@@ -37,7 +37,7 @@ const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 20,
+    ["max"]: 4,
     ["value"]: 1.75,
     ["step"]: 0.05
   },
@@ -264,10 +264,10 @@ const CONSTS = {
   default_fov: 1.75
 };
 
-const Tile_colors = new Uint32Array([0xddddddff, 0xaaaaaaff, 0x333333ff, 0xfedf78ff]);
+const Tile_colors = new Uint32Array([0xdddddd, 0xaaaaaa, 0x333333, 0xfedf78]);
 const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 
-const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
+const Ball_colors = new Uint32Array([0x808080, 0xfc46aa, 0x008080, 0xff8e06, 0x3cdfff, 0x663a82]);
 const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
 
 /*
@@ -363,152 +363,32 @@ class M3 extends Float32Array {
 const GL = WebGL2RenderingContext.prototype;
 
 class WebGL {
-  /**
-   * @param {string} id
-   * @param {boolean} circles
-   */
-  constructor(id, circles=false) {
+  constructor(id, vertex, fragment) {
     this.canvas = id ? getElementById(id) : createElement("canvas");
     /**
      * @type {WebGL2RenderingContext}
      */
     this.gl = this.canvas.getContext("webgl2", {
-      alpha: true,
-      depth: circles,
-      antialias: true,
       failIfMajorPerformanceCaveat: false
     });
     if(!this.gl) {
       throw new Error("Your browser/device does not support WebGL2.");
     }
     /**
-     * @type {WebGLShader}
-     */
-    this.vertex = this.create_shader(GL.VERTEX_SHADER,
-    `#version 300 es\n
-
-    layout(location = 0) in vec2 a_position;
-    layout(location = 1) in vec4 a_color;
-    layout(location = 2) in vec2 a_texcoord;
-
-    uniform mat3 u_matrix;
-
-    out vec4 v_color;
-    out vec2 v_texcoord;
-
-    void main() {
-      gl_Position = vec4((u_matrix * vec3(a_position, 1)).xy, 0, 1);
-      v_color = a_color;
-      v_texcoord = a_texcoord;
-    }
-    `); // todo depth with circles
-    /**
-     * @type {WebGLShader}
-     */
-    this.fragment = this.create_shader(GL.FRAGMENT_SHADER,
-    `#version 300 es\n
-
-    precision mediump float;
-
-    in vec4 v_color;
-    in vec2 v_texcoord;
-
-    out vec4 fragColor;
-
-    float lerp(float num, float to, float by) {
-      return num + (to - num) * by;
-    }
-
-    void main() {
-      ${circles ? `
-      float len = length(v_texcoord - vec2(0.5, 0.5));
-      if(len <= 0.5) {
-        if(len >= 0.4) {
-          fragColor = v_color * vec4(0.8, 0.8, 0.8, 1);
-        } else {
-          fragColor = v_color;
-        }
-      } else {
-        discard;
-      }
-      ` : `
-      if(v_texcoord.x < 0.0375 || v_texcoord.x > 0.9625 || v_texcoord.y < 0.0375 || v_texcoord.y > 0.9625) {
-        
-        fragColor = v_color * vec4(0.8, 0.8, 0.8, 1);
-        
-      } else {
-
-        float AA = 0.0125;
-        
-        float mul_x = 1.0;
-
-        if(v_texcoord.x < 0.0375 + AA || v_texcoord.x > 0.9625 - AA) {
-
-          float by = (abs(v_texcoord.x - 0.5) - (0.5 - 0.0375 - AA)) / AA;
-
-          mul_x = 1.0 - by * 0.2;
-
-        }
-
-        float mul_y = 1.0;
-
-        if(v_texcoord.y < 0.0375 + AA || v_texcoord.y > 0.9625 - AA) {
-
-          float by = (abs(v_texcoord.y - 0.5) - (0.5 - 0.0375 - AA)) / AA;
-
-          mul_y = 1.0 - by * 0.2;
-
-        }
-
-        float mul;
-        
-        if(mul_x == 1.0) {
-          if(mul_y == 1.0) {
-            mul = 1.0;
-          } else {
-            mul = mul_y;
-          }
-        } else {
-          if(mul_y == 1.0) {
-            mul = mul_x;
-          } else {
-            mul = max(mul_x, mul_y);
-          }
-        }
-
-        fragColor = v_color * vec4(mul, mul, mul, 1.0);
-        
-      }
-      `}
-    }
-    `);
-    /**
      * @type {WebGLProgram}
      */
-    this.program = this.create_program();
+    this.program = this.create_program(vertex, fragment);
 
     this.vao = this.gl.createVertexArray();
     this.gl.bindVertexArray(this.vao);
     
-    this.buffer = this.gl.createBuffer();
-    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    
-    this.gl.vertexAttribPointer(0, 2, GL.UNSIGNED_SHORT, false, 10, 0);
-    this.gl.vertexAttribPointer(1, 4, GL.UNSIGNED_BYTE, true, 10, 4);
-    this.gl.vertexAttribPointer(2, 2, GL.UNSIGNED_BYTE, true, 10, 8);
-    
-    this.gl.enableVertexAttribArray(0);
-    this.gl.enableVertexAttribArray(1);
-    this.gl.enableVertexAttribArray(2);
-
     this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
     /**
      * @type {M3}
      */
     this.matrix = null;
-
-    this.indices = 0;
-    this.circles = circles;
+    this.depth = 0;
+    this.num = 0;
   }
   create_shader(type, source) {
     const shader = this.gl.createShader(type);
@@ -519,22 +399,17 @@ class WebGL {
     }
     throw new Error(this.gl.getShaderInfoLog(shader));
   }
-  create_program() {
+  create_program(vertex, fragment) {
     const program = this.gl.createProgram();
-    this.gl.attachShader(program, this.vertex);
-    this.gl.attachShader(program, this.fragment);
+    this.gl.attachShader(program, this.create_shader(GL.VERTEX_SHADER, vertex));
+    this.gl.attachShader(program, this.create_shader(GL.FRAGMENT_SHADER, fragment));
     this.gl.linkProgram(program);
     if(this.gl.getProgramParameter(program, GL.LINK_STATUS)) {
       return program;
     }
     throw new Error(this.gl.getProgramInfoLog(program));
   }
-  bufferData(data) {
-    console.log(data);
-    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
-  }
-  draw() {
+  predraw() {
     if(this.gl.canvas.width != WINDOW.width || this.gl.canvas.height != WINDOW.height) {
       this.gl.canvas.width = WINDOW.width;
       this.gl.canvas.height = WINDOW.height;
@@ -542,15 +417,120 @@ class WebGL {
 
     this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
     this.gl.clearColor(0, 0, 0, 0);
-    this.gl.clear(GL.COLOR_BUFFER_BIT | (this.circles * GL.DEPTH_BUFFER_BIT));
-    if(this.circles) {
+    this.gl.clear(GL.COLOR_BUFFER_BIT | (this.depth * GL.DEPTH_BUFFER_BIT));
+    if(this.depth != 0) {
       this.gl.enable(GL.DEPTH_TEST);
     }
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
 
     this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
-    this.gl.drawArrays(GL.TRIANGLES, 0, this.indices);
+  }
+}
+
+/*
+ * BACKGROUND WEBGL, BACKGROUND_WEBGL
+ */
+
+class Background_WebGL extends WebGL {
+  constructor(id) {
+    super(id,
+      `#version 300 es\n
+
+      layout(location = 0) in vec2 a_position;
+      layout(location = 1) in vec2 a_offset;
+      layout(location = 2) in float a_scale;
+      layout(location = 3) in vec3 a_color;
+
+      uniform mat3 u_matrix;
+
+      out vec3 v_color;
+
+      void main() {
+        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0, 1);
+        v_color = a_color;
+      }
+      `,
+      `#version 300 es\n
+
+      precision mediump float;
+
+      uniform float u_light;
+
+      in vec3 v_color;
+
+      out vec4 fragColor;
+
+      void main() {
+        fragColor = vec4(v_color.x * u_light, v_color.y * u_light, v_color.z * u_light, 1.0);
+      }
+    `);
+    const v = 0.0375;
+    const w = 1 - v;
+    this.model_border = new Float32Array([
+      0, v,
+      0, 0,
+      v, v,
+      w, 0,
+      w, v,
+      1, 0,
+      w, 0.5,
+      1, w,
+      w, w,
+      1, 1,
+      v, w,
+      0, 1,
+      v, v,
+      0, v
+    ]);
+    this.model = new Float32Array([
+      v, v,
+      w, v,
+      v, w,
+      w, w
+    ]);
+
+    this.u_light = this.gl.getUniformLocation(this.program, "u_light");
+    
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 0, 0);
+    this.gl.enableVertexAttribArray(0);
+
+    this.transform_buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    /* [
+       offset      scale       color
+      100, 100,     10,     255,255,255
+    ] */
+    this.gl.vertexAttribPointer(1, 2, GL.SHORT, false, 8, 0);
+    this.gl.vertexAttribPointer(2, 1, GL.UNSIGNED_BYTE, false, 8, 4);
+    this.gl.vertexAttribPointer(3, 3, GL.UNSIGNED_BYTE, true, 8, 5);
+
+    this.gl.vertexAttribDivisor(1, 1);
+    this.gl.vertexAttribDivisor(2, 1);
+    this.gl.vertexAttribDivisor(3, 1);
+
+    this.gl.enableVertexAttribArray(1);
+    this.gl.enableVertexAttribArray(2);
+    this.gl.enableVertexAttribArray(3);
+  }
+  set(data) {
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+  }
+  draw() {
+    this.predraw();
+
+    this.gl.uniform1f(this.u_light, 0.8);
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, this.model_border, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 14, this.num);
+
+    this.gl.uniform1f(this.u_light, 1.0);
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, this.model, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
   }
 }
 
@@ -1971,7 +1951,7 @@ class Canvas {
     this.tc = getElementById("ID_text");
     this.tctx = this.tc.getContext("2d");
 
-    this.circles = new WebGL("ID_circles", true);
+    this.circles = null;//new WebGL("ID_circles", true);
 
     this.width = 0;
     this.height = 0;
@@ -2171,7 +2151,7 @@ class Canvas {
 
 class Background {
   constructor() {
-    this.gl = new WebGL("ID_background");
+    this.gl = new Background_WebGL("ID_background");
 
     this.width = 0;
     this.height = 0;
@@ -2200,86 +2180,38 @@ class Background {
         PACKET.byte()
       ];
     }
-    this.width = w * cell_size;
-    this.height = h * cell_size;
-    this.cell_size = cell_size;
 
-    const buffer = new ArrayBuffer(w * h * 6 * 10);
+    const buffer = new ArrayBuffer((w * h) << 3);
     const view = new DataView(buffer);
 
     let idx = 0;
     let x = 0;
-    let next_x = cell_size;
     for(let _x = 0; _x < w; ++_x) {
       let y = 0;
-      let next_y = cell_size;
       for(let _y = 0; _y < h; ++_y) {
         const i = PACKET.u8[PACKET.idx];
         if(i != 2) {
-          view.setUint16(idx, next_x, true);
+          view.setInt16(idx, x, true);
           idx += 2;
-          view.setUint16(idx, y, true);
+          view.setInt16(idx, y, true);
           idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 255);
-          view.setUint8(idx++, 0);
-
-          view.setUint16(idx, x, true);
-          idx += 2;
-          view.setUint16(idx, y, true);
-          idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 0);
-          view.setUint8(idx++, 0);
-
-          view.setUint16(idx, next_x, true);
-          idx += 2;
-          view.setUint16(idx, next_y, true);
-          idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 255);
-          view.setUint8(idx++, 255);
-
-          view.setUint16(idx, next_x, true);
-          idx += 2;
-          view.setUint16(idx, next_y, true);
-          idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 255);
-          view.setUint8(idx++, 255);
-
-          view.setUint16(idx, x, true);
-          idx += 2;
-          view.setUint16(idx, y, true);
-          idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 0);
-          view.setUint8(idx++, 0);
-
-          view.setUint16(idx, x, true);
-          idx += 2;
-          view.setUint16(idx, next_y, true);
-          idx += 2;
-          view.setUint32(idx, Tile_colors[i], false);
-          idx += 4;
-          view.setUint8(idx++, 0);
-          view.setUint8(idx++, 255);
+          view.setUint8(idx++, cell_size);
+          view.setUint8(idx++, Tile_colors[i] >> 16);
+          view.setUint8(idx++, Tile_colors[i] >> 8);
+          view.setUint8(idx++, Tile_colors[i]);
         }
         ++PACKET.idx;
-        y = next_y;
-        next_y += cell_size;
+        y += cell_size;
       }
-      x = next_x;
-      next_x += cell_size;
+      x += cell_size;
     }
     
-    this.gl.indices = idx / 10;
-    this.gl.bufferData(new Uint8Array(buffer).subarray(0, idx));
+    this.gl.num = idx >> 3;
+    this.gl.set(buffer.slice(0, idx));
+
+    this.width = w * cell_size;
+    this.height = h * cell_size;
+    this.cell_size = cell_size;
   }
   draw() {
     this.gl.matrix = new M3(WINDOW.width, WINDOW.height);
