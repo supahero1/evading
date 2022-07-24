@@ -37,7 +37,7 @@ const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 4,
+    ["max"]: 20,
     ["value"]: 1.75,
     ["step"]: 0.05
   },
@@ -363,31 +363,133 @@ class M3 extends Float32Array {
 const GL = WebGL2RenderingContext.prototype;
 
 class WebGL {
-  constructor(id, vertex, fragment) {
+  /**
+   * @param {string} id
+   * @param {boolean} circles
+   */
+  constructor(id, circles=false) {
     this.canvas = id ? getElementById(id) : createElement("canvas");
     /**
      * @type {WebGL2RenderingContext}
      */
     this.gl = this.canvas.getContext("webgl2", {
+      alpha: true,
+      depth: circles,
+      antialias: true,
       failIfMajorPerformanceCaveat: false
     });
     if(!this.gl) {
       throw new Error("Your browser/device does not support WebGL2.");
     }
     /**
+     * @type {WebGLShader}
+     */
+    this.vertex = this.create_shader(GL.VERTEX_SHADER,
+    `#version 300 es\n
+
+    layout(location = 0) in vec2 a_position;
+    layout(location = 1) in vec4 a_color;
+    layout(location = 2) in vec2 a_texcoord;
+
+    uniform mat3 u_matrix;
+
+    out vec4 v_color;
+    out vec2 v_texcoord;
+
+    void main() {
+      gl_Position = vec4((u_matrix * vec3(a_position, 1)).xy, 0, 1);
+      v_color = a_color;
+      v_texcoord = a_texcoord;
+    }
+    `); // todo depth with circles
+    /**
+     * @type {WebGLShader}
+     */
+    this.fragment = this.create_shader(GL.FRAGMENT_SHADER,
+    `#version 300 es\n
+
+    precision mediump float;
+
+    in vec4 v_color;
+    in vec2 v_texcoord;
+
+    out vec4 fragColor;
+
+    float lerp(float num, float to, float by) {
+      return num + (to - num) * by;
+    }
+
+    void main() {
+      ${circles ? `
+      float len = length(v_texcoord - vec2(0.5, 0.5));
+      if(len <= 0.5) {
+        if(len >= 0.4) {
+          fragColor = v_color * vec4(0.8, 0.8, 0.8, 1);
+        } else {
+          fragColor = v_color;
+        }
+      } else {
+        discard;
+      }
+      ` : `
+      if(v_texcoord.x < 0.0375 || v_texcoord.x > 0.9625 || v_texcoord.y < 0.0375 || v_texcoord.y > 0.9625) {
+        
+        fragColor = v_color * vec4(0.8, 0.8, 0.8, 1);
+        
+      } else {
+
+        float AA = 0.0125;
+        
+        float mul_x = 1.0;
+
+        if(v_texcoord.x < 0.0375 + AA || v_texcoord.x > 0.9625 - AA) {
+
+          float by = (abs(v_texcoord.x - 0.5) - (0.5 - 0.0375 - AA)) / AA;
+
+          mul_x = 1.0 - by * 0.2;
+
+        }
+
+        float mul_y = 1.0;
+
+        if(v_texcoord.y < 0.0375 + AA || v_texcoord.y > 0.9625 - AA) {
+
+          float by = (abs(v_texcoord.y - 0.5) - (0.5 - 0.0375 - AA)) / AA;
+
+          mul_y = 1.0 - by * 0.2;
+
+        }
+
+        float mul;
+        
+        if(mul_x == 1.0) {
+          if(mul_y == 1.0) {
+            mul = 1.0;
+          } else {
+            mul = mul_y;
+          }
+        } else {
+          if(mul_y == 1.0) {
+            mul = mul_x;
+          } else {
+            mul = max(mul_x, mul_y);
+          }
+        }
+
+        fragColor = v_color * vec4(mul, mul, mul, 1.0);
+        
+      }
+      `}
+    }
+    `);
+    /**
      * @type {WebGLProgram}
      */
-    this.program = this.create_program(vertex, fragment);
+    this.program = this.create_program();
 
     this.vao = this.gl.createVertexArray();
     this.gl.bindVertexArray(this.vao);
     
-    this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
-    /**
-     * @type {M3}
-     */
-    this.matrix = null;
-    /*
     this.buffer = this.gl.createBuffer();
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
     
@@ -399,9 +501,14 @@ class WebGL {
     this.gl.enableVertexAttribArray(1);
     this.gl.enableVertexAttribArray(2);
 
+    this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
+    /**
+     * @type {M3}
+     */
+    this.matrix = null;
 
     this.indices = 0;
-    this.circles = circles;*/
+    this.circles = circles;
   }
   create_shader(type, source) {
     const shader = this.gl.createShader(type);
@@ -412,10 +519,10 @@ class WebGL {
     }
     throw new Error(this.gl.getShaderInfoLog(shader));
   }
-  create_program(vertex, fragment) {
+  create_program() {
     const program = this.gl.createProgram();
-    this.gl.attachShader(program, this.create_shader(GL.VERTEX_SHADER, vertex));
-    this.gl.attachShader(program, this.create_shader(GL.FRAGMENT_SHADER, fragment));
+    this.gl.attachShader(program, this.vertex);
+    this.gl.attachShader(program, this.fragment);
     this.gl.linkProgram(program);
     if(this.gl.getProgramParameter(program, GL.LINK_STATUS)) {
       return program;
@@ -427,7 +534,7 @@ class WebGL {
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
     this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
   }
-  predraw() {
+  draw() {
     if(this.gl.canvas.width != WINDOW.width || this.gl.canvas.height != WINDOW.height) {
       this.gl.canvas.width = WINDOW.width;
       this.gl.canvas.height = WINDOW.height;
@@ -444,50 +551,6 @@ class WebGL {
 
     this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
     this.gl.drawArrays(GL.TRIANGLES, 0, this.indices);
-  }
-}
-
-/*
- * BACKGROUND WEBGL, BACKGROUND_WEBGL
- */
-
-class Background_WebGL extends WebGL {
-  constructor(id) {
-    super(id,
-      `#version 300 es\n
-
-      layout(location = 0) in vec2 a_position;
-      layout(location = 1) in vec2 a_offset;
-      layout(location = 2) in float a_scale;
-      layout(location = 3) in vec4 a_color;
-
-      uniform mat3 u_matrix;
-
-      out vec4 v_color;
-      out vec2 v_texcoord;
-
-      void main() {
-        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0, 1);
-        v_color = a_color;
-      }
-      `,
-      `#version 300 es\n
-
-      precision mediump float;
-
-      in vec4 v_color;
-
-      out vec4 fragColor;
-
-      void main() {
-        fragColor = v_color;
-      }
-    `);
-
-  }
-  draw() {
-    this.predraw();
-
   }
 }
 
