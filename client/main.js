@@ -37,7 +37,7 @@ const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 1.75,
+    ["max"]: 4,
     ["value"]: 1.75,
     ["step"]: 0.05
   },
@@ -229,22 +229,6 @@ function lerp(num, to, by) {
   return num + (to - num) * by;
 }
 
-/**
- * @param {string} text 
- * @param {number} _x 
- * @param {number} _y 
- */
-function draw_text(text, _x, _y) {
-  CANVAS.ctx.font = `700 20px Ubuntu`;
-  CANVAS.ctx.textAlign = "center";
-  CANVAS.ctx.textBaseline = "middle";
-  CANVAS.ctx.fillStyle = "#fff";
-  CANVAS.ctx.strokeStyle = "#333";
-  CANVAS.ctx.lineWidth = 1;
-  CANVAS.ctx.fillText(text, _x, _y);
-  CANVAS.ctx.strokeText(text, _x, _y);
-}
-
 if(window["s"].length == 0) {
   status.innerHTML = "No servers found";
   reload();
@@ -276,12 +260,236 @@ const CONSTS = {
   max_pings: 10,
   max_name_len: 16,
 
-  default_area_id: 0
+  default_area_id: 0,
+  default_fov: 1.75
 };
 
-const Tile_colors = ["#dddddd", "#aaaaaa", "#333333", "#fedf78"];
+const Tile_colors = new Uint32Array([0xddddddff, 0xaaaaaaff, 0x333333ff, 0xfedf78ff]);
+const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 
-const Ball_colors = ["#808080", "#fc46aa", "#008080", "#ff8e06", "#3cdfff", "#663a82"];
+const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
+const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
+
+/*
+ * M3
+ */
+
+class M3 extends Float32Array {
+  constructor(w, h) {
+    super([
+      2 / w, 0     , 0,
+      0    , -2 / h, 0,
+      -1   , 1     , 1
+    ]);
+  }
+  /**
+   * @param {Float32Array} by
+   * @return {M3}
+   */
+  multiply(by) {
+    const a00 = this[0 * 3 + 0];
+    const a01 = this[0 * 3 + 1];
+    const a02 = this[0 * 3 + 2];
+    const a10 = this[1 * 3 + 0];
+    const a11 = this[1 * 3 + 1];
+    const a12 = this[1 * 3 + 2];
+    const a20 = this[2 * 3 + 0];
+    const a21 = this[2 * 3 + 1];
+    const a22 = this[2 * 3 + 2];
+    const b00 = by[0 * 3 + 0];
+    const b01 = by[0 * 3 + 1];
+    const b02 = by[0 * 3 + 2];
+    const b10 = by[1 * 3 + 0];
+    const b11 = by[1 * 3 + 1];
+    const b12 = by[1 * 3 + 2];
+    const b20 = by[2 * 3 + 0];
+    const b21 = by[2 * 3 + 1];
+    const b22 = by[2 * 3 + 2];
+
+    this[0] = b00 * a00 + b01 * a10 + b02 * a20;
+    this[1] = b00 * a01 + b01 * a11 + b02 * a21;
+    this[2] = b00 * a02 + b01 * a12 + b02 * a22;
+    this[3] = b10 * a00 + b11 * a10 + b12 * a20;
+    this[4] = b10 * a01 + b11 * a11 + b12 * a21;
+    this[5] = b10 * a02 + b11 * a12 + b12 * a22;
+    this[6] = b20 * a00 + b21 * a10 + b22 * a20;
+    this[7] = b20 * a01 + b21 * a11 + b22 * a21;
+    this[8] = b20 * a02 + b21 * a12 + b22 * a22;
+
+    return this;
+  }
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @return {M3}
+   */
+  translate(x, y) {
+    return this.multiply(new Float32Array([
+      1, 0, 0,
+      0, 1, 0,
+      x, y, 1
+    ]));
+  }
+  /**
+   * @param {number} b
+   * @return {M3}
+   */
+  scale(b) {
+    return this.multiply(new Float32Array([
+      b, 0, 0,
+      0, b, 0,
+      0, 0, 1
+    ]));
+  }
+  /**
+   * @param {number} r
+   * @return {M3}
+   */
+  rotate(r) {
+    const c = Math.cos(r);
+    const s = Math.sin(r);
+    return this.multiply(new Float32Array([
+      c,-s, 0,
+      s, c, 0,
+      0, 0, 1
+    ]));
+  }
+}
+
+/*
+ * WEBGL
+ */
+
+const GL = WebGL2RenderingContext.prototype;
+
+class WebGL {
+  constructor(id, vertex, fragment) {
+    this.canvas = id ? getElementById(id) : createElement("canvas");
+    /**
+     * @type {WebGL2RenderingContext}
+     */
+    this.gl = this.canvas.getContext("webgl2", {
+      failIfMajorPerformanceCaveat: false
+    });
+    if(!this.gl) {
+      throw new Error("Your browser/device does not support WebGL2.");
+    }
+    /**
+     * @type {WebGLProgram}
+     */
+    this.program = this.create_program(vertex, fragment);
+
+    this.vao = this.gl.createVertexArray();
+    this.gl.bindVertexArray(this.vao);
+    
+    this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
+    /**
+     * @type {M3}
+     */
+    this.matrix = null;
+    /*
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    
+    this.gl.vertexAttribPointer(0, 2, GL.UNSIGNED_SHORT, false, 10, 0);
+    this.gl.vertexAttribPointer(1, 4, GL.UNSIGNED_BYTE, true, 10, 4);
+    this.gl.vertexAttribPointer(2, 2, GL.UNSIGNED_BYTE, true, 10, 8);
+    
+    this.gl.enableVertexAttribArray(0);
+    this.gl.enableVertexAttribArray(1);
+    this.gl.enableVertexAttribArray(2);
+
+
+    this.indices = 0;
+    this.circles = circles;*/
+  }
+  create_shader(type, source) {
+    const shader = this.gl.createShader(type);
+    this.gl.shaderSource(shader, source);
+    this.gl.compileShader(shader);
+    if(this.gl.getShaderParameter(shader, GL.COMPILE_STATUS)) {
+      return shader;
+    }
+    throw new Error(this.gl.getShaderInfoLog(shader));
+  }
+  create_program(vertex, fragment) {
+    const program = this.gl.createProgram();
+    this.gl.attachShader(program, this.create_shader(GL.VERTEX_SHADER, vertex));
+    this.gl.attachShader(program, this.create_shader(GL.FRAGMENT_SHADER, fragment));
+    this.gl.linkProgram(program);
+    if(this.gl.getProgramParameter(program, GL.LINK_STATUS)) {
+      return program;
+    }
+    throw new Error(this.gl.getProgramInfoLog(program));
+  }
+  bufferData(data) {
+    console.log(data);
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+  }
+  predraw() {
+    if(this.gl.canvas.width != WINDOW.width || this.gl.canvas.height != WINDOW.height) {
+      this.gl.canvas.width = WINDOW.width;
+      this.gl.canvas.height = WINDOW.height;
+    }
+
+    this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
+    this.gl.clearColor(0, 0, 0, 0);
+    this.gl.clear(GL.COLOR_BUFFER_BIT | (this.circles * GL.DEPTH_BUFFER_BIT));
+    if(this.circles) {
+      this.gl.enable(GL.DEPTH_TEST);
+    }
+    this.gl.useProgram(this.program);
+    this.gl.bindVertexArray(this.vao);
+
+    this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
+    this.gl.drawArrays(GL.TRIANGLES, 0, this.indices);
+  }
+}
+
+/*
+ * BACKGROUND WEBGL, BACKGROUND_WEBGL
+ */
+
+class Background_WebGL extends WebGL {
+  constructor(id) {
+    super(id,
+      `#version 300 es\n
+
+      layout(location = 0) in vec2 a_position;
+      layout(location = 1) in vec2 a_offset;
+      layout(location = 2) in float a_scale;
+      layout(location = 3) in vec4 a_color;
+
+      uniform mat3 u_matrix;
+
+      out vec4 v_color;
+      out vec2 v_texcoord;
+
+      void main() {
+        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0, 1);
+        v_color = a_color;
+      }
+      `,
+      `#version 300 es\n
+
+      precision mediump float;
+
+      in vec4 v_color;
+
+      out vec4 fragColor;
+
+      void main() {
+        fragColor = v_color;
+      }
+    `);
+
+  }
+  draw() {
+    this.predraw();
+
+  }
+}
 
 /*
  * MENU
@@ -548,8 +756,8 @@ class Socket {
     CAMERA.unblock();
     PLAYERS.clear();
     BALLS.clear();
-    BACKGROUND.clear();
     CANVAS.clear();
+    BACKGROUND.clear();
     MOVEMENT.clear();
     CLIENT.clear();
   }
@@ -617,7 +825,7 @@ class Socket {
     }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
-    } else if(updated_id) {
+    } else if(updated_id || updated_background) {
       CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
       if(updated_background) {
         CAMERA.ip();
@@ -1318,7 +1526,7 @@ class Tutorial {
       if(settings["show_tutorial"] && CLIENT.in_game) {
         this.stage = 1;
         this.old_fov = CANVAS.target_fov;
-        CANVAS.target_fov = settings["fov"]["max"];
+        CANVAS.target_fov = CONSTS.default_fov;
         CAMERA.block();
         SETTINGS.block_hide();
         MOVEMENT.stop();
@@ -1338,7 +1546,7 @@ class Tutorial {
     switch(this.stage) {
       case 0: {
         if(settings["show_tutorial"] && BACKGROUND.area_id == CONSTS.default_area_id) {
-          draw_text("Need help? Press KeyT for a tutorial.", BACKGROUND.width * 0.5, BACKGROUND.cell_size * 2.5);
+          CANVAS.text("Need help? Press KeyT for a tutorial.", BACKGROUND.width * 0.5, BACKGROUND.cell_size * 2.5);
         }
         break;
       }
@@ -1346,72 +1554,72 @@ class Tutorial {
         const _x = PLAYERS.arr[CLIENT.id].x2;
         const _y = PLAYERS.arr[CLIENT.id].y2;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text("<-- Your character", CAMERA.x + 110, CAMERA.y);
-        draw_text("Your character -->", CAMERA.x - 110, CAMERA.y);
-        draw_text("This is your character. You can control it with these keys:", CAMERA.x, CAMERA.y - 220);
-        draw_text(`${keybinds["up"]}: up`, CAMERA.x, CAMERA.y - 170);
-        draw_text(`${keybinds["left"]}: left`, CAMERA.x, CAMERA.y - 130);
-        draw_text(`${keybinds["down"]}: down`, CAMERA.x, CAMERA.y - 90);
-        draw_text(`${keybinds["right"]}: right`, CAMERA.x, CAMERA.y - 50);
-        draw_text("You can also control it with mouse. Just", CAMERA.x, CAMERA.y + 50);
-        draw_text("press any mouse button to start or stop moving.", CAMERA.x, CAMERA.y + 70);
-        draw_text("Scroll to change your field of view.", CAMERA.x, CAMERA.y + 110);
-        draw_text("Note that you won't be able to perform some", CAMERA.x, CAMERA.y + 150);
-        draw_text("of the above actions until the tutorial ends.", CAMERA.x, CAMERA.y + 170);
-        draw_text("Press KeyT to continue", CAMERA.x, CAMERA.y + 220);
+        CANVAS.text("<-- Your character", CAMERA.x + 110, CAMERA.y);
+        CANVAS.text("Your character -->", CAMERA.x - 110, CAMERA.y);
+        CANVAS.text("This is your character. You can control it with these keys:", CAMERA.x, CAMERA.y - 220);
+        CANVAS.text(`${keybinds["up"]}: up`, CAMERA.x, CAMERA.y - 170);
+        CANVAS.text(`${keybinds["left"]}: left`, CAMERA.x, CAMERA.y - 130);
+        CANVAS.text(`${keybinds["down"]}: down`, CAMERA.x, CAMERA.y - 90);
+        CANVAS.text(`${keybinds["right"]}: right`, CAMERA.x, CAMERA.y - 50);
+        CANVAS.text("You can also control it with mouse. Just", CAMERA.x, CAMERA.y + 50);
+        CANVAS.text("press any mouse button to start or stop moving.", CAMERA.x, CAMERA.y + 70);
+        CANVAS.text("Scroll to change your field of view.", CAMERA.x, CAMERA.y + 110);
+        CANVAS.text("Note that you won't be able to perform some", CAMERA.x, CAMERA.y + 150);
+        CANVAS.text("of the above actions until the tutorial ends.", CAMERA.x, CAMERA.y + 170);
+        CANVAS.text("Press KeyT to continue", CAMERA.x, CAMERA.y + 220);
         break;
       }
       case 2: {
         const _x = BACKGROUND.width * 0.5 - BACKGROUND.cell_size * 6;
         const _y = BACKGROUND.height * 0.5;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1);
-        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y);
-        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 1);
-        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
-        draw_text("<--", _x - BACKGROUND.cell_size * 3, _y - BACKGROUND.cell_size * 1);
-        draw_text("<--", _x - BACKGROUND.cell_size * 4, _y);
-        draw_text("<--", _x - BACKGROUND.cell_size * 3, _y + BACKGROUND.cell_size * 1);
-        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
-        draw_text("These are safezones. Enemies can't", _x, _y - 130);
-        draw_text("reach you inside of these tiles.", _x, _y - 110);
-        draw_text("Press KeyT to continue", _x, _y + 110);
+        CANVAS.text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1);
+        CANVAS.text("-->", _x + BACKGROUND.cell_size * 2, _y);
+        CANVAS.text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 1);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 3, _y - BACKGROUND.cell_size * 1);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 4, _y);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 3, _y + BACKGROUND.cell_size * 1);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
+        CANVAS.text("These are safezones. Enemies can't", _x, _y - 130);
+        CANVAS.text("reach you inside of these tiles.", _x, _y - 110);
+        CANVAS.text("Press KeyT to continue", _x, _y + 110);
         break;
       }
       case 3: {
         const _x = BACKGROUND.width * 0.5 + BACKGROUND.cell_size * 6;
         const _y = BACKGROUND.height * 0.5;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
-        draw_text("<--", _x - BACKGROUND.cell_size * 1, _y - BACKGROUND.cell_size * 3);
-        draw_text("<--", _x, _y - BACKGROUND.cell_size * 4);
-        draw_text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
-        draw_text("<--", _x - BACKGROUND.cell_size * 1, _y + BACKGROUND.cell_size * 3);
-        draw_text("<--", _x, _y + BACKGROUND.cell_size * 4);
-        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 3);
-        draw_text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 3);
-        draw_text("<--", _x + BACKGROUND.cell_size * 5, _y - BACKGROUND.cell_size * 2);
-        draw_text("<--", _x + BACKGROUND.cell_size * 6, _y - BACKGROUND.cell_size * 1);
-        draw_text("<--", _x + BACKGROUND.cell_size * 7, _y);
-        draw_text("<--", _x + BACKGROUND.cell_size * 6, _y + BACKGROUND.cell_size * 1);
-        draw_text("<--", _x + BACKGROUND.cell_size * 5, _y + BACKGROUND.cell_size * 2);
-        draw_text("These are walls. Players can't walk over them.", _x, _y - 40);
-        draw_text("However, some types (colors) of enemies can.", _x, _y - 10);
-        draw_text("Press KeyT to continue", _x, _y + 40);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 1, _y - BACKGROUND.cell_size * 3);
+        CANVAS.text("<--", _x, _y - BACKGROUND.cell_size * 4);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2);
+        CANVAS.text("<--", _x - BACKGROUND.cell_size * 1, _y + BACKGROUND.cell_size * 3);
+        CANVAS.text("<--", _x, _y + BACKGROUND.cell_size * 4);
+        CANVAS.text("-->", _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 3);
+        CANVAS.text("-->", _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 3);
+        CANVAS.text("<--", _x + BACKGROUND.cell_size * 5, _y - BACKGROUND.cell_size * 2);
+        CANVAS.text("<--", _x + BACKGROUND.cell_size * 6, _y - BACKGROUND.cell_size * 1);
+        CANVAS.text("<--", _x + BACKGROUND.cell_size * 7, _y);
+        CANVAS.text("<--", _x + BACKGROUND.cell_size * 6, _y + BACKGROUND.cell_size * 1);
+        CANVAS.text("<--", _x + BACKGROUND.cell_size * 5, _y + BACKGROUND.cell_size * 2);
+        CANVAS.text("These are walls. Players can't walk over them.", _x, _y - 40);
+        CANVAS.text("However, some types (colors) of enemies can.", _x, _y - 10);
+        CANVAS.text("Press KeyT to continue", _x, _y + 40);
         break;
       }
       case 4: {
         const _x = BACKGROUND.cell_size * 0.5;
         const _y = BACKGROUND.height * 0.5;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text("-->", _x, _y);
-        draw_text("This is a teleport tile. If you walk on it,", _x, _y - 130);
-        draw_text("you will be teleported to the area it points to.", _x, _y - 110);
-        draw_text("Minimap is not yet implemented, but once it is, you", _x, _y - 70);
-        draw_text("will be able to see where any area is located at.", _x, _y - 50);
-        draw_text("If a teleport doesn't have a number on it, it doesn't point", _x, _y + 50);
-        draw_text("anywhere (perhaps because the next area is under construction).", _x, _y + 70);
-        draw_text("Press KeyT to continue", _x, _y + 120);
+        CANVAS.text("-->", _x, _y);
+        CANVAS.text("This is a teleport tile. If you walk on it,", _x, _y - 130);
+        CANVAS.text("you will be teleported to the area it points to.", _x, _y - 110);
+        CANVAS.text("Minimap is not yet implemented, but once it is, you", _x, _y - 70);
+        CANVAS.text("will be able to see where any area is located at.", _x, _y - 50);
+        CANVAS.text("If a teleport doesn't have a number on it, it doesn't point", _x, _y + 50);
+        CANVAS.text("anywhere (perhaps because the next area is under construction).", _x, _y + 70);
+        CANVAS.text("Press KeyT to continue", _x, _y + 120);
         break;
       }
       case 5: {
@@ -1425,26 +1633,26 @@ class Tutorial {
         const _x = first_ball.x2;
         const _y = first_ball.y2;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text("Enemy ball -->", _x - 110, _y);
-        draw_text("<-- Enemy ball", _x + 110, _y);
-        draw_text("This is an enemy, also simply called a ball. A grey ball", _x, _y - 110);
-        draw_text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
-        draw_text("as you are about to find out when you start exploring the game,", _x, _y - 70);
-        draw_text("there are lots of types of enemies, each having their own color.", _x, _y - 50);
-        draw_text("Coming in contact with an enemy downs you. While downed, you can't move,", _x, _y + 50);
-        draw_text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
-        draw_text("Press KeyT to continue", _x, _y + 120);
+        CANVAS.text("Enemy ball -->", _x - 110, _y);
+        CANVAS.text("<-- Enemy ball", _x + 110, _y);
+        CANVAS.text("This is an enemy, also simply called a ball. A grey ball", _x, _y - 110);
+        CANVAS.text("doesn't do a lot - it simply moves in one direction. However,", _x, _y - 90);
+        CANVAS.text("as you are about to find out when you start exploring the game,", _x, _y - 70);
+        CANVAS.text("there are lots of types of enemies, each having their own color.", _x, _y - 50);
+        CANVAS.text("Coming in contact with an enemy downs you. While downed, you can't move,", _x, _y + 50);
+        CANVAS.text("and after a while, you die, unless other players revive you by touching you.", _x, _y + 70);
+        CANVAS.text("Press KeyT to continue", _x, _y + 120);
         break;
       }
       case 6: {
         const _x = PLAYERS.arr[CLIENT.id].x2;
         const _y = PLAYERS.arr[CLIENT.id].y2;
         CAMERA.move_f_by(_x, _y, 0.2 * by);
-        draw_text(`You can press ${keybinds["settings"]} to open settings.`, _x, _y - 80);
-        draw_text("There are a lot of cool options to change. Try it out later.", _x, _y - 60);
-        draw_text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
-        draw_text("GLHF!", _x, _y + 80);
-        draw_text("Press KeyT to end the tutorial", _x, _y + 130);
+        CANVAS.text(`You can press ${keybinds["settings"]} to open settings.`, _x, _y - 80);
+        CANVAS.text("There are a lot of cool options to change. Try it out later.", _x, _y - 60);
+        CANVAS.text("That's it for this tutorial. See how far you can go!", _x, _y + 60);
+        CANVAS.text("GLHF!", _x, _y + 80);
+        CANVAS.text("Press KeyT to end the tutorial", _x, _y + 130);
         break;
       }
     }
@@ -1689,109 +1897,18 @@ class Settings {
 }
 
 /*
- * BACKGROUND
- */
-
-class Background {
-  constructor() {
-    this.canvas = createElement("canvas");
-    this.ctx = this.canvas.getContext("2d");
-
-    /*this.tiles = new Array(Tile_colors.length);
-    for(let i = 0; i < Tile_colors.length; ++i) {
-      const c = createElement("canvas");
-      this.tiles[i] = [c, c.getContext("2d")];
-    }*/
-
-    this.light_canvas = createElement("canvas");
-    this.light_ctx = this.light_canvas.getContext("2d");
-
-    this.width = 0;
-    this.height = 0;
-    this.cell_size = 0;
-
-    this.area_id = -1;
-  }
-  clear() {
-    this.area_id = -1;
-  }
-  parse() {
-    this.area_id = PACKET.byte();
-    const w = PACKET.byte();
-    const h = PACKET.byte();
-    const cell_size = PACKET.byte();
-    const fov_max = settings["fov"]["max"];
-    const fov_cell_size = cell_size * fov_max;
-    const teleports = new Array(PACKET.byte());
-    for(let i = 0; i < teleports.length; ++i) {
-      teleports[i] = [
-        (PACKET.byte() + 0.5) * fov_cell_size,
-        (PACKET.byte() + 0.5) * fov_cell_size,
-        PACKET.byte()
-      ]
-    }
-    const fills = new Array(256);
-    const strokes = new Array(256);
-    for(let x = 0; x < w; ++x) {
-      for(let y = 0; y < h; ++y) {
-        const i = PACKET.u8[PACKET.idx];
-        if(i != 2) {
-          if(fills[i] == undefined) {
-            fills[i] = new Path2D();
-            strokes[i] = new Path2D();
-          }
-          fills[i].rect(
-            (1.5 + x * cell_size) * fov_max,
-            (1.5 + y * cell_size) * fov_max,
-            (cell_size - 1.5 * 2) * fov_max,
-            (cell_size - 1.5 * 2) * fov_max
-          );
-          strokes[i].rect(
-            x * fov_cell_size,
-            y * fov_cell_size,
-            fov_cell_size,
-            fov_cell_size
-          );
-        }
-        ++PACKET.idx;
-      }
-    }
-    
-    this.width = w * cell_size;
-    this.height = h * cell_size;
-    this.cell_size = cell_size;
-
-    this.canvas.width = this.width * fov_max;
-    this.canvas.height = this.height * fov_max;
-    this.light_canvas.width = this.canvas.width;
-    this.light_canvas.height = this.canvas.height;
-    for(let i = 0; i < 256; ++i) {
-      if(fills[i] == undefined) continue;
-      this.ctx.fillStyle = Tile_colors[i] + "b0";
-      this.ctx.fill(strokes[i]);
-      this.ctx.fillStyle = Tile_colors[i];
-      this.ctx.fill(fills[i]);
-      this.light_ctx.fillStyle = Tile_colors[i];
-      this.light_ctx.fill(strokes[i]);
-    }
-    this.ctx.font = `700 ${cell_size}px Ubuntu`;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
-    this.ctx.fillStyle = Tile_colors[3].darken();
-    for(const tp of teleports) {
-      this.ctx.fillText(tp[2], tp[0], tp[1]);
-    }
-  }
-}
-
-/*
  * CANVAS
  */
 
 class Canvas {
   constructor() {
-    this.canvas = getElementById("ID_canvas");
+    this.canvas = createElement("canvas");//getElementById("ID_canvas");
     this.ctx = this.canvas.getContext("2d");
+
+    this.tc = getElementById("ID_text");
+    this.tctx = this.tc.getContext("2d");
+
+    this.circles = new WebGL("ID_circles", true);
 
     this.width = 0;
     this.height = 0;
@@ -1804,8 +1921,8 @@ class Canvas {
     this.draw_at = 0;
     this.last_draw_at = 0;
 
-    this.canvas.onwheel = this.wheel.bind(this);
-    this.canvas.onmousedown = this.mousedown.bind(this);
+    this.tc.onwheel = this.wheel.bind(this);
+    this.tc.onmousedown = this.mousedown.bind(this);
   }
   clear() {
     this.fov = settings["fov"]["value"];
@@ -1818,8 +1935,8 @@ class Canvas {
     this.last_draw_at = 0;
   }
   resize() {
-    this.width = WINDOW.innerWidth * WINDOW.devicePixelRatio;
-    this.height = WINDOW.innerHeight * WINDOW.devicePixelRatio;
+    this.width = WINDOW.width;
+    this.height = WINDOW.height;
 
     this.canvas.width = this.width;
     this.canvas.height = this.height;
@@ -1842,14 +1959,14 @@ class Canvas {
     MOVEMENT.send();
   }
   text(text, x, y) {
-    this.ctx.font = `700 20px Ubuntu`;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
-    this.ctx.fillStyle = "#fff";
-    this.ctx.strokeStyle = "#333";
-    this.ctx.lineWidth = 1;
-    this.ctx.fillText(text, x, y);
-    this.ctx.strokeText(text, x, y);
+    this.tctx.font = `700 20px Ubuntu`;
+    this.tctx.textAlign = "center";
+    this.tctx.textBaseline = "middle";
+    this.tctx.fillStyle = "#fff";
+    this.tctx.strokeStyle = "#333";
+    this.tctx.lineWidth = 1;
+    this.tctx.fillText(text, x, y);
+    this.tctx.strokeText(text, x, y);
   }
   start_drawing() {
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
@@ -1875,27 +1992,20 @@ class Canvas {
     }
     CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
     CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
-    //tutorial stuff here from git
-    this.ctx.resetTransform();
-    this.ctx.fillStyle = "#333";
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.translate(this.canvas.width * 0.5, this.canvas.height * 0.5);
-    this.ctx.scale(this.fov, this.fov);
-    this.ctx.translate(-CAMERA.x, -CAMERA.y);
-    this.ctx.drawImage(BACKGROUND.canvas, 0, 0, BACKGROUND.width, BACKGROUND.height);
-    if(this.fov < 1) {
-      this.ctx.globalAlpha = 1 - (this.fov - settings["fov"]["min"]) * 4 / 3;
-      this.ctx.drawImage(BACKGROUND.light_canvas, 0, 0, BACKGROUND.width, BACKGROUND.height);
-      this.ctx.globalAlpha = 1;
-    }
+    BACKGROUND.draw();
     const sorted = new Array(CONSTS.max_players + CONSTS.max_balls);
     let idx = 0;
+    let max_r = 0;
     if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
       for(let i = 0; i < CONSTS.max_players; ++i) {
         if(PLAYERS.arr[i] == undefined) continue;
         PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
         PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
-        PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
+        const r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
+        PLAYERS.arr[i].r = r;
+        if(r > max_r) {
+          max_r = r;
+        }
         sorted[idx++] = PLAYERS.arr[i];
       }
     }
@@ -1904,7 +2014,11 @@ class Canvas {
         if(BALLS.arr[i] == undefined) continue;
         BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
         BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
-        BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
+        const r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
+        BALLS.arr[i].r = r;
+        if(r > max_r) {
+          max_r = r;
+        }
         sorted[idx++] = BALLS.arr[i];
       }
     }
@@ -1969,14 +2083,14 @@ class Canvas {
         this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);
         this.ctx.arc(obj.x, obj.y, obj.r - r_sub, 0, Math.PI * 2);
         if(settings["draw_ball_fill"]) {
-          this.ctx.fillStyle = Ball_colors[obj.type];
+          this.ctx.fillStyle = Ball_colors_str[obj.type];
           this.ctx.fill();
         }
         if(settings["draw_ball_stroke"]) {
           if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
-            this.ctx.strokeStyle = Ball_colors[obj.type];
+            this.ctx.strokeStyle = Ball_colors_str[obj.type];
           } else {
-            this.ctx.strokeStyle = Ball_colors[obj.type].darken();
+            this.ctx.strokeStyle = Ball_colors_str[obj.type].darken();
           }
           this.ctx.lineWidth = r_sub * 2;
           this.ctx.stroke();
@@ -1989,6 +2103,148 @@ class Canvas {
 }
 
 /*
+ * BACKGROUND
+ */
+
+class Background {
+  constructor() {
+    this.gl = new WebGL("ID_background");
+
+    this.width = 0;
+    this.height = 0;
+    this.cell_size = 0;
+
+    /**
+     * @type {Array<Array<number,number,number>>}
+     */
+    this.teleports = [];
+
+    this.area_id = -1;
+  }
+  clear() {
+    this.area_id = -1;
+  }
+  parse() {
+    this.area_id = PACKET.byte();
+    const w = PACKET.byte();
+    const h = PACKET.byte();
+    const cell_size = PACKET.byte();
+    this.teleports = new Array(PACKET.byte());
+    for(let i = 0; i < this.teleports.length; ++i) {
+      this.teleports[i] = [
+        (PACKET.byte() + 0.5) * cell_size,
+        (PACKET.byte() + 0.5) * cell_size,
+        PACKET.byte()
+      ];
+    }
+    this.width = w * cell_size;
+    this.height = h * cell_size;
+    this.cell_size = cell_size;
+
+    const buffer = new ArrayBuffer(w * h * 6 * 10);
+    const view = new DataView(buffer);
+
+    let idx = 0;
+    let x = 0;
+    let next_x = cell_size;
+    for(let _x = 0; _x < w; ++_x) {
+      let y = 0;
+      let next_y = cell_size;
+      for(let _y = 0; _y < h; ++_y) {
+        const i = PACKET.u8[PACKET.idx];
+        if(i != 2) {
+          view.setUint16(idx, next_x, true);
+          idx += 2;
+          view.setUint16(idx, y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 255);
+          view.setUint8(idx++, 0);
+
+          view.setUint16(idx, x, true);
+          idx += 2;
+          view.setUint16(idx, y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 0);
+          view.setUint8(idx++, 0);
+
+          view.setUint16(idx, next_x, true);
+          idx += 2;
+          view.setUint16(idx, next_y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 255);
+          view.setUint8(idx++, 255);
+
+          view.setUint16(idx, next_x, true);
+          idx += 2;
+          view.setUint16(idx, next_y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 255);
+          view.setUint8(idx++, 255);
+
+          view.setUint16(idx, x, true);
+          idx += 2;
+          view.setUint16(idx, y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 0);
+          view.setUint8(idx++, 0);
+
+          view.setUint16(idx, x, true);
+          idx += 2;
+          view.setUint16(idx, next_y, true);
+          idx += 2;
+          view.setUint32(idx, Tile_colors[i], false);
+          idx += 4;
+          view.setUint8(idx++, 0);
+          view.setUint8(idx++, 255);
+        }
+        ++PACKET.idx;
+        y = next_y;
+        next_y += cell_size;
+      }
+      x = next_x;
+      next_x += cell_size;
+    }
+    
+    this.gl.indices = idx / 10;
+    this.gl.bufferData(new Uint8Array(buffer).subarray(0, idx));
+  }
+  draw() {
+    this.gl.matrix = new M3(WINDOW.width, WINDOW.height);
+    this.gl.matrix.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
+    this.gl.draw();
+
+    if(CANVAS.tc.width != WINDOW.width || CANVAS.tc.height != WINDOW.height) {
+      CANVAS.tc.width = WINDOW.width;
+      CANVAS.tc.height = WINDOW.height;
+    }
+
+    let m = new DOMMatrix();
+    CANVAS.tctx.setTransform(m);
+    CANVAS.tctx.clearRect(0, 0, WINDOW.width, WINDOW.height);
+    m = m.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov, CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
+    CANVAS.tctx.setTransform(m);
+
+    CANVAS.tctx.font = `700 ${(this.cell_size / CONSTS.default_fov) | 0}px Ubuntu`;
+    CANVAS.tctx.textAlign = "center";
+    CANVAS.tctx.textBaseline = "middle";
+    CANVAS.tctx.fillStyle = Tile_colors_str[3].darken();
+    for(const tp of this.teleports) {
+      CANVAS.tctx.fillText(tp[2], tp[0], tp[1]);
+    }
+  }
+}
+
+/*
  * WINDOW
  */
 
@@ -1997,6 +2253,9 @@ class _Window {
     this.devicePixelRatio = 0;
     this.innerWidth = 0;
     this.innerHeight = 0;
+
+    this.width = 0;
+    this.height = 0;
 
     this.mouse = [0, 0];
 
@@ -2011,6 +2270,8 @@ class _Window {
       this.devicePixelRatio = window.devicePixelRatio;
       this.innerWidth = window.innerWidth;
       this.innerHeight = window.innerHeight;
+      this.width = this.innerWidth * this.devicePixelRatio;
+      this.height = this.innerHeight * this.devicePixelRatio;
       CANVAS.resize();
     }
   }
@@ -2228,6 +2489,8 @@ class Client {
     this.spectating = false;
     this.sent_name = false;
     this.id = -1;
+
+    this.connected_before = false;
   }
   clear() {
     this.in_game = false;
@@ -2236,24 +2499,29 @@ class Client {
     this.id = -1;
   }
   onconnecting() {
-    MENU.show();
-    MENU.hide_name();
     status.innerHTML = "Connecting";
-    CHAT.show();
-    CHAT.disable("Waiting for connection...");
-    SETTINGS.block_hide();
+    if(this.connected_before) {
+      MENU.show();
+      MENU.hide_name();
+      CHAT.show();
+      CHAT.disable("Waiting for connection...");
+      SETTINGS.block_hide();
+    } else {
+      this.connected_before = true;
+    }
   }
   onconnected() {
     MENU.show();
     MENU.show_name();
     status.innerHTML = "";
+    CHAT.show();
     CHAT.enable();
     SETTINGS.unblock();
   }
   ondisconnected() {
     this.in_game = false;
-    MENU.show();
     status.innerHTML = "Disconnected";
+    MENU.show();
     MENU.show_refresh();
     SETTINGS.block_hide();
   }
@@ -2296,8 +2564,8 @@ const BALLS = new Balls();
 const KEY_PROBER = new Key_prober();
 const TUTORIAL = new Tutorial();
 const SETTINGS = new Settings();
-const BACKGROUND = new Background();
 const CANVAS = new Canvas();
+const BACKGROUND = new Background();
 const WINDOW = new _Window();
 const MOVEMENT = new Movement();
 const CLIENT = new Client();
