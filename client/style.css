@@ -8,7 +8,7 @@ body {
   background-color: #333;
 }
 
-html, body, #background, #circles, #text, #settings_container, #menu {
+html, body, #canvas, #text, #settings_container, #menu {
   top: 0;
   left: 0;
   right: 0;

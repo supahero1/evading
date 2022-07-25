@@ -63,22 +63,10 @@ const default_settings = {
       "Bottom right"
     ]
   },*/
-  ["draw_ball_fill"]: true,
-  ["draw_ball_stroke"]: true,
-  ["draw_ball_stroke_bright"]: true,
-  ["ball_stroke"]: {
+  ["stroke_thickness"]: {
     ["min"]: 0,
     ["max"]: 100,
-    ["value"]: 20,
-    ["step"]: 1
-  },
-  ["draw_player_fill"]: true,
-  ["draw_player_stroke"]: true,
-  ["draw_player_stroke_bright"]: true,
-  ["player_stroke"]: {
-    ["min"]: 0,
-    ["max"]: 100,
-    ["value"]: 10,
+    ["value"]: 15,
     ["step"]: 1
   },
   ["draw_player_name"]: true,
@@ -267,8 +255,11 @@ const CONSTS = {
 const Tile_colors = new Uint32Array([0xdddddd, 0xaaaaaa, 0x333333, 0xfedf78]);
 const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 
-const Ball_colors = new Uint32Array([0x808080, 0xfc46aa, 0x008080, 0xff8e06, 0x3cdfff, 0x663a82]);
+const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
 const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
+
+const buffer = new ArrayBuffer((CONSTS.max_players + CONSTS.max_balls) << 4);
+const view = new DataView(buffer);
 
 /*
  * M3
@@ -364,15 +355,10 @@ const GL = WebGL2RenderingContext.prototype;
 
 class WebGL {
   constructor(id, vertex, fragment) {
-    this.canvas = id ? getElementById(id) : createElement("canvas");
-    /**
-     * @type {WebGL2RenderingContext}
-     */
-    this.gl = this.canvas.getContext("webgl2", {
-      failIfMajorPerformanceCaveat: false
-    });
-    if(!this.gl) {
-      throw new Error("Your browser/device does not support WebGL2.");
+    if(id instanceof WebGL2RenderingContext) {
+      this.gl = id;
+    } else {
+      this.gl = WebGL.get(id);
     }
     /**
      * @type {WebGLProgram}
@@ -381,14 +367,49 @@ class WebGL {
 
     this.vao = this.gl.createVertexArray();
     this.gl.bindVertexArray(this.vao);
+
+    /**
+     * @type {WebGLBuffer}
+     */
+    this.transform_buffer = null;
     
     this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
     /**
      * @type {M3}
      */
     this.matrix = null;
-    this.depth = 0;
     this.num = 0;
+  }
+  /**
+   * @param {string} id
+   * @return {WebGL2RenderingContext}
+   */
+  static get(id) {
+    const canvas = id ? getElementById(id) : createElement("canvas");
+    const gl = canvas.getContext("webgl2", {
+      premultipliedAlpha: false,
+      failIfMajorPerformanceCaveat: false
+    });
+    if(!gl) {
+      status.innerHTML = "Your browser/device does not support WebGL2.";
+      throw new Error("Your browser/device does not support WebGL2.");
+    }
+    return gl;
+  }
+  static pre_draw(gl) {
+    if(gl.canvas.width != WINDOW.width || gl.canvas.height != WINDOW.height) {
+      gl.canvas.width = WINDOW.width;
+      gl.canvas.height = WINDOW.height;
+    }
+
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.clearColor(0.2, 0.2, 0.2, 1.0);
+    
+    gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+    gl.enable(GL.DEPTH_TEST);
+    //gl.depthFunc(GL.LEQUAL);
+    gl.enable(GL.BLEND);
+    gl.blendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
   }
   create_shader(type, source) {
     const shader = this.gl.createShader(type);
@@ -409,21 +430,15 @@ class WebGL {
     }
     throw new Error(this.gl.getProgramInfoLog(program));
   }
-  predraw() {
-    if(this.gl.canvas.width != WINDOW.width || this.gl.canvas.height != WINDOW.height) {
-      this.gl.canvas.width = WINDOW.width;
-      this.gl.canvas.height = WINDOW.height;
-    }
-
-    this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
-    this.gl.clearColor(0, 0, 0, 0);
-    this.gl.clear(GL.COLOR_BUFFER_BIT | (this.depth * GL.DEPTH_BUFFER_BIT));
-    if(this.depth != 0) {
-      this.gl.enable(GL.DEPTH_TEST);
-    }
+  set(data, len) {
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+    this.num = len;
+  }
+  use() {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
-
+    
     this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
   }
 }
@@ -447,7 +462,7 @@ class Background_WebGL extends WebGL {
       out vec3 v_color;
 
       void main() {
-        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0, 1);
+        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0.5, 1.0);
         v_color = a_color;
       }
       `,
@@ -462,26 +477,23 @@ class Background_WebGL extends WebGL {
       out vec4 fragColor;
 
       void main() {
-        fragColor = vec4(v_color.x * u_light, v_color.y * u_light, v_color.z * u_light, 1.0);
+        fragColor = vec4(v_color.xyz * u_light, 1.0);
       }
     `);
+
     const v = 0.0375;
     const w = 1 - v;
     this.model_border = new Float32Array([
-      0, v,
+      0, 1,
+      v, w,
+      1, 1,
+      w, w,
+      1, 0,
+      w, v,
       0, 0,
       v, v,
-      w, 0,
-      w, v,
-      1, 0,
-      w, 0.5,
-      1, w,
-      w, w,
-      1, 1,
-      v, w,
       0, 1,
-      v, v,
-      0, v
+      v, w
     ]);
     this.model = new Float32Array([
       v, v,
@@ -515,21 +527,143 @@ class Background_WebGL extends WebGL {
     this.gl.enableVertexAttribArray(2);
     this.gl.enableVertexAttribArray(3);
   }
-  set(data) {
-    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
-  }
   draw() {
-    this.predraw();
+    this.use();
 
     this.gl.uniform1f(this.u_light, 0.8);
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
     this.gl.bufferData(GL.ARRAY_BUFFER, this.model_border, GL.DYNAMIC_DRAW);
-    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 14, this.num);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 10, this.num);
 
     this.gl.uniform1f(this.u_light, 1.0);
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
     this.gl.bufferData(GL.ARRAY_BUFFER, this.model, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
+  }
+}
+
+/*
+ * CIRCLE WEBGL, CIRCLE_WEBGL
+ */
+
+class Circle_WebGL extends WebGL {
+  constructor(id) {
+    super(id,
+      `#version 300 es\n
+
+      layout(location = 0) in vec2 a_position;
+      layout(location = 1) in vec2 a_offset;
+      layout(location = 2) in float a_scale;
+      layout(location = 3) in vec4 a_color;
+      layout(location = 4) in vec2 a_texcoord;
+
+      uniform mat3 u_matrix;
+
+      out vec4 v_color;
+      out vec2 v_texcoord;
+      out float v_scale;
+
+      void main() {
+        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, -1.0 / a_scale, 1.0);
+        v_color = a_color;
+        v_texcoord = a_texcoord;
+      }
+      `,
+      `#version 300 es\n
+
+      precision mediump float;
+
+      uniform float u_stroke;
+      uniform float u_scale;
+
+      in vec4 v_color;
+      in vec2 v_texcoord;
+
+      out vec4 fragColor;
+
+      void main() {
+        float dist = length(v_texcoord - vec2(0.5, 0.5));
+        float AA = 0.015625 * 4.0;
+
+        if(dist > 0.5) {
+
+          discard;
+
+        } else if(dist > 0.5 - AA) {
+
+          float mul;
+
+          if(u_stroke >= AA) {
+
+            mul = 0.8;
+
+          } else {
+
+            mul = 1.0 - smoothstep(0.0, AA, u_stroke) * 0.2;
+
+          }
+
+          fragColor = vec4(v_color.xyz * mul, v_color.w * (1.0 - smoothstep(0.5 - AA, 0.5, dist)));
+
+        } else if(dist > 0.5 - u_stroke) {
+
+          fragColor = vec4(v_color.xyz * 0.8, v_color.w);
+
+        } else if(dist > 0.5 - u_stroke - AA) {
+
+          float step = 1.0 - smoothstep(0.5 - u_stroke - AA, 0.5 - u_stroke, dist) * 0.2;
+
+          fragColor = vec4(v_color.xyz * step, v_color.w);
+
+        } else {
+
+          fragColor = v_color;
+
+        }
+      }
+    `);
+
+    this.u_stroke = this.gl.getUniformLocation(this.program, "u_stroke");
+    this.u_scale = this.gl.getUniformLocation(this.program, "u_scale");
+
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
+      /*  pos          tex  */
+        -1, -1,       0, 0,
+         1, -1,       1, 0,
+        -1,  1,       0, 1,
+         1,  1,       1, 1
+    ]), GL.DYNAMIC_DRAW);
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 16, 0);
+    this.gl.vertexAttribPointer(4, 2, GL.FLOAT, false, 16, 8);
+    this.gl.enableVertexAttribArray(0);
+    this.gl.enableVertexAttribArray(4);
+
+    this.transform_buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    /* [
+       offset      scale         color
+      100, 100,     10,     255,255,255,255
+    ] */
+    this.gl.vertexAttribPointer(1, 2, GL.FLOAT, false, 16, 0);
+    this.gl.vertexAttribPointer(2, 1, GL.FLOAT, false, 16, 8);
+    this.gl.vertexAttribPointer(3, 4, GL.UNSIGNED_BYTE, true, 16, 12);
+
+    this.gl.vertexAttribDivisor(1, 1);
+    this.gl.vertexAttribDivisor(2, 1);
+    this.gl.vertexAttribDivisor(3, 1);
+
+    this.gl.enableVertexAttribArray(1);
+    this.gl.enableVertexAttribArray(2);
+    this.gl.enableVertexAttribArray(3);
+  }
+  draw(stroke, scale) {
+    this.use();
+
+    this.gl.uniform1f(this.u_stroke, stroke);
+    this.gl.uniform1f(this.u_scale, scale);
+
     this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
   }
 }
@@ -1363,16 +1497,20 @@ class Players {
      * @type {Array<Player>}
      */
     this.arr = new Array(CONSTS.max_players);
+    this.len = 0;
   }
   clear() {
     this.arr = new Array(CONSTS.max_players);
+    this.len = 0;
   }
   ip() {
-    for(let i = 0; i < CONSTS.max_players; ++i) {
+    let to_go = this.len;
+    for(let i = 0; to_go; ++i) {
       if(this.arr[i] == undefined) continue;
       this.arr[i].x1 = this.arr[i].x2;
       this.arr[i].y1 = this.arr[i].y2;
       this.arr[i].r1 = this.arr[i].r2;
+      --to_go;
     }
   }
   parse() {
@@ -1398,10 +1536,13 @@ class Players {
         if(CLIENT.id == id) {
           CAMERA.move(x2, y2);
         }
+        ++this.len;
       } else {
         let field = PACKET.byte();
         if(field == 0) {
-          delete this.arr[id];
+          if(delete this.arr[id]) {
+            --this.len;
+          }
           continue;
         }
         do {
@@ -1472,16 +1613,20 @@ class Balls {
      * @type {Array<Ball>}
      */
     this.arr = new Array(CONSTS.max_balls);
+    this.len = 0;
   }
   clear() {
     this.arr = new Array(CONSTS.max_balls);
+    this.len = 0;
   }
   ip() {
-    for(let i = 0; i < CONSTS.max_balls; ++i) {
+    let to_go = this.len;
+    for(let i = 0; to_go; ++i) {
       if(this.arr[i] == undefined) continue;
       this.arr[i].x1 = this.arr[i].x2;
       this.arr[i].y1 = this.arr[i].y2;
       this.arr[i].r1 = this.arr[i].r2;
+      --to_go;
     }
   }
   parse() {
@@ -1494,10 +1639,13 @@ class Balls {
         const y2 = PACKET.float();
         const r2 = PACKET.float();
         this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, is_player: false };
+        ++this.len;
       } else {
         let field = PACKET.byte();
         if(field == 0) {
-          delete this.arr[id];
+          if(delete this.arr[id]) {
+            --this.len;
+          }
           continue;
         }
         do {
@@ -1893,14 +2041,7 @@ class Settings {
 
     this.new("VISUALS");
     this.add(this.text("Default FOV"), this.slider("fov"));
-    this.add(this.text("Draw balls' fill"), this.switch("draw_ball_fill"));
-    this.add(this.text("Draw balls' stroke"), this.switch("draw_ball_stroke"));
-    this.add(this.text("Draw stroke-only balls with brighter color"), this.switch("draw_ball_stroke_bright"));
-    this.add(this.text("Balls' stroke radius percentage"), this.slider("ball_stroke", "%"));
-    this.add(this.text("Draw players' fill"), this.switch("draw_player_fill"));
-    this.add(this.text("Draw players' stroke"), this.switch("draw_player_stroke"));
-    this.add(this.text("Draw stroke-only players with brighter color"), this.switch("draw_player_stroke_bright"));
-    this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
+    this.add(this.text("Stroke radius percentage"), this.slider("stroke_thickness", "%"));
     this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
     this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
     this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
@@ -1945,13 +2086,15 @@ class Settings {
 
 class Canvas {
   constructor() {
-    this.canvas = createElement("canvas");//getElementById("ID_canvas");
+    this.canvas = createElement("canvas");
     this.ctx = this.canvas.getContext("2d");
+
+    this.gl = WebGL.get("ID_canvas");
 
     this.tc = getElementById("ID_text");
     this.tctx = this.tc.getContext("2d");
 
-    this.circles = null;//new WebGL("ID_circles", true);
+    this.c_gl = new Circle_WebGL(this.gl);
 
     this.width = 0;
     this.height = 0;
@@ -2035,35 +2178,62 @@ class Canvas {
     }
     CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
     CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
+
+    WebGL.pre_draw(this.gl);
     BACKGROUND.draw();
-    const sorted = new Array(CONSTS.max_players + CONSTS.max_balls);
     let idx = 0;
-    let max_r = 0;
-    if(settings["draw_player_fill"] || settings["draw_player_stroke"]) {
-      for(let i = 0; i < CONSTS.max_players; ++i) {
-        if(PLAYERS.arr[i] == undefined) continue;
-        PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
-        PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
-        const r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
-        PLAYERS.arr[i].r = r;
-        if(r > max_r) {
-          max_r = r;
-        }
-        sorted[idx++] = PLAYERS.arr[i];
-      }
+    let to_go = PLAYERS.len;
+    for(let i = 0; to_go; ++i) {
+      if(PLAYERS.arr[i] == undefined) continue;
+      PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
+      view.setFloat32(idx, PLAYERS.arr[i].x, true);
+      idx += 4;
+      PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
+      view.setFloat32(idx, PLAYERS.arr[i].y, true);
+      idx += 4;
+      PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
+      view.setFloat32(idx, PLAYERS.arr[i].r, true);
+      idx += 4;
+      view.setUint32(idx, Ball_colors[0]);
+      idx += 4;
+      --to_go;
     }
-    if(settings["draw_ball_fill"] || settings["draw_ball_stroke"]) {
-      for(let i = 0; i < CONSTS.max_balls; ++i) {
-        if(BALLS.arr[i] == undefined) continue;
-        BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
-        BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
-        const r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
-        BALLS.arr[i].r = r;
-        if(r > max_r) {
-          max_r = r;
-        }
-        sorted[idx++] = BALLS.arr[i];
-      }
+    to_go = BALLS.len;
+    for(let i = 0; to_go; ++i) {
+      if(BALLS.arr[i] == undefined) continue;
+      BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
+      view.setFloat32(idx, BALLS.arr[i].x, true);
+      idx += 4;
+      BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
+      view.setFloat32(idx, BALLS.arr[i].y, true);
+      idx += 4;
+      BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
+      view.setFloat32(idx, BALLS.arr[i].r, true);
+      idx += 4;
+      view.setUint32(idx, Ball_colors[BALLS.arr[i].type]);
+      idx += 4;
+      --to_go;
+    }
+    this.c_gl.set(buffer.slice(0, idx), idx >> 4);
+    this.c_gl.matrix = BACKGROUND.gl.matrix;
+    this.c_gl.draw(settings["stroke_thickness"]["value"] / 200, this.fov);
+
+
+    /*const sorted = new Array(CONSTS.max_players + CONSTS.max_balls);
+    let idx = 0;
+    for(let i = 0; i < CONSTS.max_players; ++i) {
+      if(PLAYERS.arr[i] == undefined) continue;
+      PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
+      PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
+      PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
+      sorted[idx++] = PLAYERS.arr[i];
+    }
+    for(let i = 0; i < CONSTS.max_balls; ++i) {
+      if(BALLS.arr[i] == undefined) continue;
+      BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
+      BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
+      BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
+      sorted[idx++] = BALLS.arr[i];
     }
     sorted.sort((a, b) => b.r - a.r);
     for(let i = 0; i < sorted.length; ++i) {
@@ -2139,7 +2309,7 @@ class Canvas {
           this.ctx.stroke();
         }
       }
-    }
+    }*/
     TUTORIAL.run(by);
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
@@ -2151,7 +2321,7 @@ class Canvas {
 
 class Background {
   constructor() {
-    this.gl = new Background_WebGL("ID_background");
+    this.gl = new Background_WebGL(CANVAS.gl);
 
     this.width = 0;
     this.height = 0;
@@ -2181,9 +2351,6 @@ class Background {
       ];
     }
 
-    const buffer = new ArrayBuffer((w * h) << 3);
-    const view = new DataView(buffer);
-
     let idx = 0;
     let x = 0;
     for(let _x = 0; _x < w; ++_x) {
@@ -2206,8 +2373,7 @@ class Background {
       x += cell_size;
     }
     
-    this.gl.num = idx >> 3;
-    this.gl.set(buffer.slice(0, idx));
+    this.gl.set(buffer.slice(0, idx), idx >> 3);
 
     this.width = w * cell_size;
     this.height = h * cell_size;
@@ -2221,7 +2387,7 @@ class Background {
     if(CANVAS.tc.width != WINDOW.width || CANVAS.tc.height != WINDOW.height) {
       CANVAS.tc.width = WINDOW.width;
       CANVAS.tc.height = WINDOW.height;
-    }
+    }//move to canvas
 
     let m = new DOMMatrix();
     CANVAS.tctx.setTransform(m);
