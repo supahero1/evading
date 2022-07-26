@@ -5,6 +5,7 @@ const { localStorage } = window;
 const getItem = localStorage.getItem.bind(localStorage);
 const setItem = localStorage.setItem.bind(localStorage);
 const removeItem = localStorage.removeItem.bind(localStorage);
+const { sin, cos, max, min } = Math;
 
 const _keybinds = getItem("keybinds");
 const default_keybinds = {
@@ -37,7 +38,7 @@ const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 4,
+    ["max"]: 40,
     ["value"]: 1.75,
     ["step"]: 0.05
   },
@@ -63,10 +64,22 @@ const default_settings = {
       "Bottom right"
     ]
   },*/
-  ["stroke_thickness"]: {
+  ["draw_ball_fill"]: true,
+  ["draw_ball_stroke"]: true,
+  ["draw_ball_stroke_bright"]: true,
+  ["ball_stroke"]: {
     ["min"]: 0,
     ["max"]: 100,
-    ["value"]: 15,
+    ["value"]: 20,
+    ["step"]: 1
+  },
+  ["draw_player_fill"]: true,
+  ["draw_player_stroke"]: true,
+  ["draw_player_stroke_bright"]: true,
+  ["player_stroke"]: {
+    ["min"]: 0,
+    ["max"]: 100,
+    ["value"]: 10,
     ["step"]: 1
   },
   ["draw_player_name"]: true,
@@ -100,7 +113,7 @@ for(const prop in settings) {
   if(settings[prop]["step"] && settings[prop]["step"] != default_settings[prop]["step"]) {
     settings[prop]["step"] = default_settings[prop]["step"];
   }
-  settings[prop]["value"] = Math.max(Math.min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
+  settings[prop]["value"] = max(min(settings[prop]["value"], settings[prop]["max"]), settings[prop]["min"]);
 }
 function save_settings() {
   setItem("settings", JSON.stringify(settings));
@@ -186,25 +199,25 @@ function limit_input_to(n) {
  */
 function get_sticky_position(_x, _y, k, whole_out, preserve_x, preserve_y) {
   k *= CANVAS.fov;
-  const s_x = CANVAS.width * 0.5 + (_x - CAMERA.x) * CANVAS.fov;
-  const s_y = CANVAS.height * 0.5 + (_y - CAMERA.y) * CANVAS.fov;
+  const s_x = WINDOW.width * 0.5 + (_x - CAMERA.x) * CANVAS.fov;
+  const s_y = WINDOW.height * 0.5 + (_y - CAMERA.y) * CANVAS.fov;
   let t_x;
   let t_y;
   const l = whole_out ? 0 : k;
   let outside = false;
-  if(preserve_x && (s_x < l || s_x > CANVAS.width - l)) {
+  if(preserve_x && (s_x < l || s_x > WINDOW.width - l)) {
     outside = true;
-    t_x = Math.max(Math.min(s_x, CANVAS.width - k), k);
+    t_x = max(min(s_x, WINDOW.width - k), k);
   } else {
     t_x = s_x;
   }
-  if(preserve_y && (s_y < l || s_y > CANVAS.height - l)) {
+  if(preserve_y && (s_y < l || s_y > WINDOW.height - l)) {
     outside = true;
-    t_y = Math.max(Math.min(s_y, CANVAS.height - k), k);
+    t_y = max(min(s_y, WINDOW.height - k), k);
   } else {
     t_y = s_y;
   }
-  return [(t_x - CANVAS.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - CANVAS.height * 0.5) / CANVAS.fov + CAMERA.y, outside];
+  return [(t_x - WINDOW.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - WINDOW.height * 0.5) / CANVAS.fov + CAMERA.y, outside];
 }
 
 /**
@@ -249,7 +262,9 @@ const CONSTS = {
   max_name_len: 16,
 
   default_area_id: 0,
-  default_fov: 1.75
+  default_fov: 1.75,
+
+  circle_precision: 64
 };
 
 const Tile_colors = new Uint32Array([0xdddddd, 0xaaaaaa, 0x333333, 0xfedf78]);
@@ -258,7 +273,7 @@ const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
 const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
 
-const buffer = new ArrayBuffer((CONSTS.max_players + CONSTS.max_balls) << 4);
+const buffer = new ArrayBuffer(CONSTS.max_balls << 4);
 const view = new DataView(buffer);
 
 /*
@@ -337,8 +352,8 @@ class M3 extends Float32Array {
    * @return {M3}
    */
   rotate(r) {
-    const c = Math.cos(r);
-    const s = Math.sin(r);
+    const c = cos(r);
+    const s = sin(r);
     return this.multiply(new Float32Array([
       c,-s, 0,
       s, c, 0,
@@ -397,8 +412,10 @@ class WebGL {
     return gl;
   }
   static pre_draw(gl) {
-    if(gl.canvas.width != WINDOW.width || gl.canvas.height != WINDOW.height) {
+    if(gl.canvas.width != WINDOW.width) {
       gl.canvas.width = WINDOW.width;
+    }
+    if(gl.canvas.height != WINDOW.height) {
       gl.canvas.height = WINDOW.height;
     }
 
@@ -555,90 +572,40 @@ class Circle_WebGL extends WebGL {
       layout(location = 1) in vec2 a_offset;
       layout(location = 2) in float a_scale;
       layout(location = 3) in vec4 a_color;
-      layout(location = 4) in vec2 a_texcoord;
 
       uniform mat3 u_matrix;
+      uniform int u_precision;
 
-      out vec4 v_color;
-      out vec2 v_texcoord;
-      out float v_scale;
+      flat out vec4 v_color;
 
       void main() {
         gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, -1.0 / a_scale, 1.0);
-        v_color = a_color;
-        v_texcoord = a_texcoord;
+        if(gl_VertexID < u_precision) {
+          v_color = a_color;
+        } else {
+          v_color = vec4(a_color.xyz * 0.8, a_color.w);
+        }
       }
       `,
       `#version 300 es\n
 
       precision mediump float;
 
-      uniform float u_stroke;
-      uniform float u_scale;
-
-      in vec4 v_color;
-      in vec2 v_texcoord;
+      flat in vec4 v_color;
 
       out vec4 fragColor;
 
       void main() {
-        float dist = length(v_texcoord - vec2(0.5, 0.5));
-        float AA = 0.015625 * 4.0;
-
-        if(dist > 0.5) {
-
-          discard;
-
-        } else if(dist > 0.5 - AA) {
-
-          float mul;
-
-          if(u_stroke >= AA) {
-
-            mul = 0.8;
-
-          } else {
-
-            mul = 1.0 - smoothstep(0.0, AA, u_stroke) * 0.2;
-
-          }
-
-          fragColor = vec4(v_color.xyz * mul, v_color.w * (1.0 - smoothstep(0.5 - AA, 0.5, dist)));
-
-        } else if(dist > 0.5 - u_stroke) {
-
-          fragColor = vec4(v_color.xyz * 0.8, v_color.w);
-
-        } else if(dist > 0.5 - u_stroke - AA) {
-
-          float step = 1.0 - smoothstep(0.5 - u_stroke - AA, 0.5 - u_stroke, dist) * 0.2;
-
-          fragColor = vec4(v_color.xyz * step, v_color.w);
-
-        } else {
-
-          fragColor = v_color;
-
-        }
+        fragColor = v_color;
       }
     `);
 
-    this.u_stroke = this.gl.getUniformLocation(this.program, "u_stroke");
-    this.u_scale = this.gl.getUniformLocation(this.program, "u_scale");
+    this.u_precision = this.gl.getUniformLocation(this.program, "u_precision");
 
     this.buffer = this.gl.createBuffer();
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
-      /*  pos          tex  */
-        -1, -1,       0, 0,
-         1, -1,       1, 0,
-        -1,  1,       0, 1,
-         1,  1,       1, 1
-    ]), GL.DYNAMIC_DRAW);
-    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 16, 0);
-    this.gl.vertexAttribPointer(4, 2, GL.FLOAT, false, 16, 8);
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 0, 0);
     this.gl.enableVertexAttribArray(0);
-    this.gl.enableVertexAttribArray(4);
 
     this.transform_buffer = this.gl.createBuffer();
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
@@ -658,13 +625,82 @@ class Circle_WebGL extends WebGL {
     this.gl.enableVertexAttribArray(2);
     this.gl.enableVertexAttribArray(3);
   }
-  draw(stroke, scale) {
+  draw(has_fill, has_stroke, stroke_thickness, bright_stroke) {
+    if(!has_fill && !has_stroke) {
+      return;
+    }
     this.use();
 
-    this.gl.uniform1f(this.u_stroke, stroke);
-    this.gl.uniform1f(this.u_scale, scale);
+    if(!has_stroke) {
+      stroke_thickness = 0;
+    }
 
-    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
+    const data = new Float32Array(((CONSTS.circle_precision << 2) - 4) * has_fill + 4 + (CONSTS.circle_precision << 3) * has_stroke);
+    const inc = Math.PI / CONSTS.circle_precision;
+    let idx = 0;
+    if(has_fill) {
+      const s = sin(inc);
+      const c = cos(inc);
+      let x = 1 - stroke_thickness;
+      let y = 0;
+      data[0] = x;
+      data[1] = y;
+      idx = 2;
+      for(let i = 1; i < CONSTS.circle_precision; ++i) {
+        let x_new = x * c - y * s;
+        y = x * s + y * c;
+        x = x_new;
+        data[idx++] = x;
+        data[idx++] = y;
+        data[idx++] = x;
+        data[idx++] = -y;
+      }
+      data[idx++] = -1 + stroke_thickness;
+      data[idx++] = 0;
+    }
+
+    const precision = CONSTS.circle_precision << 1;
+    if(has_stroke) {
+      if(!has_fill) {
+        const s = sin(-inc);
+        const c = cos(-inc);
+        let x = -1 + stroke_thickness;
+        let y = 0;
+        let x_new = x * c - y * s;
+        y = x * s + y * c;
+        x = x_new;
+        data[idx++] = x;
+        data[idx++] = -y;
+        data[idx++] = -1 + stroke_thickness;
+        data[idx++] = 0;
+      }
+      let phi = Math.PI;
+      for(let i = 0; i < precision - 1; ++i) {
+        data[idx++] = cos(phi);
+        data[idx++] = sin(phi);
+        phi -= inc;
+        data[idx++] = cos(phi) * (1 - stroke_thickness);
+        data[idx++] = sin(phi) * (1 - stroke_thickness);
+      }
+      data[idx++] = cos(phi);
+      data[idx++] = sin(phi);
+      phi -= inc;
+      data[idx++] = cos(phi);
+      data[idx++] = sin(phi);
+    }
+    
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+    let p;
+    if(has_fill) {
+      p = precision;
+    } else if(bright_stroke) {
+      p = (precision << 1) + 2;
+    } else {
+      p = 0
+    }
+    this.gl.uniform1i(this.u_precision, p);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, data.length >> 1, this.num);
   }
 }
 
@@ -1159,8 +1195,8 @@ class Packet {
         distance = 160 * WINDOW.devicePixelRatio;
       }
     } else {
-      const x = WINDOW.mouse[0] - CANVAS.canvas.width * 0.5;
-      const y = WINDOW.mouse[1] - CANVAS.canvas.height * 0.5;
+      const x = WINDOW.mouse[0] - WINDOW.width * 0.5;
+      const y = WINDOW.mouse[1] - WINDOW.height * 0.5;
       angle = Math.atan2(y, x);
       distance = Math.hypot(x, y) / CANVAS.fov;
     }
@@ -1222,7 +1258,7 @@ class Death_arrow {
     this.ctx.stroke();
   }
   draw(ctx) {
-    ctx.drawImage(this.canvas, -this.canvas.width * 0.5, -this.canvas.height * 0.5);
+    ctx.drawImage(this.canvas, -this.size * 0.5, -this.size * 0.5);
   }
 }
 
@@ -1326,7 +1362,7 @@ class Chat {
     this.sendmsg.placeholder = msg;
     this.sendmsg.disabled = true;
     this.sendmsg.value = "";
-    CANVAS.canvas.focus();
+    CANVAS.tc.focus();
   }
   enable() {
     if(this.timer != -1) {
@@ -1373,7 +1409,7 @@ class Chat {
   post_send() {
     this.sendmsg.value = "";
     this.sendmsg.blur();
-    CANVAS.canvas.focus();
+    CANVAS.tc.focus();
   }
   new(author, msg, no_author = false) {
     const p = createElement("p");
@@ -1486,6 +1522,7 @@ class Camera {
  *            name: string,
  *            dead: boolean,
  *            death_counter: number,
+ *            name_y: number,
  *            is_player: boolean
  *          }}
  */
@@ -2041,7 +2078,14 @@ class Settings {
 
     this.new("VISUALS");
     this.add(this.text("Default FOV"), this.slider("fov"));
-    this.add(this.text("Stroke radius percentage"), this.slider("stroke_thickness", "%"));
+    this.add(this.text("Draw balls' fill"), this.switch("draw_ball_fill"));
+    this.add(this.text("Draw balls' stroke"), this.switch("draw_ball_stroke"));
+    this.add(this.text("Draw stroke-only balls with brighter color"), this.switch("draw_ball_stroke_bright"));
+    this.add(this.text("Balls' stroke radius percentage"), this.slider("ball_stroke", "%"));
+    this.add(this.text("Draw players' fill"), this.switch("draw_player_fill"));
+    this.add(this.text("Draw players' stroke"), this.switch("draw_player_stroke"));
+    this.add(this.text("Draw stroke-only players with brighter color"), this.switch("draw_player_stroke_bright"));
+    this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
     this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
     this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
     this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
@@ -2086,9 +2130,6 @@ class Settings {
 
 class Canvas {
   constructor() {
-    this.canvas = createElement("canvas");
-    this.ctx = this.canvas.getContext("2d");
-
     this.gl = WebGL.get("ID_canvas");
 
     this.tc = getElementById("ID_text");
@@ -2096,14 +2137,10 @@ class Canvas {
 
     this.c_gl = new Circle_WebGL(this.gl);
 
-    this.width = 0;
-    this.height = 0;
-
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
 
     this.animation = -1;
-    this.stop_draw = false;
     this.draw_at = 0;
     this.last_draw_at = 0;
 
@@ -2116,20 +2153,16 @@ class Canvas {
 
     cancelAnimationFrame(this.animation);
     this.animation = -1;
-    this.stop_draw = false;
     this.draw_at = 0;
     this.last_draw_at = 0;
   }
   resize() {
-    this.width = WINDOW.width;
-    this.height = WINDOW.height;
-
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
-  }
-  stop() {
-    this.stop_draw = true;
-    this.canvas.parentElement.removeChild(this.canvas);
+    if(this.tc.width != WINDOW.width) {
+      this.tc.width = WINDOW.width;
+    }
+    if(this.tc.height != WINDOW.height) {
+      this.tc.height = WINDOW.height;
+    }
   }
   wheel(e) {
     const add = -Math.sign(e.deltaY) * 0.05;
@@ -2138,7 +2171,7 @@ class Canvas {
     } else {
       this.target_fov += add;
     }
-    this.target_fov = Math.min(Math.max(this.target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
+    this.target_fov = min(max(this.target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
   }
   mousedown() {
     MOVEMENT.mouse_movement = !MOVEMENT.mouse_movement;
@@ -2158,8 +2191,7 @@ class Canvas {
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
   draw(when) {
-    if(this.stop_draw) return;
-    this.draw_at = Math.min(Math.max(this.draw_at, SOCKET.updates[0]), SOCKET.updates[1]);
+    this.draw_at = min(max(this.draw_at, SOCKET.updates[0]), SOCKET.updates[1]);
     const old = this.fov;
     this.fov = lerp(this.fov, this.target_fov, 0.1);
     if(this.fov != old) {
@@ -2179,137 +2211,101 @@ class Canvas {
     CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
     CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
 
+    let m = new DOMMatrix();
+    this.tctx.setTransform(m);
+    this.tctx.clearRect(0, 0, this.tc.width, this.tc.height);
+    m = m.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(this.fov, this.fov).translate(-CAMERA.x, -CAMERA.y);
+    this.tctx.setTransform(m);
+
     WebGL.pre_draw(this.gl);
     BACKGROUND.draw();
+    this.c_gl.matrix = BACKGROUND.gl.matrix;
     let idx = 0;
-    let to_go = PLAYERS.len;
+    let to_go = BALLS.len;
     for(let i = 0; to_go; ++i) {
-      if(PLAYERS.arr[i] == undefined) continue;
-      PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
-      view.setFloat32(idx, PLAYERS.arr[i].x, true);
-      idx += 4;
-      PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
-      view.setFloat32(idx, PLAYERS.arr[i].y, true);
-      idx += 4;
-      PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
-      view.setFloat32(idx, PLAYERS.arr[i].r, true);
-      idx += 4;
-      view.setUint32(idx, Ball_colors[0]);
-      idx += 4;
+      const ball = BALLS.arr[i];
+      if(ball == undefined) continue;
       --to_go;
-    }
-    to_go = BALLS.len;
-    for(let i = 0; to_go; ++i) {
-      if(BALLS.arr[i] == undefined) continue;
-      BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
-      view.setFloat32(idx, BALLS.arr[i].x, true);
+      ball.x = lerp(ball.x1, ball.x2, by);
+      view.setFloat32(idx, ball.x, true);
       idx += 4;
-      BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
-      view.setFloat32(idx, BALLS.arr[i].y, true);
+      ball.y = lerp(ball.y1, ball.y2, by);
+      view.setFloat32(idx, ball.y, true);
       idx += 4;
-      BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
-      view.setFloat32(idx, BALLS.arr[i].r, true);
+      ball.r = lerp(ball.r1, ball.r2, by);
+      view.setFloat32(idx, ball.r, true);
       idx += 4;
-      view.setUint32(idx, Ball_colors[BALLS.arr[i].type]);
+      view.setUint32(idx, Ball_colors[ball.type]);
       idx += 4;
-      --to_go;
     }
     this.c_gl.set(buffer.slice(0, idx), idx >> 4);
-    this.c_gl.matrix = BACKGROUND.gl.matrix;
-    this.c_gl.draw(settings["stroke_thickness"]["value"] / 200, this.fov);
+    this.c_gl.draw(
+      settings["draw_ball_fill"],
+      settings["draw_ball_stroke"],
+      settings["ball_stroke"]["value"] / 100,
+      settings["draw_ball_stroke_bright"]
+    );
+    idx = 0;
+    to_go = PLAYERS.len;
+    for(let i = 0; to_go; ++i) {
+      const player = PLAYERS.arr[i];
+      if(player == undefined) continue;
+      --to_go;
+      player.x = lerp(player.x1, player.x2, by);
+      view.setFloat32(idx, player.x, true);
+      idx += 4;
+      player.y = lerp(player.y1, player.y2, by);
+      view.setFloat32(idx, player.y, true);
+      idx += 4;
+      player.r = lerp(player.r1, player.r2, by);
+      view.setFloat32(idx, player.r, true);
+      idx += 4;
+      view.setUint32(idx, 0xebebf0ff);
+      idx += 4;
 
-
-    /*const sorted = new Array(CONSTS.max_players + CONSTS.max_balls);
-    let idx = 0;
-    for(let i = 0; i < CONSTS.max_players; ++i) {
-      if(PLAYERS.arr[i] == undefined) continue;
-      PLAYERS.arr[i].x = lerp(PLAYERS.arr[i].x1, PLAYERS.arr[i].x2, by);
-      PLAYERS.arr[i].y = lerp(PLAYERS.arr[i].y1, PLAYERS.arr[i].y2, by);
-      PLAYERS.arr[i].r = lerp(PLAYERS.arr[i].r1, PLAYERS.arr[i].r2, by);
-      sorted[idx++] = PLAYERS.arr[i];
-    }
-    for(let i = 0; i < CONSTS.max_balls; ++i) {
-      if(BALLS.arr[i] == undefined) continue;
-      BALLS.arr[i].x = lerp(BALLS.arr[i].x1, BALLS.arr[i].x2, by);
-      BALLS.arr[i].y = lerp(BALLS.arr[i].y1, BALLS.arr[i].y2, by);
-      BALLS.arr[i].r = lerp(BALLS.arr[i].r1, BALLS.arr[i].r2, by);
-      sorted[idx++] = BALLS.arr[i];
-    }
-    sorted.sort((a, b) => b.r - a.r);
-    for(let i = 0; i < sorted.length; ++i) {
-      if(sorted[i] == undefined) continue;
-      this.ctx.beginPath();
-      const obj = sorted[i];
-      if(obj.is_player) {
-        let r_sub = obj.r * (settings["player_stroke"]["value"] / 200);
-        this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);
-        this.ctx.arc(obj.x, obj.y, obj.r - r_sub, 0, Math.PI * 2);
-        if(settings["draw_player_fill"]) {
-          this.ctx.fillStyle = "#ebecf0";
-          this.ctx.fill();
+      if(settings["draw_player_name"] && player.name.length != 0) {
+        this.tctx.font = `700 ${player.r / this.fov}px Ubuntu`;
+        this.tctx.textAlign = "center";
+        this.tctx.textBaseline = "middle";
+        this.tctx.fillStyle = "#00000080";
+        let target_name_y;
+        if(this.fov > 1) {
+          target_name_y = player.r * 0.5;
+        } else {
+          target_name_y = player.r * 0.5 + (2 / (this.fov * this.fov));
         }
-        if(settings["draw_player_stroke"]) {
-          if(!settings["draw_player_fill"] && settings["draw_player_stroke_bright"]) {
-            this.ctx.strokeStyle = "#ebecf0";
-          } else {
-            this.ctx.strokeStyle = "#ebecf0".darken();
+        player.name_y = lerp(player.name_y, target_name_y, 0.1);
+        this.tctx.fillText(player.name, player.x, player.y - player.r - player.name_y);
+      }
+      if(player.dead) {
+        this.tctx.font = `700 ${player.r / min(this.fov, 1)}px Ubuntu`;
+        this.tctx.textAlign = "center";
+        this.tctx.textBaseline = "middle";
+        this.tctx.fillStyle = "#f00";
+        this.tctx.fillText(player.death_counter, player.x, player.y);
+        if(settings["draw_death_arrow"]) {
+          const [x, y, out] = get_sticky_position(player.x, player.y, DEATH_ARROW.size * 0.75, true, true, true);
+          if(out) {
+            this.tctx.translate(x, y);
+            const angle = Math.atan2(player.y - y, player.x - x);
+            this.tctx.rotate(angle);
+            DEATH_ARROW.draw(this.tctx);
+            this.tctx.rotate(-angle);
+            this.tctx.font = `700 ${DEATH_ARROW.size * 0.3}px Ubuntu`;
+            this.tctx.fillText(player.death_counter, 0, 0);
+            this.tctx.translate(-x, -y);
           }
-          this.ctx.lineWidth = r_sub * 2;
-          this.ctx.stroke();
-        }
-        if(settings["draw_player_name"] && obj.name.length != 0) {
-          this.ctx.font = `700 ${obj.r / this.fov}px Ubuntu`;
-          this.ctx.textAlign = "center";
-          this.ctx.textBaseline = "middle";
-          this.ctx.fillStyle = "#00000080";
-          let target_name_y;
-          if(this.fov > 1) {
-            target_name_y = obj.r * 0.5;
-          } else {
-            target_name_y = obj.r * 0.5 + (2 / (this.fov * this.fov));
-          }
-          obj.name_y = lerp(obj.name_y, target_name_y, 0.1);
-          this.ctx.fillText(obj.name, obj.x, obj.y - obj.r - obj.name_y);
-        }
-        if(obj.dead) {
-          this.ctx.font = `700 ${obj.r / Math.min(this.fov, 1)}px Ubuntu`;
-          this.ctx.textAlign = "center";
-          this.ctx.textBaseline = "middle";
-          this.ctx.fillStyle = "#f00";
-          this.ctx.fillText(obj.death_counter, obj.x, obj.y);
-          if(settings["draw_death_arrow"]) {
-            const [x, y, out] = get_sticky_position(obj.x, obj.y, DEATH_ARROW.size * 0.75, true, true, true);
-            if(out) {
-              this.ctx.translate(x, y);
-              const angle = Math.atan2(obj.y - y, obj.x - x);
-              this.ctx.rotate(angle);
-              DEATH_ARROW.draw(this.ctx);
-              this.ctx.rotate(-angle);
-              this.ctx.font = `700 ${DEATH_ARROW.size * 0.3}px Ubuntu`;
-              this.ctx.fillText(obj.death_counter, 0, 0);
-              this.ctx.translate(-x, -y);
-            }
-          }
-        }
-      } else {
-        const r_sub = obj.r * (settings["ball_stroke"]["value"] / 200);
-        this.ctx.moveTo(obj.x + obj.r - r_sub, obj.y);
-        this.ctx.arc(obj.x, obj.y, obj.r - r_sub, 0, Math.PI * 2);
-        if(settings["draw_ball_fill"]) {
-          this.ctx.fillStyle = Ball_colors_str[obj.type];
-          this.ctx.fill();
-        }
-        if(settings["draw_ball_stroke"]) {
-          if(!settings["draw_ball_fill"] && settings["draw_ball_stroke_bright"]) {
-            this.ctx.strokeStyle = Ball_colors_str[obj.type];
-          } else {
-            this.ctx.strokeStyle = Ball_colors_str[obj.type].darken();
-          }
-          this.ctx.lineWidth = r_sub * 2;
-          this.ctx.stroke();
         }
       }
-    }*/
+    }
+    this.c_gl.set(buffer.slice(0, idx), idx >> 4);
+    this.c_gl.draw(
+      settings["draw_player_fill"],
+      settings["draw_player_stroke"],
+      settings["player_stroke"]["value"] / 100,
+      settings["draw_player_stroke_bright"]
+    );
+
     TUTORIAL.run(by);
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
@@ -2383,17 +2379,6 @@ class Background {
     this.gl.matrix = new M3(WINDOW.width, WINDOW.height);
     this.gl.matrix.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
     this.gl.draw();
-
-    if(CANVAS.tc.width != WINDOW.width || CANVAS.tc.height != WINDOW.height) {
-      CANVAS.tc.width = WINDOW.width;
-      CANVAS.tc.height = WINDOW.height;
-    }//move to canvas
-
-    let m = new DOMMatrix();
-    CANVAS.tctx.setTransform(m);
-    CANVAS.tctx.clearRect(0, 0, WINDOW.width, WINDOW.height);
-    m = m.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov, CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
-    CANVAS.tctx.setTransform(m);
 
     CANVAS.tctx.font = `700 ${(this.cell_size / CONSTS.default_fov) | 0}px Ubuntu`;
     CANVAS.tctx.textAlign = "center";
