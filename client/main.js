@@ -38,7 +38,7 @@ const _settings = getItem("settings");
 const default_settings = {
   ["fov"]: {
     ["min"]: 0.25,
-    ["max"]: 40,
+    ["max"]: 4,
     ["value"]: 1.75,
     ["step"]: 0.05
   },
@@ -375,10 +375,11 @@ class WebGL {
     } else {
       this.gl = WebGL.get(id);
     }
+    const str = "#version 300 es\n";
     /**
      * @type {WebGLProgram}
      */
-    this.program = this.create_program(vertex, fragment);
+    this.program = this.create_program(str + vertex, str + "precision mediump float;\nout vec4 fragColor;\n" + fragment);
 
     this.vao = this.gl.createVertexArray();
     this.gl.bindVertexArray(this.vao);
@@ -424,7 +425,6 @@ class WebGL {
     
     gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
     gl.enable(GL.DEPTH_TEST);
-    //gl.depthFunc(GL.LEQUAL);
     gl.enable(GL.BLEND);
     gl.blendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
   }
@@ -467,8 +467,7 @@ class WebGL {
 class Background_WebGL extends WebGL {
   constructor(id) {
     super(id,
-      `#version 300 es\n
-
+      `
       layout(location = 0) in vec2 a_position;
       layout(location = 1) in vec2 a_offset;
       layout(location = 2) in float a_scale;
@@ -483,15 +482,10 @@ class Background_WebGL extends WebGL {
         v_color = a_color;
       }
       `,
-      `#version 300 es\n
-
-      precision mediump float;
-
+      `
       uniform float u_light;
 
       in vec3 v_color;
-
-      out vec4 fragColor;
 
       void main() {
         fragColor = vec4(v_color.xyz * u_light, 1.0);
@@ -566,8 +560,7 @@ class Background_WebGL extends WebGL {
 class Circle_WebGL extends WebGL {
   constructor(id) {
     super(id,
-      `#version 300 es\n
-
+      `
       layout(location = 0) in vec2 a_position;
       layout(location = 1) in vec2 a_offset;
       layout(location = 2) in float a_scale;
@@ -587,13 +580,8 @@ class Circle_WebGL extends WebGL {
         }
       }
       `,
-      `#version 300 es\n
-
-      precision mediump float;
-
+      `
       flat in vec4 v_color;
-
-      out vec4 fragColor;
 
       void main() {
         fragColor = v_color;
@@ -701,6 +689,101 @@ class Circle_WebGL extends WebGL {
     }
     this.gl.uniform1i(this.u_precision, p);
     this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, data.length >> 1, this.num);
+  }
+}
+
+/*
+ * TEX WEBGL, TEX_WEBGL
+ */
+
+class Tex_WebGL extends WebGL {
+  constructor(id) {
+    super(id,
+      `
+      layout(location = 0) in vec3 a_position;
+      layout(location = 1) in vec2 a_texcoord;
+
+      out vec2 v_texcoord;
+      
+      uniform mat3 u_matrix;
+
+      void main() {
+        gl_Position = vec4((u_matrix * vec3(a_position.xy, 1.0)).xy, a_position.z, 1.0);
+        v_texcoord = a_texcoord;
+      }
+      `,
+      `
+      in vec2 v_texcoord;
+
+      uniform sampler2D u_texture;
+
+      void main() {
+        fragColor = texture(u_texture, v_texcoord);
+      }
+    `);
+
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.vertexAttribPointer(0, 3, GL.FLOAT, false, 20, 0);
+    this.gl.vertexAttribPointer(1, 2, GL.FLOAT, false, 20, 12);
+    this.gl.enableVertexAttribArray(0);
+    this.gl.enableVertexAttribArray(1);
+
+    /**
+     * @type {HTMLCanvasElement}
+     */
+    this.canvas = createElement("canvas");
+    /**
+     * @type {CanvasRenderingContext2D}
+     */
+    this.ctx = this.canvas.getContext("2d");
+  }
+  begin_text() {
+    this.use();
+
+    this.gl.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
+    this.gl.depthFunc(GL.LEQUAL);
+  }
+  end_text() {
+    this.gl.depthFunc(GL.LESS);
+  }
+  draw_text(text, x, y, z, size, div, precision, color) {
+    size /= div;
+    div *= precision;
+    this.ctx.font = `700 ${size}px Ubuntu`;
+    this.ctx.fillStyle = color;
+    const info = this.ctx.measureText(text);
+    const half_w = (info.actualBoundingBoxLeft + info.actualBoundingBoxRight) * 0.75;
+    const half_h = (info.actualBoundingBoxAscent + info.actualBoundingBoxDescent) * 0.75;
+    this.canvas.width = Math.ceil(half_w * 2 * div);
+    this.canvas.height = Math.ceil(half_h * 2 * div);
+    this.ctx.font = `700 ${size * div}px Ubuntu`;
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillText(text, half_w * div, half_h * div);
+
+    this.gl.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+
+    const texture = this.gl.createTexture();
+    this.gl.bindTexture(GL.TEXTURE_2D, texture);
+    this.gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, this.canvas.width, this.canvas.height, 0, GL.RGBA, GL.UNSIGNED_BYTE, this.canvas);
+    this.gl.generateMipmap(GL.TEXTURE_2D);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
+      x - half_w, y - half_h, z,      0, 0,
+      x + half_w, y - half_h, z,      1, 0,
+      x - half_w, y + half_h, z,      0, 1,
+      x + half_w, y + half_h, z,      1, 1
+    ]), GL.DYNAMIC_DRAW);
+    this.gl.drawArrays(GL.TRIANGLE_STRIP, 0, 4);
+
+    this.gl.deleteTexture(texture);
   }
 }
 
@@ -2136,6 +2219,7 @@ class Canvas {
     this.tctx = this.tc.getContext("2d");
 
     this.c_gl = new Circle_WebGL(this.gl);
+    this.t_gl = new Tex_WebGL(this.gl);
 
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
@@ -2262,12 +2346,23 @@ class Canvas {
       idx += 4;
       view.setUint32(idx, 0xebebf0ff);
       idx += 4;
+    }
+    this.c_gl.set(buffer.slice(0, idx), idx >> 4);
+    this.c_gl.draw(
+      settings["draw_player_fill"],
+      settings["draw_player_stroke"],
+      settings["player_stroke"]["value"] / 100,
+      settings["draw_player_stroke_bright"]
+    );
 
+    this.t_gl.matrix = BACKGROUND.gl.matrix;
+    this.t_gl.begin_text();
+    to_go = PLAYERS.len;
+    for(let i = 0; to_go; ++i) {
+      const player = PLAYERS.arr[i];
+      if(player == undefined) continue;
+      --to_go;
       if(settings["draw_player_name"] && player.name.length != 0) {
-        this.tctx.font = `700 ${player.r / this.fov}px Ubuntu`;
-        this.tctx.textAlign = "center";
-        this.tctx.textBaseline = "middle";
-        this.tctx.fillStyle = "#00000080";
         let target_name_y;
         if(this.fov > 1) {
           target_name_y = player.r * 0.5;
@@ -2275,14 +2370,10 @@ class Canvas {
           target_name_y = player.r * 0.5 + (2 / (this.fov * this.fov));
         }
         player.name_y = lerp(player.name_y, target_name_y, 0.1);
-        this.tctx.fillText(player.name, player.x, player.y - player.r - player.name_y);
+        this.t_gl.draw_text(player.name, player.x, player.y - player.r - player.name_y, -1 / player.r, player.r, this.fov, 4, "#00000080");
       }
       if(player.dead) {
-        this.tctx.font = `700 ${player.r / min(this.fov, 1)}px Ubuntu`;
-        this.tctx.textAlign = "center";
-        this.tctx.textBaseline = "middle";
-        this.tctx.fillStyle = "#f00";
-        this.tctx.fillText(player.death_counter, player.x, player.y);
+        this.t_gl.draw_text(player.death_counter, player.x, player.y, -1 / player.r, player.r, min(this.fov, 1), max(this.fov, 1) * 4, "#f00");
         if(settings["draw_death_arrow"]) {
           const [x, y, out] = get_sticky_position(player.x, player.y, DEATH_ARROW.size * 0.75, true, true, true);
           if(out) {
@@ -2298,13 +2389,7 @@ class Canvas {
         }
       }
     }
-    this.c_gl.set(buffer.slice(0, idx), idx >> 4);
-    this.c_gl.draw(
-      settings["draw_player_fill"],
-      settings["draw_player_stroke"],
-      settings["player_stroke"]["value"] / 100,
-      settings["draw_player_stroke_bright"]
-    );
+    this.t_gl.end_text();
 
     TUTORIAL.run(by);
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
@@ -2380,12 +2465,12 @@ class Background {
     this.gl.matrix.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
     this.gl.draw();
 
-    CANVAS.tctx.font = `700 ${(this.cell_size / CONSTS.default_fov) | 0}px Ubuntu`;
-    CANVAS.tctx.textAlign = "center";
-    CANVAS.tctx.textBaseline = "middle";
-    CANVAS.tctx.fillStyle = Tile_colors_str[3].darken();
+    CANVAS.t_gl.matrix = this.gl.matrix;
+    CANVAS.t_gl.begin_text();
+    const size = (this.cell_size / CONSTS.default_fov) | 0;
+    const color = Tile_colors_str[3].darken();
     for(const tp of this.teleports) {
-      CANVAS.tctx.fillText(tp[2], tp[0], tp[1]);
+      CANVAS.t_gl.draw_text(tp[2], tp[0], tp[1], 0.5, size, 1, 4, color);
     }
   }
 }
