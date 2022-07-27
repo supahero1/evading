@@ -736,7 +736,6 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       ball->updated_removed = 1;
       return 0;
     }
-  } else {
     updated.collided = 0;
   }
 
@@ -828,25 +827,37 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
           }
         }
       }
-      postpone_x = x;
-      postpone_y = y;
-      updated.postponed = 1;
+      const float diff_x = x - entity->x;
+      const float diff_y = y - entity->y;
+      const float dist_sq = diff_x * diff_x + diff_y * diff_y;
+      if(dist_sq < entity->r * entity->r) {
+        postpone_x = x;
+        postpone_y = y;
+        updated.postponed = 1;
+      }
     }
   }
   
-  if(ball->die_on_collision && (updated.collided || updated.postponed)) {
+  if(ball->die_on_collision && updated.collided) {
     ball->updated_removed = 1;
     return 0;
   }
 
   if(updated.postponed && !updated.collided) {
+    /* Second calculation on purpose, don't remove */
     const float diff_x = postpone_x - entity->x;
     const float diff_y = postpone_y - entity->y;
     const float dist_sq = diff_x * diff_x + diff_y * diff_y;
     if(dist_sq < entity->r * entity->r) {
+      if(ball->die_on_collision) {
+        ball->updated_removed = 1;
+        return 0;
+      }
       const float angle = atan2f(entity->y - postpone_y, entity->x - postpone_x);
-      entity->x = postpone_x + cosf(angle) * entity->r;
-      entity->y = postpone_y + sinf(angle) * entity->r;
+      const float c = cosf(angle);
+      const float s = sinf(angle);
+      entity->x = postpone_x + c * entity->r;
+      entity->y = postpone_y + s * entity->r;
       float dist_sqrt = sqrtf(dist_sq);
       const float normal_x = diff_x / dist_sqrt;
       const float normal_y = diff_y / dist_sqrt;
@@ -854,8 +865,8 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       ball->vx -= 2.0f * dot_p * normal_x;
       ball->vy -= 2.0f * dot_p * normal_y;
       dist_sqrt = entity->r - dist_sqrt;
-      entity->x += cosf(angle) * dist_sqrt;
-      entity->y += sinf(angle) * dist_sqrt;
+      entity->x += c * dist_sqrt;
+      entity->y += s * dist_sqrt;
     }
   }
   
@@ -1044,10 +1055,12 @@ static void player_tick(const uint8_t client_id) {
     for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
       for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
         const uint8_t type = info->tiles[(uint16_t) cell_x * info->height + cell_y];
-        if(type == tile_path) {
-          client->targetable = 1;
+        if(type != tile_wall) {
+          if(type == tile_path) {
+            client->targetable = 1;
+          }
+          continue;
         }
-        if(type != tile_wall) continue;
         float x = (uint16_t) cell_x * grid->cell_size;
         float y = (uint16_t) cell_y * grid->cell_size;
         const float mid_x = x + grid->half_cell_size;
@@ -1111,13 +1124,17 @@ static void player_tick(const uint8_t client_id) {
             }
           }
         }
-        postpone_x = x;
-        postpone_y = y;
-        updated.postponed = 1;
+        const float dist_sq = (x - entity->x) * (x - entity->x) + (y - entity->y) * (y - entity->y);
+        if(dist_sq < entity->r * entity->r) {
+          postpone_x = x;
+          postpone_y = y;
+          updated.postponed = 1;
+        }
       }
     }
     
     if(updated.postponed && !updated.collided) {
+      /* Second calculation on purpose, don't remove */
       const float dist_sq = (postpone_x - entity->x) * (postpone_x - entity->x) + (postpone_y - entity->y) * (postpone_y - entity->y);
       if(dist_sq < entity->r * entity->r) {
         const float angle = atan2f(entity->y - postpone_y, entity->x - postpone_x);

@@ -3,7 +3,16 @@
 
 #include <stdint.h>
 
-/* MAX 65534 balls in one area */
+/*
+
+1. MAX 65534 balls in one area
+2. NEVER allow balls to be in a situation where
+   colliding with a corner + their speed + their radius = out of bounds
+   In a nutshell, never add balls that are equal or bigger than the
+   smallest passage with a corner at the beginning/end of it. The
+   ball might "appear" to be out of bounds (it really isn't, but
+   it can't do anything else - it gets TPed back and forth).
+*/
 
 enum game_const {
   send_interval = 4,
@@ -227,7 +236,7 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-#define area_infos_size 8
+#define area_infos_size 9
 
 extern const struct area_info* area_infos[area_infos_size];
 

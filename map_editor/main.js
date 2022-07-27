@@ -280,7 +280,7 @@ static const struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
     str = str.substring(0, str.length - 1 - (x == width - 1));
     str += "\n\n";
   }
-  str += `${m}  }\n};\n`;
+  str += `${m}  }\n};\n\n`;
   return btoa(str);
 }
 function parse_tiles(config) {
@@ -304,7 +304,7 @@ function parse_tiles(config) {
     if(info.length != vals[0]) {
       return 0;
     }
-    const reg = config.match(/{ (\d+), (\d+), 40, \(uint8_t\[\]\){/);
+    const reg = config.match(/{ (\d+), (\d+), \d+, \(uint8_t\[\]\){/);
     if(reg == null) {
       return 0;
     }

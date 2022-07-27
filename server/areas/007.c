@@ -246,6 +246,12 @@ const struct area_info area_007 = {
     },
     {
       BALL,
+      .tile_x = 2,
+      .tile_y = 55,
+      .vy = V * time_scale
+    },
+    {
+      BALL,
       .tile_x = 3,
       .tile_y = 55,
       .vy = V * time_scale
@@ -258,9 +264,9 @@ const struct area_info area_007 = {
     },
     {
       BALL,
-      .tile_x = 5,
-      .tile_y = 55,
-      .vy = V * time_scale
+      .tile_x = 2,
+      .tile_y = 59,
+      .vy = -V * time_scale
     },
     {
       BALL,
@@ -271,12 +277,6 @@ const struct area_info area_007 = {
     {
       BALL,
       .tile_x = 4,
-      .tile_y = 59,
-      .vy = -V * time_scale
-    },
-    {
-      BALL,
-      .tile_x = 5,
       .tile_y = 59,
       .vy = -V * time_scale
     },
