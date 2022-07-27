@@ -1125,6 +1125,8 @@ class Socket {
       CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
       if(updated_background) {
         CAMERA.ip();
+        PLAYERS.arr[CLIENT.id].x1 = PLAYERS.arr[CLIENT.id].x2;
+        PLAYERS.arr[CLIENT.id].y1 = PLAYERS.arr[CLIENT.id].y2;
       }
     }
     if(this.updates[0] != 0 && !this.game_init) {
