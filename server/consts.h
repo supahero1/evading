@@ -18,7 +18,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_info_id = 9,
+  default_area_info_id = 0,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
@@ -32,6 +32,10 @@ enum game_const {
 #define base_tick_interval (40.0f)
 #define time_scale (tick_interval / base_tick_interval)
 #define default_player_speed (15.0f * time_scale)
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 enum server_opcodes {
   server_opcode_area,
@@ -75,7 +79,8 @@ enum position_type {
   position_tile_random_in_range_snap_to_tiles,
   position_fixed,
   position_tile_fixed,
-  position_relative
+  position_relative,
+  position_relative_tile
 };
 
 enum movement_type {
@@ -118,7 +123,7 @@ enum range_type {
 struct ball_info {
   const uint8_t type;
   const uint8_t radius_type:2;
-  const uint8_t position_type:3;
+  const uint8_t position_type:4;
   const uint8_t movement_type:3;
   const uint8_t frequency_type:3;
   const uint8_t tick_type:2;

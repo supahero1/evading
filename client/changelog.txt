@@ -1,13 +1,8 @@
-Last modified: Jul 19 2022
+Last modified: Jul 28 2022
 <br>
 <br>
 <br>
-* New remastered main menu!
-<br>
-<br>
-* New spectator mode - you can observe others
-<br>
-playing the game and chat with them in the meanwhile.
+* Game release. Hooray!
 <br>
 <br>
 Join our Discord server to be always

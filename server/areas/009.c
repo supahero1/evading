@@ -2,7 +2,7 @@
 
 static const struct tile_info t;
 
-#define FAN_SPEED (5 * time_scale)
+#define FAN_V 4
 
 const struct area_info area_009 = {
   &t,
@@ -16,9 +16,9 @@ const struct area_info area_009 = {
       .speed = 0,
       .count = 1,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 1000 / tick_interval,
+      .frequency_num = 1000,
       .tick_type = tick_fixed,
-      .tick = 1000 / tick_interval,
+      .tick = 1000,
       .spawn = (struct ball_info[]) {
 #define BALL \
         { \
@@ -26,8 +26,8 @@ const struct area_info area_009 = {
           .position_type = position_relative, \
           .r = 10, \
           .movement_type = movement_velocity, \
-          .vy = -2 * time_scale, \
-          .speed = 2 * time_scale, \
+          .vy = -2, \
+          .speed = 2, \
           .count = 1, \
           .die_on_collision = 1 \
         }
@@ -51,9 +51,9 @@ const struct area_info area_009 = {
       .speed = 0,
       .count = 1,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 1000 / tick_interval,
+      .frequency_num = 1000,
       .tick_type = tick_fixed,
-      .tick = -(1000 / tick_interval),
+      .tick = -1000,
       .spawn = (struct ball_info[]) {
         {
           .type = ball_null
@@ -64,8 +64,8 @@ const struct area_info area_009 = {
           .position_type = position_relative, \
           .r = 10, \
           .movement_type = movement_velocity, \
-          .vx = -2 * time_scale, \
-          .speed = 2 * time_scale, \
+          .vx = -2, \
+          .speed = 2, \
           .count = 1, \
           .die_on_collision = 1 \
         }
@@ -78,9 +78,6 @@ const struct area_info area_009 = {
       }
     },
 
-
-
-
     {
       .type = ball_sandy,
       .position_type = position_tile_fixed,
@@ -90,9 +87,7 @@ const struct area_info area_009 = {
       .speed = 0,
       .count = 1,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 500 / tick_interval,
-      .tick_type = tick_fixed,
-      .tick = 0,
+      .frequency_num = 500,
       .spawn = (struct ball_info[]) {
         {
           .type = ball_null
@@ -106,8 +101,8 @@ const struct area_info area_009 = {
           .position_type = position_relative, \
           .r = 10, \
           .movement_type = movement_velocity, \
-          .vx = 3 * time_scale, \
-          .speed = 3 * time_scale, \
+          .vx = 3, \
+          .speed = 3, \
           .count = 1, \
           .die_on_collision = 1 \
         }
@@ -138,9 +133,7 @@ const struct area_info area_009 = {
       .speed = 0,
       .count = 1,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 500 / tick_interval,
-      .tick_type = tick_fixed,
-      .tick = 0,
+      .frequency_num = 500,
       .spawn = (struct ball_info[]) {
 #define BALL \
         { \
@@ -148,8 +141,8 @@ const struct area_info area_009 = {
           .position_type = position_relative, \
           .r = 10, \
           .movement_type = movement_velocity, \
-          .vx = 3 * time_scale, \
-          .speed = 3 * time_scale, \
+          .vx = 3, \
+          .speed = 3, \
           .count = 1, \
           .die_on_collision = 1 \
         }
@@ -194,9 +187,7 @@ const struct area_info area_009 = {
       .speed = 0,
       .count = 1,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 500 / tick_interval,
-      .tick_type = tick_fixed,
-      .tick = 0,
+      .frequency_num = 500,
       .spawn = (struct ball_info[]) {
 #define BALL \
         { \
@@ -204,8 +195,8 @@ const struct area_info area_009 = {
           .position_type = position_relative, \
           .r = 10, \
           .movement_type = movement_velocity, \
-          .vx = 3 * time_scale, \
-          .speed = 3 * time_scale, \
+          .vx = 3, \
+          .speed = 3, \
           .count = 1, \
           .die_on_collision = 1 \
         }
@@ -233,8 +224,6 @@ const struct area_info area_009 = {
         {0}
       }
     },
-
-
 #define FAN \
       .type = ball_teal, \
       .position_type = position_tile_fixed, \
@@ -243,94 +232,253 @@ const struct area_info area_009 = {
       .r = 10, \
       .count = 1, \
       .frequency_type = frequency_float_fixed, \
-      .frequency_float = 40.0 / (500 * time_scale)
-    
+      .frequency_float = M_PI * 0.08 * FAN_V
     {
       FAN,
       .tile_x = 13,
       .tile_y = 4,
-      .vx = FAN_SPEED,
-      .speed = FAN_SPEED
+      .vx = FAN_V,
+      .speed = FAN_V
     },
     {
       FAN,
       .tile_x = 13,
       .tile_y = 3,
-      .vx = FAN_SPEED * 2,
-      .speed = FAN_SPEED * 2
+      .vx = FAN_V * 2,
+      .speed = FAN_V * 2
     },
     {
       FAN,
       .tile_x = 13,
       .tile_y = 2,
-      .vx = FAN_SPEED * 3,
-      .speed = FAN_SPEED * 3
+      .vx = FAN_V * 3,
+      .speed = FAN_V * 3
     },
     {
       FAN,
       .tile_x = 14,
       .tile_y = 5,
-      .vy = FAN_SPEED,
-      .speed = FAN_SPEED
+      .vy = FAN_V,
+      .speed = FAN_V
     },
     {
       FAN,
       .tile_x = 15,
       .tile_y = 5,
-      .vy = FAN_SPEED * 2,
-      .speed = FAN_SPEED * 2
+      .vy = FAN_V * 2,
+      .speed = FAN_V * 2
     },
     {
       FAN,
       .tile_x = 16,
       .tile_y = 5,
-      .vy = FAN_SPEED * 3,
-      .speed = FAN_SPEED * 3
+      .vy = FAN_V * 3,
+      .speed = FAN_V * 3
     },
     {
       FAN,
       .tile_x = 13,
       .tile_y = 6,
-      .vx = -FAN_SPEED,
-      .speed = FAN_SPEED
+      .vx = -FAN_V,
+      .speed = FAN_V
     },
     {
       FAN,
       .tile_x = 13,
       .tile_y = 7,
-      .vx = -FAN_SPEED * 2,
-      .speed = FAN_SPEED * 2
+      .vx = -FAN_V * 2,
+      .speed = FAN_V * 2
     },
     {
       FAN,
       .tile_x = 13,
       .tile_y = 8,
-      .vx = -FAN_SPEED * 3,
-      .speed = FAN_SPEED * 3
+      .vx = -FAN_V * 3,
+      .speed = FAN_V * 3
     },
     {
       FAN,
       .tile_x = 12,
       .tile_y = 5,
-      .vy = -FAN_SPEED,
-      .speed = FAN_SPEED
+      .vy = -FAN_V,
+      .speed = FAN_V
     },
     {
       FAN,
       .tile_x = 11,
       .tile_y = 5,
-      .vy = -FAN_SPEED * 2,
-      .speed = FAN_SPEED * 2
+      .vy = -FAN_V * 2,
+      .speed = FAN_V * 2
     },
     {
       FAN,
       .tile_x = 10,
       .tile_y = 5,
-      .vy = -FAN_SPEED * 3,
-      .speed = FAN_SPEED * 3
+      .vy = -FAN_V * 3,
+      .speed = FAN_V * 3
     },
+#undef FAN
+#define TURRET \
+      .type = ball_light_blue, \
+      .position_type = position_tile_fixed, \
+      .r = 10, \
+      .count = 1, \
+      .frequency_type = frequency_num_fixed, \
+      .frequency_num = 100, \
+      .speed = 0, \
+      .tick = 100, \
+      .range_type = range_fixed, \
+      .range = 45, \
+      .spawn = (struct ball_info[]) { \
+        { \
+          .type = ball_grey, \
+          .position_type = position_relative, \
+          .movement_type = movement_relative_angle, \
+          .r = 2, \
+          .speed = 10, \
+          .count = 1, \
+          .die_on_collision = 1 \
+        }, \
+        {0} \
+      }
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 8
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 7
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 6
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 5
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 4
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 3
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 2
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 1,
+      .tile_y = 0
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 8
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 7
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 6
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 5
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 4
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 3
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 2
+    },
+    {
+      TURRET,
+      .tile_x = 3,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 4,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 5,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 6,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 1
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 2
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 3
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 4
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 5
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 6
+    },
+    {
+      TURRET,
+      .tile_x = 7,
+      .tile_y = 7
+    },
+#undef TURRET
     {0}
-  },
+  }, // 1. favicon 2. swap frequency num in execute ball info to always be divided by tick interval
   (struct pos[]){ { 20, 10 } },
   (struct teleport[]){ { { 20, 12 }, { 5 } }, { { 10, 0 }, { 9 } } },
   (struct teleport_min[]){ { 20, 12, 5 }, { 10, 0, 9 } },
@@ -339,26 +487,28 @@ const struct area_info area_009 = {
   .has_right = 1
 };
 
+#undef FAN_V
+
 static const struct tile_info t = { 21, 13, 40, (uint8_t[]){
 /*         0   1   2   3   4   5   6   7   8   9  10  11  12 */
 
 /*   0*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
 
-/*   1*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   1*/   0,  0,  0,  0,  0,  0,  0,  0,  0,  2,  0,  0,  0,
 
-/*   2*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   2*/   0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  0,  0,  0,
 
-/*   3*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   3*/   0,  0,  0,  0,  0,  0,  0,  0,  0,  2,  0,  0,  0,
 
-/*   4*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  1,  0,  0,  0,
+/*   4*/   0,  0,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
 
-/*   5*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  1,  0,  0,  0,
+/*   5*/   0,  0,  2,  3,  1,  1,  1,  1,  1,  2,  0,  0,  0,
 
-/*   6*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   6*/   0,  0,  2,  2,  2,  2,  2,  2,  1,  2,  0,  0,  0,
 
-/*   7*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   7*/   0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  0,  0,  0,
 
-/*   8*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
+/*   8*/   0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  0,  0,  0,
 
 /*   9*/   2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  0,  0,  0,
 

@@ -15,7 +15,7 @@ const struct area_info area_000 = {
       .radius_type = radius_random,
       .r_min = 15,
       .r_max = 20,
-      .speed = 1 * time_scale,
+      .speed = 1,
       .count = 30
     },
     {
@@ -28,7 +28,7 @@ const struct area_info area_000 = {
       .radius_type = radius_random,
       .r_min = 10,
       .r_max = 15,
-      .speed = 3 * time_scale,
+      .speed = 3,
       .count = 30
     },
     {0}

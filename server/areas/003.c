@@ -9,19 +9,19 @@ const struct area_info area_003 = {
       .type = ball_sandy,
       .position_type = position_random,
       .r = 10,
-      .speed = 2 * time_scale,
+      .speed = 2,
       .count = 5,
       .frequency_type = frequency_num_fixed,
-      .frequency_num = 1000 / tick_interval,
+      .frequency_num = 1000,
       .tick_type = tick_random,
       .tick_min = 0,
-      .tick_max = 1000 / tick_interval,
+      .tick_max = 1000,
       .spawn = (struct ball_info[]) {
         {
           .type = ball_grey,
           .position_type = position_relative,
           .r = 3,
-          .speed = 2 * time_scale,
+          .speed = 2,
           .count = 1,
           .die_on_collision = 1
         },

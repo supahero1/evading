@@ -9,7 +9,7 @@ const struct area_info area_001 = {
       .type = ball_grey,
       .position_type = position_random,
       .r = 5,
-      .speed = 3 * time_scale,
+      .speed = 3,
       .count = 50
     },
     {0}

@@ -10,7 +10,7 @@ static const struct tile_info t;
   .position_type = position_tile_fixed, \
   .movement_type = movement_velocity, \
   .r = R, \
-  .speed = V * time_scale, \
+  .speed = V, \
   .count = 1
 
 const struct area_info area_007 = {
@@ -20,265 +20,265 @@ const struct area_info area_007 = {
       BALL,
       .tile_x = 2,
       .tile_y = 4,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 6,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 7,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 9,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 10,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 11,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 3,
       .tile_y = 13,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 5,
       .tile_y = 13,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 19,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 4,
       .tile_y = 20,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 19,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 1,
       .tile_y = 15,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 8,
       .tile_y = 16,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 0,
       .tile_y = 17,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 7,
       .tile_y = 18,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 24,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 26,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 28,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 30,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 32,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 3,
       .tile_y = 33,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 0,
       .tile_y = 34,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 36,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 0,
       .tile_y = 38,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 7,
       .tile_y = 39,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 40,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 0,
       .tile_y = 34,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 38,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 4,
       .tile_y = 34,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 40,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 8,
       .tile_y = 34,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 42,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 0,
       .tile_y = 44,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 7,
       .tile_y = 46,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 48,
-      .vx = V * time_scale
+      .vx = V
     },
     {
       BALL,
       .tile_x = 5,
       .tile_y = 49,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 7,
       .tile_y = 52,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 53,
-      .vx = -V * time_scale
+      .vx = -V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 55,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 3,
       .tile_y = 55,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 2,
       .tile_y = 59,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 3,
       .tile_y = 59,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {
       BALL,
       .tile_x = 6,
       .tile_y = 59,
-      .vy = V * time_scale
+      .vy = V
     },
     {
       BALL,
       .tile_x = 7,
       .tile_y = 60,
-      .vy = -V * time_scale
+      .vy = -V
     },
     {0}
   },

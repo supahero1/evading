@@ -46,6 +46,22 @@ struct client {
            entity;
   uint8_t  area_id;
   uint8_t  sees_clients[(max_players + 7) >> 3];
+  char     name[max_name_len];
+  char     chat[max_chat_message_len];
+  uint64_t chat_timestamps[max_chat_timestamps];
+  float    movement_speed;
+  float    angle;
+  uint32_t last_meaningful_movement;
+  uint32_t last_spectator_change;
+  uint32_t js_id:24;
+  uint8_t  traverse_area_idx;
+  uint16_t died_ticks_ago;
+  uint8_t  spectating_client_id;
+  uint8_t  speed;
+  uint8_t  death_counter;
+  uint8_t  name_len;
+  uint8_t  chat_len;
+  uint8_t  chat_timestamp_idx;
   uint8_t  sent_area:1;
   uint8_t  sent_balls:1;
   uint8_t  sent_minimap:1;
@@ -62,22 +78,6 @@ struct client {
   uint8_t  updated_y:1;
   uint8_t  updated_r:1;
   uint8_t  updated_dc:1;
-  uint8_t  traverse_area_idx;
-  uint8_t  spectating_client_id;
-  uint8_t  speed;
-  uint8_t  death_counter;
-  uint8_t  died_ticks_ago;
-  uint32_t js_id:24;
-  float    movement_speed;
-  float    angle;
-  uint32_t last_meaningful_movement;
-  uint32_t last_spectator_change;
-  uint8_t  name_len;
-  char     name[max_name_len];
-  uint8_t  chat_len;
-  uint8_t  chat_timestamp_idx;
-  char     chat[max_chat_message_len];
-  uint64_t chat_timestamps[max_chat_timestamps];
 };
 
 static struct client clients[max_players] = {0};
@@ -310,6 +310,11 @@ do { \
       grid_recalculate(grid, entity);
       break;
     }
+    case position_relative_tile: {
+      entity->x = (uint16_t) info->tile_x * grid->cell_size + relative->x;
+      entity->y = (uint16_t) info->tile_y * grid->cell_size + relative->y;
+      break;
+    }
     default: assert(0);
   }
   grid_insert(grid, ball->entity_id);
@@ -351,26 +356,32 @@ do { \
     case frequency_off: break;
     case frequency_float_random: {
       ball->frequency_float = info->frequency_float_min + randf() * (info->frequency_float_max - info->frequency_float_min);
+      ball->frequency_float *= time_scale;
       break;
     }
     case frequency_float_fixed: {
       ball->frequency_float = info->frequency_float;
+      ball->frequency_float *= time_scale;
       break;
     }
     case frequency_float_relative: {
       ball->frequency_float = info->frequency_float + relative->frequency_float;
+      ball->frequency_float *= time_scale;
       break;
     }
     case frequency_num_random: {
       ball->frequency_num = info->frequency_num_min + (fast_rand32() % (info->frequency_num_max - info->frequency_num_min));
+      ball->frequency_num /= tick_interval;
       break;
     }
     case frequency_num_fixed: {
       ball->frequency_num = info->frequency_num;
+      ball->frequency_num /= tick_interval;
       break;
     }
     case frequency_num_relative: {
       ball->frequency_num = info->frequency_num + relative->frequency_num;
+      ball->frequency_num /= tick_interval;
       break;
     }
     default: assert(0);
@@ -431,6 +442,15 @@ do { \
   ball->type = info->type;
   ball->allow_walls = info->allow_walls;
   ball->die_on_collision = info->die_on_collision;
+  /* TIME SCALE */
+  ball->vx *= time_scale;
+  ball->vy *= time_scale;
+  ball->speed *= time_scale;
+  if(ball->tick & (UINT32_C(1) << UINT32_C(31))) {
+    ball->tick = -(-ball->tick / tick_interval);
+  } else {
+    ball->tick /= tick_interval;
+  }
   return idx;
 }
 
@@ -1229,6 +1249,13 @@ static void player_collide_ball(const uint8_t client_id, struct grid_entity* con
     client->death_counter = 60;
     client->died_ticks_ago = 0;
     client->updated_dc = 1;
+    if(ball->speed == 0) {
+      const float angle = atan2f(client->entity.y - ball_entity->y, client->entity.x - ball_entity->x);
+      const float r_total = client->entity.r + ball_entity->r;
+      client->entity.x = ball_entity->x + cosf(angle) * r_total;
+      client->entity.y = ball_entity->y + sinf(angle) * r_total;
+      grid_recalculate(&areas[client->area_id].grid, &client->entity);
+    }
   }
 }
 
