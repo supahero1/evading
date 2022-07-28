@@ -91,7 +91,13 @@ const default_settings = {
     ["step"]: 1
   },
   ["show_tutorial"]: true,
-  ["show_ping"]: false
+  ["show_ping"]: false,
+  ["slowwalk_speed"]: {
+    ["min"]: 0,
+    ["max"]: 100,
+    ["value"]: 50,
+    ["step"]: 1
+  },
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
 for(const prop in default_settings) {
@@ -2346,6 +2352,7 @@ class Settings {
     this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
     this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
     this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
+    this.add(this.text("Slow movement speed"), this.slider("slowwalk_speed", "%"));
 
     this.new("KEYBINDS");
     this.show_el(this.comment("To change, click a button on the right side and then press the key you want to assign to it."));
@@ -2725,7 +2732,7 @@ class _Window {
       }
       case keybinds["slowwalk"]: {
         if(MOVEMENT.get_mult() == 1) {
-          MOVEMENT.upd_mult(0.5);
+          MOVEMENT.upd_mult(settings["slowwalk_speed"]["value"] / 100);
           MOVEMENT.send();
         }
         break;
@@ -2771,7 +2778,7 @@ class _Window {
         break;
       }
       case keybinds["slowwalk"]: {
-        if(MOVEMENT.get_mult() == 0.5) {
+        if(MOVEMENT.get_mult() != 1) {
           MOVEMENT.upd_mult(1);
           MOVEMENT.send();
         }
