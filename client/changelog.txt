@@ -4,6 +4,20 @@ Last modified: Jul 28 2022
 * Game release. Hooray!
 <br>
 <br>
+* Added a setting to adjust the speed of movement
+<br>
+  when holding down SHIFT (or other key you'd bound)
+<br>
+<br>
+Before reporting any problems, please make sure you've seen
+<br>
+the tutorial (spawn in & press T). If you have, and you can't
+<br>
+move with WASD or press SHIFT, go to settings (ESC by default),
+<br>
+scroll down, and change the keybinds to your liking, then try again.
+<br>
+<br>
 Join our Discord server to be always
 <br>
 up-to-date and to suggest new changes!
