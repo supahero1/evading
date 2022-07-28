@@ -8,7 +8,7 @@ body {
   background-color: #333;
 }
 
-html, body, #canvas, #text, #settings_container, #menu {
+html, body, #canvas, #settings_container, #menu {
   top: 0;
   left: 0;
   right: 0;
@@ -182,7 +182,7 @@ button {
 }
 
 #discord {
-  top: 205px;
+  top: 115px;
   left: 390px;
   position: absolute;
 }

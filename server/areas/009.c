@@ -478,7 +478,7 @@ const struct area_info area_009 = {
     },
 #undef TURRET
     {0}
-  }, // 1. favicon 2. swap frequency num in execute ball info to always be divided by tick interval
+  }, // 1. favicon 2. swap frequency num in execute ball info to always be divided by tick interval 3. make tutorial text be in webgl
   (struct pos[]){ { 20, 10 } },
   (struct teleport[]){ { { 20, 12 }, { 5 } }, { { 10, 0 }, { 9 } } },
   (struct teleport_min[]){ { 20, 12, 5 }, { 10, 0, 9 } },

@@ -8,7 +8,7 @@ function read(path) {
 
 const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
-const favicon = read("../client/favicon.ico");
+const favicon_ico = readFileSync("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
 let main_js = read("../client/main.min2.js");
 let style_css = read("../client/style.min.css");
@@ -87,8 +87,8 @@ app.get(["/", "/index.html"], function(req, res) {
 });
 
 app.get("/favicon.ico", function(req, res) {
-  res.set("Content-Type", "image/vnd.microsoft.icon");
-  res.status(200).end(favicon);
+  res.set("Content-Type", "image/x-icon");
+  res.status(200).end(favicon_ico);
 });
 
 app.get("/discord.svg", function(req, res) {
