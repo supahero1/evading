@@ -22,7 +22,7 @@ enum game_const {
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
-  token_required = 1,
+  token_required = 0,
   max_players = 100,
   max_chat_message_len = 128,
   max_chat_timestamps = 6, /* in main.js this is -1 */
