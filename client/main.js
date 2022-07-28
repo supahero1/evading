@@ -434,7 +434,7 @@ class WebGL {
     gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
     gl.enable(GL.DEPTH_TEST);
     gl.enable(GL.BLEND);
-    gl.blendFunc(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
   }
   create_shader(type, source) {
     const shader = this.gl.createShader(type);
@@ -1900,29 +1900,96 @@ class Tutorial {
      * @type {Element}
      */
     this.btn = null;
+
+    this.can_progress = false;
   }
   progress() {
     if(this.stage == 0) {
       if(settings["show_tutorial"] && CLIENT.in_game && BACKGROUND.area_id == CONSTS.default_area_id) {
         this.stage = 1;
         this.old_fov = CANVAS.target_fov;
+        CHAT.disable("Waiting for the tutorial to finish...");
         CANVAS.target_fov = CONSTS.default_fov;
         CAMERA.block();
         SETTINGS.block_hide();
         MOVEMENT.stop();
         MOVEMENT.block();
       }
-    } else if(++this.stage == this.stage_max) {
-      this.btn.click();
-      this.stage = 0;
-      CANVAS.target_fov = this.old_fov;
-      CAMERA.unblock();
-      SETTINGS.unblock();
-      MOVEMENT.unblock();
-      MOVEMENT.start();
+    } else if(this.can_progress) {
+      this.can_progress = false;
+      if(++this.stage == this.stage_max) {
+        this.btn.click();
+        CANVAS.target_fov = this.old_fov;
+        this.stop();
+      }
     }
   }
-  run(by) {
+  stop() {
+    this.stage = 0;
+    CHAT.enable();
+    CAMERA.unblock();
+    SETTINGS.unblock();
+    MOVEMENT.unblock();
+    MOVEMENT.start();
+  }
+  /**
+   * @param {number} by
+   * @return {{ _x: number, _y: number }}
+   */
+  pre(by) {
+    let _x = 0;
+    let _y = 0;
+    switch(this.stage) {
+      case 0: {
+        break;
+      }
+      case 1: {
+        _x = PLAYERS.arr[CLIENT.id].x2;
+        _y = PLAYERS.arr[CLIENT.id].y2;
+        break;
+      }
+      case 2: {
+        _x = BACKGROUND.width * 0.5 - BACKGROUND.cell_size * 6;
+        _y = BACKGROUND.height * 0.5;
+        break;
+      }
+      case 3: {
+        _x = BACKGROUND.width * 0.5 + BACKGROUND.cell_size * 6;
+        _y = BACKGROUND.height * 0.5;
+        break;
+      }
+      case 4: {
+        _x = BACKGROUND.cell_size * 0.5;
+        _y = BACKGROUND.height * 0.5;
+        break;
+      }
+      case 5: {
+        let first_ball;
+        for(let i = 0; i < CONSTS.max_balls; ++i) {
+          if(BALLS.arr[i]) {
+            first_ball = BALLS.arr[i];
+            break;
+          }
+        }
+        _x = first_ball.x;
+        _y = first_ball.y;
+        break;
+      }
+      case 6: {
+        _x = PLAYERS.arr[CLIENT.id].x2;
+        _y = PLAYERS.arr[CLIENT.id].y2;
+        break;
+      }
+    }
+    if(this.stage != 0) {
+      CAMERA.move_f_by(_x, _y, 0.2 * by);
+    }
+    if(abs(CAMERA.x - _x) <= 10 * WINDOW.devicePixelRatio && abs(CAMERA.y - _y) <= 10 * WINDOW.devicePixelRatio) {
+      this.can_progress = 1;
+    }
+    return { _x, _y };
+  }
+  post({_x, _y }) {
     switch(this.stage) {
       case 0: {
         if(settings["show_tutorial"] && BACKGROUND.area_id == CONSTS.default_area_id) {
@@ -1932,9 +1999,6 @@ class Tutorial {
         break;
       }
       case 1: {
-        const _x = PLAYERS.arr[CLIENT.id].x2;
-        const _y = PLAYERS.arr[CLIENT.id].y2;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           "<-- Your character", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x + 110, CAMERA.y, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -1964,9 +2028,6 @@ class Tutorial {
         break;
       }
       case 2: {
-        const _x = BACKGROUND.width * 0.5 - BACKGROUND.cell_size * 6;
-        const _y = BACKGROUND.height * 0.5;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -1992,9 +2053,6 @@ class Tutorial {
         break;
       }
       case 3: {
-        const _x = BACKGROUND.width * 0.5 + BACKGROUND.cell_size * 6;
-        const _y = BACKGROUND.height * 0.5;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -2030,9 +2088,6 @@ class Tutorial {
         break;
       }
       case 4: {
-        const _x = BACKGROUND.cell_size * 0.5;
-        const _y = BACKGROUND.height * 0.5;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -2052,16 +2107,6 @@ class Tutorial {
         break;
       }
       case 5: {
-        let first_ball;
-        for(let i = 0; i < CONSTS.max_balls; ++i) {
-          if(BALLS.arr[i]) {
-            first_ball = BALLS.arr[i];
-            break;
-          }
-        }
-        const _x = first_ball.x2;
-        const _y = first_ball.y2;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           "Enemy ball -->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - 110, _y, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -2083,9 +2128,6 @@ class Tutorial {
         break;
       }
       case 6: {
-        const _x = PLAYERS.arr[CLIENT.id].x2;
-        const _y = PLAYERS.arr[CLIENT.id].y2;
-        CAMERA.move_f_by(_x, _y, 0.2 * by);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
           `You can press ${keybinds["settings"]} to open settings.`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 80, -1);
         CANVAS.t_gl.draw(CANVAS.t_gl.create(
@@ -2403,12 +2445,14 @@ class Canvas {
     if(settings["show_ping"]) {
       MENU.ping.innerHTML = SOCKET.cached_ping.toFixed(1) + "ms";
     }
-    CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
-    CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
 
     WebGL.pre_draw(this.gl);
+    const ret = TUTORIAL.pre(by);
+    CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
+    CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
     BACKGROUND.draw();
     this.c_gl.matrix = BACKGROUND.gl.matrix;
+    this.t_gl.matrix = BACKGROUND.gl.matrix;
     let idx = 0;
     let to_go = BALLS.len;
     for(let i = 0; to_go; ++i) {
@@ -2460,7 +2504,6 @@ class Canvas {
       settings["draw_player_stroke_bright"]
     );
 
-    this.t_gl.matrix = BACKGROUND.gl.matrix;
     this.t_gl.begin_text();
     to_go = PLAYERS.len;
     for(let i = 0; to_go; ++i) {
@@ -2498,8 +2541,7 @@ class Canvas {
         }
       }
     }
-
-    TUTORIAL.run(by);
+    TUTORIAL.post(ret);
     this.t_gl.end_text();
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
@@ -2863,6 +2905,7 @@ class Client {
     this.in_game = false;
     status.innerHTML = "Disconnected";
     MENU.show();
+    CHAT.disable("You have been disconnected");
     MENU.show_refresh();
     SETTINGS.block_hide();
   }
@@ -2886,6 +2929,7 @@ class Client {
   }
   ondeath() {
     MENU.show();
+    TUTORIAL.stop();
     MOVEMENT.zero();
   }
 }
