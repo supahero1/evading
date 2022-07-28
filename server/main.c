@@ -1249,9 +1249,9 @@ static void player_collide_ball(const uint8_t client_id, struct grid_entity* con
     client->death_counter = 60;
     client->died_ticks_ago = 0;
     client->updated_dc = 1;
-    if(ball->speed == 0) {
+    if(ball->speed <= 0.001) {
       const float angle = atan2f(client->entity.y - ball_entity->y, client->entity.x - ball_entity->x);
-      const float r_total = client->entity.r + ball_entity->r;
+      const float r_total = client->entity.r + ball_entity->r + 1;
       client->entity.x = ball_entity->x + cosf(angle) * r_total;
       client->entity.y = ball_entity->y + sinf(angle) * r_total;
       grid_recalculate(&areas[client->area_id].grid, &client->entity);
