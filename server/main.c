@@ -205,6 +205,9 @@ static void return_ball_idx(const uint32_t idx) {
  */
 
 static uint32_t execute_ball_info_on_area_id(const struct ball_info* const info, const struct ball_info* const relative, const uint8_t area_id) {
+  if(info->type == ball_null) {
+    return UINT32_MAX;
+  }
   const uint32_t idx = get_free_ball_idx();
   struct ball* const ball = balls + idx;
   memset(ball, 0, sizeof(*balls));
@@ -249,7 +252,7 @@ do { \
   if(!ok && info->die_on_collision) { \
     grid_return_entity(grid, ball->entity_id); \
     return_ball_idx(idx); \
-    return UINT16_MAX; \
+    return UINT32_MAX; \
   } \
 } while(!ok)
   switch(info->position_type) {
@@ -904,7 +907,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       break;
     }
     case ball_sandy: {
-      if(ball->tick < ball->frequency_num) {
+      if(ball->tick != ball->frequency_num) {
         break;
       }
       ball->tick = UINT64_MAX;
@@ -921,7 +924,7 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       break;
     }
     case ball_light_blue: {
-      if(ball->tick < ball->frequency_num) {
+      if(ball->tick != ball->frequency_num) {
         break;
       }
       ball->tick = UINT64_MAX;

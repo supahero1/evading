@@ -18,7 +18,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_info_id = 0,
+  default_area_info_id = 9,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
@@ -57,7 +57,8 @@ enum ball_type {
   ball_teal,
   ball_sandy,
   ball_light_blue,
-  ball_purple
+  ball_purple,
+  ball_null
 };
 
 enum radius_type {
@@ -236,7 +237,7 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-#define area_infos_size 9
+#define area_infos_size 10
 
 extern const struct area_info* area_infos[area_infos_size];
 
