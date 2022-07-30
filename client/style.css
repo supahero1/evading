@@ -182,7 +182,7 @@ button {
 }
 
 #discord {
-  top: 290px;
+  top: 335px;
   left: 390px;
   position: absolute;
 }
@@ -234,11 +234,6 @@ button {
   animation: left_and_right 1.5s alternate infinite ease-in-out;
 }
 
-#try_typing_help2 {
-  display: flex;
-  align-items: center;
-}
-
 @keyframes left_and_right {
   from {
     margin-left: 0px;
@@ -252,15 +247,38 @@ button {
   width: 200%;
 }
 
-#inspired_by {
-  margin: 0;
+#bottom_right_text {
   right: 20px;
   bottom: 20px;
   position: absolute;
 }
 
-#inspired_by a {
+#bottom_right_text h5 {
+  margin: 0 2px;
+  display: inline-block;
+}
+
+#bottom_right_text h5 a {
+  color: #fff;
   text-decoration: underline !important;
+}
+
+#try_map_editor {
+  display: none;
+  margin-left: 0;
+  margin-right: auto;
+  text-align: center;
+  vertical-align: middle;
+  animation: right_and_left 1.5s alternate infinite ease-in-out;
+}
+
+@keyframes right_and_left {
+  from {
+    margin-right: 0px;
+  }
+  to {
+    margin-right: 20px;
+  }
 }
 
 
@@ -330,4 +348,9 @@ h5 {
 
 .material-symbols-outlined {
   color: #fff;
+}
+
+.flex_center {
+  display: flex;
+  align-items: center;
 }

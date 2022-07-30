@@ -1,12 +1,15 @@
-Last modified: Jul 28 2022
-<br>
-<br>
-* Game release. Hooray!
+Last modified: Jul 30 2022
 <br>
 <br>
 * Added a setting to adjust the speed of movement
 <br>
   when holding down SHIFT (or other key you'd bound)
+<br>
+<br>
+* Slightly changed areas 8 & 9
+<br>
+<br>
+* Added areas 10 & 11
 <br>
 <br>
 Before reporting any problems, please make sure you've seen

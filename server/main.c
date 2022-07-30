@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include <sys/reboot.h>
+
 #include "grid.h"
 #include "consts.h"
 #include "commands.h"
@@ -78,6 +80,7 @@ struct client {
   uint8_t  updated_y:1;
   uint8_t  updated_r:1;
   uint8_t  updated_dc:1;
+  uint8_t  updated_tp:1;
 };
 
 static struct client clients[max_players] = {0};
@@ -854,6 +857,10 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       const float diff_y = y - entity->y;
       const float dist_sq = diff_x * diff_x + diff_y * diff_y;
       if(dist_sq < entity->r * entity->r) {
+        if(ball->die_on_collision) {
+          ball->updated_removed = 1;
+          return 0;
+        }
         postpone_x = x;
         postpone_y = y;
         updated.postponed = 1;
@@ -872,10 +879,6 @@ static int ball_tick(struct grid* const grid, const uint16_t entity_id) {
     const float diff_y = postpone_y - entity->y;
     const float dist_sq = diff_x * diff_x + diff_y * diff_y;
     if(dist_sq < entity->r * entity->r) {
-      if(ball->die_on_collision) {
-        ball->updated_removed = 1;
-        return 0;
-      }
       const float angle = atan2f(entity->y - postpone_y, entity->x - postpone_x);
       const float c = cosf(angle);
       const float s = sinf(angle);
@@ -1015,6 +1018,7 @@ static void player_tick(const uint8_t client_id) {
     client->updated_x = 0;
     client->updated_y = 0;
     client->updated_r = 0;
+    client->updated_tp = 0;
     client->chat_len = 0;
   }
 
@@ -1077,18 +1081,12 @@ static void player_tick(const uint8_t client_id) {
 
     for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
       for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-        const uint8_t type = info->tiles[(uint16_t) cell_x * info->height + cell_y];
-        if(type != tile_wall) {
-          if(type == tile_path) {
-            client->targetable = 1;
-          }
-          continue;
-        }
+        if(info->tiles[(uint16_t) cell_x * info->height + cell_y] != tile_wall) continue;
         float x = (uint16_t) cell_x * grid->cell_size;
         float y = (uint16_t) cell_y * grid->cell_size;
-        const float mid_x = x + grid->half_cell_size;
+        const float mid_x = (uint16_t) cell_x * grid->cell_size + grid->half_cell_size;
         if(fabs(entity->x - mid_x) >= grid->half_cell_size + entity->r) continue;
-        const float mid_y = y + grid->half_cell_size;
+        const float mid_y = (uint16_t) cell_y * grid->cell_size + grid->half_cell_size;
         if(fabs(entity->y - mid_y) >= grid->half_cell_size + entity->r) continue;
         if(entity->x < mid_x) {
           if(entity->y < mid_y) {
@@ -1170,7 +1168,12 @@ static void player_tick(const uint8_t client_id) {
     
     for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
       for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
-        if(info->tiles[(uint16_t) cell_x * info->height + cell_y] != tile_teleport) continue;
+        const enum game_tile type = info->tiles[(uint16_t) cell_x * info->height + cell_y];
+        switch(type) {
+          case tile_path:
+          case tile_teleport: break;
+          default: continue;
+        }
         const float mid_x = (uint16_t) cell_x * grid->cell_size + grid->half_cell_size;
         const float dist_x = fabs(entity->x - mid_x);
         if(dist_x >= grid->half_cell_size + entity->r) continue;
@@ -1182,25 +1185,35 @@ static void player_tick(const uint8_t client_id) {
         if((dist_x - grid->half_cell_size) * (dist_x - grid->half_cell_size) +
           (dist_y - grid->half_cell_size) * (dist_y - grid->half_cell_size) >= entity->r * entity->r) continue;
         true:;
-        const struct teleport_dest* const dest = dereference_teleport(area->area_info_id, cell_x, cell_y);
-        if(dest == NULL) {
-          continue;
-        }
-        if(dest->area_info_id == area->area_info_id) {
-          if(!dest->not_random_spawn) {
-            set_player_pos_to_area_spawn_tiles(client_id);
-          } else {
-            set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+        switch(type) {
+          case tile_path: {
+            client->targetable = 1;
+            break;
           }
-          goto after_tp;
-        } else {
-          add_client_to_area(client_id, dest->area_info_id);
-          if(!dest->not_random_spawn) {
-            set_player_pos_to_area_spawn_tiles(client_id);
-          } else {
-            set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+          case tile_teleport: {
+            const struct teleport_dest* const dest = dereference_teleport(area->area_info_id, cell_x, cell_y);
+            if(dest == NULL) {
+              continue;
+            }
+            client->updated_tp = 1;
+            if(dest->area_info_id == area->area_info_id) {
+              if(!dest->not_random_spawn) {
+                set_player_pos_to_area_spawn_tiles(client_id);
+              } else {
+                set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+              }
+              goto after_tp;
+            } else {
+              add_client_to_area(client_id, dest->area_info_id);
+              if(!dest->not_random_spawn) {
+                set_player_pos_to_area_spawn_tiles(client_id);
+              } else {
+                set_player_pos_to_tile(client_id, dest->pos.tile_x, dest->pos.tile_y);
+              }
+              return;
+            }
           }
-          return;
+          default: assert(0);
         }
       }
     }
@@ -1267,47 +1280,48 @@ static void send_players(const uint8_t client_id) {
   ++buf_len;
 
   for(uint8_t i = 0; i < max_players; ++i) {
+    const struct client* const client = clients + i;
     uint8_t* const sees = clients[client_id].sees_clients + (i >> 3);
     const uint8_t bit = 1 << (i & 7);
     buf[buf_len++] = i;
-    if(clients[i].exists) {
-      if(clients[i].area_id == clients[client_id].area_id) {
-        const struct grid_entity* const entity = &clients[i].entity;
+    if(client->exists) {
+      if(client->area_id == clients[client_id].area_id) {
+        const struct grid_entity* const entity = &client->entity;
         if(*sees & bit) {
           /* UPDATE */
           const uint32_t save = buf_len;
-          if(clients[i].updated_x) {
+          if(client->updated_x) {
             buf[buf_len++] = 1;
             memcpy(buf + buf_len, &entity->x, sizeof(float));
             buf_len += 4;
           }
-          if(clients[i].updated_y) {
+          if(client->updated_y) {
             buf[buf_len++] = 2;
             memcpy(buf + buf_len, &entity->y, sizeof(float));
             buf_len += 4;
           }
-          if(clients[i].updated_r) {
+          if(client->updated_r) {
             buf[buf_len++] = 3;
             memcpy(buf + buf_len, &entity->r, sizeof(float));
             buf_len += 4;
           }
-          if(clients[i].updated_dc) {
+          if(client->updated_dc) {
             buf[buf_len++] = 4;
-            buf[buf_len++] = clients[i].dead;
-            if(clients[i].dead) {
-              buf[buf_len++] = clients[i].death_counter;
+            buf[buf_len++] = client->dead;
+            if(client->dead) {
+              buf[buf_len++] = client->death_counter;
             }
           }
-          if(clients[i].chat_len) {
+          if(client->chat_len) {
             buf[buf_len++] = 5;
-            buf[buf_len++] = clients[i].chat_len;
-            memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
-            buf_len += clients[i].chat_len;
+            buf[buf_len++] = client->chat_len;
+            memcpy(buf + buf_len, client->chat, client->chat_len);
+            buf_len += client->chat_len;
           }
           if(save == buf_len) {
             --buf_len;
           } else {
-            buf[buf_len++] = 0;
+            buf[buf_len++] = client->updated_tp << 7;
             ++updated;
           }
         } else {
@@ -1319,16 +1333,16 @@ static void send_players(const uint8_t client_id) {
           buf_len += 4;
           memcpy(buf + buf_len, &entity->r, sizeof(float));
           buf_len += 4;
-          buf[buf_len++] = clients[i].name_len;
-          memcpy(buf + buf_len, clients[i].name, clients[i].name_len);
-          buf_len += clients[i].name_len;
-          buf[buf_len++] = clients[i].dead;
-          if(clients[i].dead) {
-            buf[buf_len++] = clients[i].death_counter;
+          buf[buf_len++] = client->name_len;
+          memcpy(buf + buf_len, client->name, client->name_len);
+          buf_len += client->name_len;
+          buf[buf_len++] = client->dead;
+          if(client->dead) {
+            buf[buf_len++] = client->death_counter;
           }
-          buf[buf_len++] = clients[i].chat_len;
-          memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
-          buf_len += clients[i].chat_len;
+          buf[buf_len++] = client->chat_len;
+          memcpy(buf + buf_len, client->chat, client->chat_len);
+          buf_len += client->chat_len;
           ++updated;
         }
       } else if(*sees & bit) {
@@ -1445,13 +1459,14 @@ void send_chat(const uint8_t client_id) {
   ++buf_len;
 
   for(uint8_t i = 0; i < max_players; ++i) {
-    if((clients[i].exists && clients[i].area_id == clients[client_id].area_id) || clients[i].chat_len == 0) continue;
-    buf[buf_len++] = clients[i].name_len;
-    memcpy(buf + buf_len, clients[i].name, clients[i].name_len);
-    buf_len += clients[i].name_len;
-    buf[buf_len++] = clients[i].chat_len;
-    memcpy(buf + buf_len, clients[i].chat, clients[i].chat_len);
-    buf_len += clients[i].chat_len;
+    const struct client* const client = clients + i;
+    if((client->exists && client->area_id == clients[client_id].area_id) || client->chat_len == 0) continue;
+    buf[buf_len++] = client->name_len;
+    memcpy(buf + buf_len, client->name, client->name_len);
+    buf_len += client->name_len;
+    buf[buf_len++] = client->chat_len;
+    memcpy(buf + buf_len, client->chat, client->chat_len);
+    buf_len += client->chat_len;
     ++updated;
   }
 
@@ -1518,17 +1533,18 @@ static void tick(void* nil) {
     tcp_socket_cork_off(&sock);
   }
   for(uint8_t i = 0; i < max_players; ++i) {
-    if(!clients[i].exists) continue;
-    struct grid_entity* const entity = &clients[i].entity;
+    struct client* const client = clients + i;
+    if(!client->exists) continue;
+    struct grid_entity* const entity = &client->entity;
     for(uint8_t j = i + 1; j < max_players; ++j) {
-      if(clients[i].area_id != clients[j].area_id) continue;
+      if(client->area_id != clients[j].area_id) continue;
       struct grid_entity* const ent = &clients[j].entity;
       const float dist_sq = (entity->x - ent->x) * (entity->x - ent->x) + (entity->y - ent->y) * (entity->y - ent->y);
       if(dist_sq < (entity->r + ent->r) * (entity->r + ent->r)) {
         player_collide(i, j);
       }
     }
-    struct area* const area = areas + clients[i].area_id;
+    struct area* const area = areas + client->area_id;
     for(uint8_t x = entity->min_x; x <= entity->max_x; ++x) {
       for(uint8_t y = entity->min_y; y <= entity->max_y; ++y) {
         for(uint32_t j = area->grid.cells[(uint16_t) x * area->grid.cells_y + y]; j != 0; j = area->grid.node_entities[j].next) {
@@ -1765,6 +1781,11 @@ static void parse(void) {
               }
               break;
             }
+            case command_server_reboot: {
+              sync();
+              reboot(RB_AUTOBOOT);
+              break;
+            }
             default: assert(0);
           }
           out2:;
@@ -1928,7 +1949,7 @@ static struct tcp_socket* server_onevent(struct tcp_server* a, struct tcp_socket
 int main() {
   fast_srand(time_get_time());
   assert(!time_timers(&timers));
-  //assert(!time_start(&timers));
+  //assert(!time_start(&timers)); //
   struct async_loop loop = {0};
   assert(!tcp_async_loop(&loop));
   server.loop = &loop;
@@ -1938,8 +1959,8 @@ int main() {
     .port = "23456",
     .backlog = 1
   })));
-  //(void) async_loop_thread(&loop);
-  assert(!async_loop_start(&loop));
-  (void) time_thread(&timers);
+  //(void) async_loop_thread(&loop); //
+  assert(!async_loop_start(&loop)); //
+  (void) time_thread(&timers); //
   assert(0);
 }

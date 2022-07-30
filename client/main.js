@@ -873,6 +873,15 @@ class Menu {
     this.picked_server_div = getElementById("ID_picked_server_for_you");
     this.picked_server_tooltip = getElementById("ID_picked_server_for_you_tooltip");
 
+    this.try_map_editor = getElementById("ID_try_map_editor");
+    this.try_map_editor_tooltip = getElementById("ID_try_map_editor_tooltip");
+    getElementById("ID_map_editor_click").onclick = function() {
+      setItem("tume_tooltip", "");
+      this.try_map_editor.style.display = "none";
+    }.bind(this);
+
+    this.petos = getElementById("ID_press_esc_to_open_settings");
+
     this.ping = getElementById("ID_ping");
     this.ping_update();
 
@@ -1008,6 +1017,10 @@ class Menu {
     if(getItem("psfy_tooltip") == undefined) {
       this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
       this.picked_server_div.style.display = "table";
+    }
+    if(getItem("tume_tooltip") == undefined) {
+      this.try_map_editor_tooltip.innerHTML = "Try out the map editor!<br><br>Submit your maps<br>in our Discord server";
+      this.try_map_editor.style.display = "inline-block";
     }
   }
   init_server_list() {
@@ -1188,12 +1201,14 @@ class Socket {
     }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
-    } else if(updated_id || updated_background) {
-      CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
-      if(updated_background) {
-        CAMERA.ip();
-        PLAYERS.arr[CLIENT.id].x1 = PLAYERS.arr[CLIENT.id].x2;
-        PLAYERS.arr[CLIENT.id].y1 = PLAYERS.arr[CLIENT.id].y2;
+    } else {
+      if(updated_id) {
+        CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
+      }
+      if(updated_background || PLAYERS.reset_camera) {
+        CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
+
+        PLAYERS.reset_camera = false;
       }
     }
     if(this.updates[0] != 0 && !this.game_init) {
@@ -1680,8 +1695,7 @@ class Camera {
  *            name: string,
  *            dead: boolean,
  *            death_counter: number,
- *            name_y: number,
- *            is_player: boolean
+ *            name_y: number
  *          }}
  */
 var Player;
@@ -1693,10 +1707,14 @@ class Players {
      */
     this.arr = new Array(CONSTS.max_players);
     this.len = 0;
+
+    this.reset_camera = false;
   }
   clear() {
     this.arr = new Array(CONSTS.max_players);
     this.len = 0;
+
+    this.reset_camera = false;
   }
   ip() {
     let to_go = this.len;
@@ -1707,6 +1725,11 @@ class Players {
       this.arr[i].r1 = this.arr[i].r2;
       --to_go;
     }
+  }
+  ip_one(i) {
+    this.arr[i].x1 = this.arr[i].x2;
+    this.arr[i].y1 = this.arr[i].y2;
+    this.arr[i].r1 = this.arr[i].r2;
   }
   parse() {
     const count = PACKET.byte();
@@ -1727,7 +1750,7 @@ class Players {
         if(chat_len > 0) {
           CHAT.new(name, PACKET.string(chat_len));
         }
-        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_y: 0, is_player: true };
+        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_y: 0 };
         if(CLIENT.id == id) {
           CAMERA.move(x2, y2);
         }
@@ -1775,7 +1798,11 @@ class Players {
             default: throw new Error();
           }
           field = PACKET.byte();
-        } while(field);
+        } while(field > 0 && field < 16);
+        if(field == 128) {
+          this.ip_one(id);
+          this.reset_camera = true;
+        }
       }
     }
   }
@@ -1796,8 +1823,7 @@ class Players {
  *            x2: number,
  *            y2: number,
  *            r2: number,
- *            type: number,
- *            is_player: boolean
+ *            type: number
  *          }}
  */
 var Ball;
@@ -1833,7 +1859,7 @@ class Balls {
         const x2 = PACKET.float();
         const y2 = PACKET.float();
         const r2 = PACKET.float();
-        this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, is_player: false };
+        this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2 };
         ++this.len;
       } else {
         let field = PACKET.byte();
@@ -2379,6 +2405,7 @@ class Settings {
     }.bind(this)));
     this.add(this.text("Reset all tooltips"), this.button("RESET", function() {
       removeItem("psfy_tooltip");
+      removeItem("tume_tooltip");
       MENU.init_tooltip();
       removeItem("tth_tooltip");
       CHAT.init_tooltip();

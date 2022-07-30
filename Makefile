@@ -64,6 +64,7 @@ prepare:
 	apt install npm nodejs net-tools -y
 	npm i n -g
 	n latest
+	iptables -A INPUT -p tcp --syn --dport 8191 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	echo "y" | ufw enable
 	ufw allow 22
 
@@ -89,6 +90,8 @@ server: prepare
 	cd /tmp; \
 	git clone https://github.com/supahero1/shnet
 	$(MAKE) -C /tmp/shnet install DEBUG=1
+	cd /usr/local/lib; \
+	ldconfig
 	npm i yarn -g
 	cd $(DIR_TOP)/server; \
 	yarn add uWebSockets.js@uNetworking/uWebSockets.js\#v20.10.0
@@ -100,7 +103,6 @@ server: prepare
 	ufw deny 80
 	ufw deny 443
 	ufw allow 8191
-	iptables -A INPUT -p tcp --syn --dport 8191 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	$(MAKE) -C $(DIR_TOP)/server
 
 endif

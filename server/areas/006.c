@@ -7,7 +7,6 @@ const struct area_info area_006 = {
   (struct ball_info[]) {
     {
       .type = ball_grey,
-      .position_type = position_random,
       .r = 5,
       .speed = 4,
       .count = 75

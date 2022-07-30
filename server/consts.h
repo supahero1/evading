@@ -18,7 +18,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_info_id = 0,
+  default_area_info_id = 11,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
@@ -26,7 +26,8 @@ enum game_const {
   max_players = 100,
   max_chat_message_len = 128,
   max_chat_timestamps = 6, /* in main.js this is -1 */
-  max_name_len = 16
+  max_name_len = 16,
+  area_infos_size = 12
 };
 
 #define base_tick_interval (40.0f)
@@ -242,7 +243,6 @@ struct area_info {
   const uint8_t has_bottom:1;
 };
 
-#define area_infos_size 10
 
 extern const struct area_info* area_infos[area_infos_size];
 
