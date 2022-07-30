@@ -18,7 +18,7 @@ enum game_const {
   send_interval = 4,
   tick_interval = 40 / send_interval,
   default_player_radius = 19,
-  default_area_info_id = 11,
+  default_area_info_id = 0,
   idle_timeout = (1000 / tick_interval) * 60 * 15,
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
