@@ -592,8 +592,12 @@ static uint8_t create_client(const uint32_t js_id) {
 
 static uint8_t get_client(const uint32_t js_id) {
   uint8_t i = client_hash(js_id);
+  uint8_t j = 0;
   while(clients[i].js_id != js_id) {
     i = (i + 1) % max_players;
+    if(++j == max_players) {
+      return UINT8_MAX;
+    }
   }
   return i;
 }
@@ -1671,6 +1675,9 @@ static void parse(void) {
     }
     case 1: { /* update */
       client_id = get_client(js_id);
+      if(client_id == UINT8_MAX) {
+        return;
+      }
       struct client* const client = clients + client_id;
       const uint8_t opcode = msg[0];
       ++msg;
@@ -1865,6 +1872,9 @@ static void parse(void) {
     }
     case 2: { /* delete */
       client_id = get_client(js_id);
+      if(client_id == UINT8_MAX) {
+        return;
+      }
       struct client* const client = clients + client_id;
       client->deleted_by_above = 1;
       goto close;
