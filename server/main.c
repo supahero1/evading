@@ -1781,6 +1781,11 @@ static void parse(void) {
               }
               break;
             }
+            case command_server_reboot: {
+              sync();
+              reboot(RB_AUTOBOOT);
+              break;
+            }
             default: assert(0);
           }
           out2:;

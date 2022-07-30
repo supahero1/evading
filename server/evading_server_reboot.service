@@ -1,0 +1,11 @@
+[Unit]
+Description=evading_server_reboot
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /home/franek/c/evading/server.sh
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

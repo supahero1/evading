@@ -81,6 +81,8 @@ else
 	ufw allow 80
 endif
 	$(MAKE) -C $(DIR_TOP)/website
+	install evading_website_reboot.service /etc/systemd/system/
+	systemctl enable evading_website_reboot
 
 .PHONY: server
 server: prepare
@@ -104,6 +106,8 @@ server: prepare
 	ufw deny 443
 	ufw allow 8191
 	$(MAKE) -C $(DIR_TOP)/server
+	install evading_server_reboot.service /etc/systemd/system/
+	systemctl enable evading_server_reboot
 
 endif
 endif
