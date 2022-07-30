@@ -4,7 +4,7 @@ rm -fr /evading
 cd /
 git clone git@github.com:supahero1/evading
 cd evading
-make sed WEBSITE_NAME=localhost SERVER_NAME=localhost SECURE_WEBSITE=0 SECURE_SERVER=0
+make sed WEBSITE_NAME=__WEBSITE_NAME__ SERVER_NAME=__SERVER_NAME__ SECURE_WEBSITE=__SECURE_WEBSITE__ SECURE_SERVER=__SECURE_SERVER__
 cd server
 yarn add uWebSockets.js@uNetworking/uWebSockets.js\#v20.10.0
 make

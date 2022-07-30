@@ -9,8 +9,7 @@ enum game_command {
   command_die,
   command_menu,
   command_spectate,
-  command_godmode,
-  command_server_reboot
+  command_godmode
 };
 
 struct command_def {
