@@ -1,10 +1,24 @@
 /*
  * LOCAL STORAGE, LOCAL_STORAGE
  */
+
 const { localStorage } = window;
-const getItem = localStorage.getItem.bind(localStorage);
-const setItem = localStorage.setItem.bind(localStorage);
-const removeItem = localStorage.removeItem.bind(localStorage);
+
+/** @type {function(string):?string} */
+function getItem(id) {
+  return localStorage.getItem(id);
+}
+
+/** @type {function(string, string):void} */
+function setItem(id, val) {
+  localStorage.setItem(id, val);
+}
+
+/** @type {function(string):void} */
+function removeItem(id) {
+  localStorage.removeItem(id);
+}
+
 const { sin, cos, max, min, abs } = Math;
 
 const _keybinds = getItem("keybinds");
@@ -17,9 +31,10 @@ const default_keybinds = {
   ["slowwalk"]: "ShiftLeft",
   ["spec_prev"]: "KeyA",
   ["spec_next"]: "KeyD",
-  //["minimap"]: "KeyM"
+  //["map"]: "KeyM"
 };
-let keybinds = _keybinds != null ? JSON.parse(_keybinds) : default_keybinds;
+/** @type {Object<string, string>} */
+let keybinds = _keybinds != null ? /** @type {Object<string, string>} */ (JSON.parse(_keybinds)) : default_keybinds;
 for(const prop in default_keybinds) {
   if(!(prop in keybinds)) {
     keybinds[prop] = default_keybinds[prop];
@@ -86,7 +101,7 @@ const default_settings = {
   ["draw_death_arrow"]: true,
   ["death_arrow_size"]: {
     ["min"]: 10,
-    ["max"]: 100,
+    ["max"]: 19 * 4,
     ["value"]: 40,
     ["step"]: 1
   },
@@ -125,12 +140,22 @@ function save_settings() {
   setItem("settings", JSON.stringify(settings));
 }
 
+/** @type {number} */
+const fov_max = settings["fov"]["max"];
+
 /*
  * UTILITY
  */
 
-const getElementById = document.getElementById.bind(document);
-const createElement = document.createElement.bind(document);
+/** @type {function(string):!HTMLElement} */
+function getElementById(id) {
+  return /** @type {!HTMLElement} */ (document.getElementById(id));
+}
+
+/** @type {function(string):!HTMLElement} */
+function createElement(id) {
+  return /** @type {!HTMLElement} */ (document.createElement(id));
+}
 
 const status = getElementById("ID_status");
 
@@ -140,8 +165,14 @@ if(typeof _token == "string") {
   token = _token.split(",").map(r => +r);
 }
 
+const _reload = location.reload.bind(location);
+
 function reload() {
-  setTimeout(location.reload.bind(location), 1000);
+  setTimeout(_reload, 1000);
+}
+
+function reload_now() {
+  _reload();
 }
 
 String.prototype.darken = function() {
@@ -154,43 +185,43 @@ String.prototype.get_server_name = function() {
   return match ? match[1] : (match2 ? match2[1] : this);
 };
 
-Number.prototype.is_power_of_2 = function() {
-  return (this & (this - 1)) == 0;
-};
+const websocket_send = WebSocket.prototype.send;
+const websocket_close = WebSocket.prototype.close;
 
-WebSocket.prototype.send = new Proxy(WebSocket.prototype.send, {
-  apply: function(to, what, args) {
-    if(what.readyState == WebSocket.OPEN) {
-      return to.apply(what, args);
+/** @suppress {checkTypes} */
+WebSocket = class extends WebSocket {
+  constructor(...args) {
+    super(...args);
+  }
+  /** @param {!ArrayBuffer} data */
+  send(data) {
+    if(this.readyState == WebSocket.OPEN) {
+      websocket_send.call(this, data);
     }
-  },
-  configurable: true,
-  enumerable: true
-});
-
-WebSocket.prototype.close = new Proxy(WebSocket.prototype.close, {
-  apply: function(to, what, args) {
-    if(what.readyState == WebSocket.CONNECTING || what.readyState == WebSocket.OPEN) {
-      return to.apply(what, args);
+  }
+  close() {
+    if(this.readyState == WebSocket.CONNECTING || this.readyState == WebSocket.OPEN) {
+      websocket_close.call(this);
     }
-  },
-  configurable: true,
-  enumerable: true
-});
+  }
+}
 
-function limit_input_to(n) {
+/** @type {function(number):(function((KeyboardEvent | ClipboardEvent)):void)} */
+function _limit_input_to(n) {
   return function(e) {
     const is_clipboard = e instanceof ClipboardEvent;
     if(is_clipboard && e.type != "paste") {
       return;
     }
-    const new_val = e.target.value + (is_clipboard ? e.clipboardData.getData("text") : e.key);
-    if(new TextEncoder().encode(new_val).byteLength - e.target.selectionEnd + e.target.selectionStart > n) {
-      if(e.target.value == "" && is_clipboard) {
-        const old = e.target.placeholder;
-        e.target.placeholder = "Text too long to paste!";
+    /** @type {HTMLInputElement} */
+    const target = e.target;
+    const new_val = target.value + (is_clipboard ? e.clipboardData.getData("text") : e.key);
+    if(new TextEncoder().encode(new_val).byteLength - target.selectionEnd + target.selectionStart > n) {
+      if(target.value == "" && is_clipboard) {
+        const old = target.placeholder;
+        target.placeholder = "Text too long to paste!";
         setTimeout(function() {
-          e.target.placeholder = old;
+          target.placeholder = old;
         }, 1000);
       }
       e.preventDefault();
@@ -198,15 +229,12 @@ function limit_input_to(n) {
   };
 }
 
-/**
- * @param {number} _x
- * @param {number} _y
- * @param {number} k
- * @param {boolean} whole_out
- * @param {boolean} preserve_x
- * @param {boolean} preserve_y
- * @return {Array<number>}
- */
+/** @type {function(number):(function(Event):void)} */
+function limit_input_to(n) {
+  return /** @type {function(Event):void} */ (_limit_input_to(n));
+}
+
+/** @type {function(number, number, number, boolean, boolean, boolean):!Array<number, number, boolean>} */
 function get_sticky_position(_x, _y, k, whole_out, preserve_x, preserve_y) {
   k *= CANVAS.fov;
   const s_x = WINDOW.width * 0.5 + (_x - CAMERA.x) * CANVAS.fov;
@@ -226,12 +254,7 @@ function get_sticky_position(_x, _y, k, whole_out, preserve_x, preserve_y) {
   return [(t_x - WINDOW.width * 0.5) / CANVAS.fov + CAMERA.x, (t_y - WINDOW.height * 0.5) / CANVAS.fov + CAMERA.y, outside];
 }
 
-/**
- * @param {number} num
- * @param {number} to
- * @param {number} by
- * @return {number}
- */
+/** @type {function(number, number, number):number} */
 function lerp(num, to, by) {
   return num + (to - num) * by;
 }
@@ -242,11 +265,7 @@ if(window["s"].length == 0) {
   throw new Error(status.innerHTML);
 }
 
-status.innerHTML = "Connecting";
-
-/**
- * @enum {number}
- */
+/** @enum {number} */
 const CONSTS = {
   server_opcode_area: 0,
   server_opcode_players: 1,
@@ -269,110 +288,109 @@ const CONSTS = {
 
   default_area_id: 0,
   default_fov: 1.75,
+  default_player_radius: 19,
 
   circle_precision: 64,
 
-  texture_id_player_name: 0,
-  texture_id_player_death_counter: 1,
-  texture_id_teleport_tile_number: 2,
-  texture_id_tutorial: 3,
-  texture_id_player_death_arrow_counter: 4,
+  minimap_size: 256 * 4,
+  minimap_pad: 20,
 
-  texture_ids: 5
+  texture_id_tutorial: 0,
+  texture_ids: 1,
+
+  general_tooltip_id_spec_help: 0,
+  general_tooltip_id_map_help: 1
 };
 
-const Tile_colors = new Uint32Array([0xdddddd, 0xaaaaaa, 0x333333, 0xfedf78]);
+const Tile_colors = new Uint32Array([0xddddddff, 0xaaaaaaff, 0x333333ff, 0xfedf78ff]);
 const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 
 const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
 const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
 
 const buffer = new ArrayBuffer(CONSTS.max_balls << 4);
+const u8 = new Uint8Array(buffer);
+const f32 = new Float32Array(buffer);
 const view = new DataView(buffer);
 
 /*
  * M3
  */
 
+/** @type {function(Float32Array):Float32Array} */
+Float32Array.prototype.multiply = function(by) {
+  const a00 = this[0 * 3 + 0];
+  const a01 = this[0 * 3 + 1];
+  const a02 = this[0 * 3 + 2];
+  const a10 = this[1 * 3 + 0];
+  const a11 = this[1 * 3 + 1];
+  const a12 = this[1 * 3 + 2];
+  const a20 = this[2 * 3 + 0];
+  const a21 = this[2 * 3 + 1];
+  const a22 = this[2 * 3 + 2];
+  const b00 = by[0 * 3 + 0];
+  const b01 = by[0 * 3 + 1];
+  const b02 = by[0 * 3 + 2];
+  const b10 = by[1 * 3 + 0];
+  const b11 = by[1 * 3 + 1];
+  const b12 = by[1 * 3 + 2];
+  const b20 = by[2 * 3 + 0];
+  const b21 = by[2 * 3 + 1];
+  const b22 = by[2 * 3 + 2];
+
+  return new Float32Array([
+    b00 * a00 + b01 * a10 + b02 * a20,
+    b00 * a01 + b01 * a11 + b02 * a21,
+    b00 * a02 + b01 * a12 + b02 * a22,
+    b10 * a00 + b11 * a10 + b12 * a20,
+    b10 * a01 + b11 * a11 + b12 * a21,
+    b10 * a02 + b11 * a12 + b12 * a22,
+    b20 * a00 + b21 * a10 + b22 * a20,
+    b20 * a01 + b21 * a11 + b22 * a21,
+    b20 * a02 + b21 * a12 + b22 * a22
+  ]);
+};
+
+/** @type {function(number, number):Float32Array} */
+Float32Array.prototype.translate = function(x, y) {
+  return this.multiply(new Float32Array([
+    1, 0, 0,
+    0, 1, 0,
+    x, y, 1
+  ]));
+};
+
+/** @type {function(number, number=):Float32Array} */
+Float32Array.prototype.scale = function(w, h=w) {
+  return this.multiply(new Float32Array([
+    w, 0, 0,
+    0, h, 0,
+    0, 0, 1
+  ]));
+};
+
+/** @type {function(number):Float32Array} */
+Float32Array.prototype.rotate = function(r) {
+  const c = cos(r);
+  const s = sin(r);
+  return this.multiply(new Float32Array([
+    c,-s, 0,
+    s, c, 0,
+    0, 0, 1
+  ]));
+};
+
 class M3 extends Float32Array {
+  /**
+   * @param {number} w
+   * @param {number} h
+   */
   constructor(w, h) {
     super([
       2 / w, 0     , 0,
       0    , -2 / h, 0,
       -1   , 1     , 1
     ]);
-  }
-  /**
-   * @param {Float32Array} by
-   * @return {M3}
-   */
-  multiply(by) {
-    const a00 = this[0 * 3 + 0];
-    const a01 = this[0 * 3 + 1];
-    const a02 = this[0 * 3 + 2];
-    const a10 = this[1 * 3 + 0];
-    const a11 = this[1 * 3 + 1];
-    const a12 = this[1 * 3 + 2];
-    const a20 = this[2 * 3 + 0];
-    const a21 = this[2 * 3 + 1];
-    const a22 = this[2 * 3 + 2];
-    const b00 = by[0 * 3 + 0];
-    const b01 = by[0 * 3 + 1];
-    const b02 = by[0 * 3 + 2];
-    const b10 = by[1 * 3 + 0];
-    const b11 = by[1 * 3 + 1];
-    const b12 = by[1 * 3 + 2];
-    const b20 = by[2 * 3 + 0];
-    const b21 = by[2 * 3 + 1];
-    const b22 = by[2 * 3 + 2];
-
-    this[0] = b00 * a00 + b01 * a10 + b02 * a20;
-    this[1] = b00 * a01 + b01 * a11 + b02 * a21;
-    this[2] = b00 * a02 + b01 * a12 + b02 * a22;
-    this[3] = b10 * a00 + b11 * a10 + b12 * a20;
-    this[4] = b10 * a01 + b11 * a11 + b12 * a21;
-    this[5] = b10 * a02 + b11 * a12 + b12 * a22;
-    this[6] = b20 * a00 + b21 * a10 + b22 * a20;
-    this[7] = b20 * a01 + b21 * a11 + b22 * a21;
-    this[8] = b20 * a02 + b21 * a12 + b22 * a22;
-
-    return this;
-  }
-  /**
-   * @param {number} x
-   * @param {number} y
-   * @return {M3}
-   */
-  translate(x, y) {
-    return this.multiply(new Float32Array([
-      1, 0, 0,
-      0, 1, 0,
-      x, y, 1
-    ]));
-  }
-  /**
-   * @param {number} b
-   * @return {M3}
-   */
-  scale(b) {
-    return this.multiply(new Float32Array([
-      b, 0, 0,
-      0, b, 0,
-      0, 0, 1
-    ]));
-  }
-  /**
-   * @param {number} r
-   * @return {M3}
-   */
-  rotate(r) {
-    const c = cos(r);
-    const s = sin(r);
-    return this.multiply(new Float32Array([
-      c,-s, 0,
-      s, c, 0,
-      0, 0, 1
-    ]));
   }
 }
 
@@ -381,51 +399,55 @@ class M3 extends Float32Array {
  */
 
 const GL = WebGL2RenderingContext.prototype;
+/** @type {?WebGL} */
+let WebGL_used = null;
 
 class WebGL {
+  /**
+   * @param {!string | !WebGL2RenderingContext} id
+   * @param {string} vertex
+   * @param {string} fragment
+   */
   constructor(id, vertex, fragment) {
+    /** @type {WebGL2RenderingContext} */
+    this.gl;
     if(id instanceof WebGL2RenderingContext) {
       this.gl = id;
     } else {
       this.gl = WebGL.get(id);
     }
+
     const str = "#version 300 es\n";
-    /**
-     * @type {WebGLProgram}
-     */
     this.program = this.create_program(str + vertex, str + "precision mediump float;\nout vec4 fragColor;\n" + fragment);
 
     this.vao = this.gl.createVertexArray();
     this.gl.bindVertexArray(this.vao);
 
-    /**
-     * @type {WebGLBuffer}
-     */
-    this.transform_buffer = null;
+    /** @type {WebGLBuffer} */
+    this.transform_buffer;
     
     this.u_matrix = this.gl.getUniformLocation(this.program, "u_matrix");
-    /**
-     * @type {M3}
-     */
-    this.matrix = null;
+    /** @type {Float32Array} */
+    this.matrix;
     this.num = 0;
   }
   /**
    * @param {string} id
-   * @return {WebGL2RenderingContext}
+   * @returns {!WebGL2RenderingContext}
    */
   static get(id) {
-    const canvas = id ? getElementById(id) : createElement("canvas");
-    const gl = canvas.getContext("webgl2", {
+    const canvas = /** @type {HTMLCanvasElement} */ (id ? getElementById(id) : createElement("canvas"));
+    const gl = /** @type {WebGL2RenderingContext} */ (canvas.getContext("webgl2", {
       premultipliedAlpha: false,
       failIfMajorPerformanceCaveat: false
-    });
+    }));
     if(!gl) {
       status.innerHTML = "Your browser/device does not support WebGL2.";
       throw new Error("Your browser/device does not support WebGL2.");
     }
     return gl;
   }
+  /** @param {WebGL2RenderingContext} gl */
   static pre_draw(gl) {
     if(gl.canvas.width != WINDOW.width) {
       gl.canvas.width = WINDOW.width;
@@ -441,7 +463,13 @@ class WebGL {
     gl.enable(GL.DEPTH_TEST);
     gl.enable(GL.BLEND);
     gl.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
+    gl.depthFunc(GL.LEQUAL);
   }
+  /**
+   * @param {number} type
+   * @param {string} source
+   * @returns {!WebGLShader}
+   */
   create_shader(type, source) {
     const shader = this.gl.createShader(type);
     this.gl.shaderSource(shader, source);
@@ -451,6 +479,11 @@ class WebGL {
     }
     throw new Error(this.gl.getShaderInfoLog(shader));
   }
+  /**
+   * @param {string} vertex
+   * @param {string} fragment
+   * @returns {!WebGLProgram}
+   */
   create_program(vertex, fragment) {
     const program = this.gl.createProgram();
     this.gl.attachShader(program, this.create_shader(GL.VERTEX_SHADER, vertex));
@@ -461,19 +494,56 @@ class WebGL {
     }
     throw new Error(this.gl.getProgramInfoLog(program));
   }
+  /**
+   * @param {!ArrayBuffer} data
+   * @param {number} len
+   */
   set(data, len) {
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
     this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
     this.num = len;
   }
+  /** @param {number} len */
+  prealloc(len) {
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, len, GL.DYNAMIC_DRAW);
+    this.num = len;
+  }
+  /** @param {!ArrayBuffer} data */
+  subset(data) {
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    this.gl.bufferSubData(GL.ARRAY_BUFFER, 0, data);
+  }
   use() {
+    if(WebGL_used == this) {
+      return;
+    }
+    WebGL_used = this;
+
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     
-    this.use_matrix();
+    if(this.u_matrix != null) {
+      this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
+    }
   }
-  use_matrix() {
-    this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
+  /**
+   * @param {!Uint8Array | !HTMLCanvasElement} data
+   * @param {number} w
+   * @param {number} h
+   * @returns {WebGLTexture}
+   */
+  create_texture_raw(data, w, h) {
+    const tex = this.gl.createTexture();
+    this.gl.bindTexture(GL.TEXTURE_2D, tex);
+    this.gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, w, h, 0, GL.RGBA, GL.UNSIGNED_BYTE, data);
+    this.gl.generateMipmap(GL.TEXTURE_2D);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
+
+    return tex;
   }
 }
 
@@ -482,30 +552,29 @@ class WebGL {
  */
 
 class Background_WebGL extends WebGL {
+  /** @param {!string | !WebGL2RenderingContext} id */
   constructor(id) {
     super(id,
       `
       layout(location = 0) in vec2 a_position;
-      layout(location = 1) in vec2 a_offset;
-      layout(location = 2) in float a_scale;
-      layout(location = 3) in vec3 a_color;
+      layout(location = 1) in vec3 a_offset;
 
       uniform mat3 u_matrix;
+      uniform sampler2D u_texture;
+      uniform float u_light;
 
-      out vec3 v_color;
+      out vec4 v_color;
 
       void main() {
-        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, 0.5, 1.0);
-        v_color = a_color;
+        gl_Position = vec4((u_matrix * vec3(a_position + a_offset.xy, 1.0)).xy, 0.5, 1.0);
+        v_color = vec4(texelFetch(u_texture, ivec2(int(a_offset.z), 0), 0).xyz * u_light, 1.0);
       }
       `,
       `
-      uniform float u_light;
-
-      in vec3 v_color;
+      in vec4 v_color;
 
       void main() {
-        fragColor = vec4(v_color.xyz * u_light, 1.0);
+        fragColor = v_color;
       }
     `);
 
@@ -540,33 +609,34 @@ class Background_WebGL extends WebGL {
     this.transform_buffer = this.gl.createBuffer();
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
     /* [
-       offset      scale       color
-      100, 100,     10,     255,255,255
+       offset      type
+      100, 100,     10
     ] */
-    this.gl.vertexAttribPointer(1, 2, GL.SHORT, false, 8, 0);
-    this.gl.vertexAttribPointer(2, 1, GL.UNSIGNED_BYTE, false, 8, 4);
-    this.gl.vertexAttribPointer(3, 3, GL.UNSIGNED_BYTE, true, 8, 5);
+    this.gl.vertexAttribPointer(1, 3, GL.UNSIGNED_BYTE, false, 0, 0);
 
     this.gl.vertexAttribDivisor(1, 1);
-    this.gl.vertexAttribDivisor(2, 1);
-    this.gl.vertexAttribDivisor(3, 1);
 
     this.gl.enableVertexAttribArray(1);
-    this.gl.enableVertexAttribArray(2);
-    this.gl.enableVertexAttribArray(3);
+
+    for(let i = 0; i < Tile_colors.length; ++i) {
+      view.setUint32(i << 2, Tile_colors[i]);
+    }
+    this.texture = this.create_texture_raw(new Uint8Array(buffer.slice(0, Tile_colors.length << 2)), Tile_colors.length, 1);
   }
   draw() {
     this.use();
 
-    this.gl.uniform1f(this.u_light, 0.8);
-    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, this.model_border, GL.DYNAMIC_DRAW);
-    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 10, this.num);
+    this.gl.bindTexture(GL.TEXTURE_2D, this.texture);
 
     this.gl.uniform1f(this.u_light, 1.0);
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
     this.gl.bufferData(GL.ARRAY_BUFFER, this.model, GL.DYNAMIC_DRAW);
     this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
+
+    this.gl.uniform1f(this.u_light, 0.8);
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, this.model_border, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 10, this.num);
   }
 }
 
@@ -575,6 +645,7 @@ class Background_WebGL extends WebGL {
  */
 
 class Circle_WebGL extends WebGL {
+  /** @param {!string | !WebGL2RenderingContext} id */
   constructor(id) {
     super(id,
       `
@@ -589,7 +660,7 @@ class Circle_WebGL extends WebGL {
       flat out vec4 v_color;
 
       void main() {
-        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1)).xy, -1.0 / a_scale, 1.0);
+        gl_Position = vec4((u_matrix * vec3(a_position * a_scale + a_offset, 1.0)).xy, -1.0 / a_scale, 1.0);
         if(gl_VertexID < u_precision) {
           v_color = a_color;
         } else {
@@ -630,6 +701,13 @@ class Circle_WebGL extends WebGL {
     this.gl.enableVertexAttribArray(2);
     this.gl.enableVertexAttribArray(3);
   }
+  /**
+   * @param {boolean} has_fill
+   * @param {boolean} has_stroke
+   * @param {number} stroke_thickness
+   * @param {boolean} bright_stroke
+   * @returns 
+   */
   draw(has_fill, has_stroke, stroke_thickness, bright_stroke) {
     if(!has_fill && !has_stroke) {
       return;
@@ -640,7 +718,7 @@ class Circle_WebGL extends WebGL {
       stroke_thickness = 0;
     }
 
-    const data = new Float32Array(((CONSTS.circle_precision << 2) - 4) * has_fill + 4 + (CONSTS.circle_precision << 3) * has_stroke);
+    const data_len = ((CONSTS.circle_precision << 2) - 4) * has_fill + 4 + (CONSTS.circle_precision << 3) * has_stroke;
     const inc = Math.PI / CONSTS.circle_precision;
     let idx = 0;
     if(has_fill) {
@@ -648,64 +726,66 @@ class Circle_WebGL extends WebGL {
       const c = cos(inc);
       let x = 1 - stroke_thickness;
       let y = 0;
-      data[0] = x;
-      data[1] = y;
-      idx = 2;
+      f32[idx++] = x;
+      f32[idx++] = y;
       for(let i = 1; i < CONSTS.circle_precision; ++i) {
         let x_new = x * c - y * s;
         y = x * s + y * c;
         x = x_new;
-        data[idx++] = x;
-        data[idx++] = y;
-        data[idx++] = x;
-        data[idx++] = -y;
+        f32[idx++] = x;
+        f32[idx++] = y;
+        f32[idx++] = x;
+        f32[idx++] = -y;
       }
-      data[idx++] = -1 + stroke_thickness;
-      data[idx++] = 0;
+      f32[idx++] = -1 + stroke_thickness;
+      f32[idx++] = 0;
     }
 
     const precision = CONSTS.circle_precision << 1;
     if(has_stroke) {
+      const s = sin(-inc);
+      const c = cos(-inc);
       if(!has_fill) {
-        const s = sin(-inc);
-        const c = cos(-inc);
         let x = -1 + stroke_thickness;
         let y = 0;
         let x_new = x * c - y * s;
         y = x * s + y * c;
         x = x_new;
-        data[idx++] = x;
-        data[idx++] = -y;
-        data[idx++] = -1 + stroke_thickness;
-        data[idx++] = 0;
+        f32[idx++] = x;
+        f32[idx++] = -y;
+        f32[idx++] = -1 + stroke_thickness;
+        f32[idx++] = 0;
       }
-      let phi = Math.PI;
+      let x = -1;
+      let y = 0;
+      f32[idx++] = x;
+      f32[idx++] = y;
       for(let i = 0; i < precision - 1; ++i) {
-        data[idx++] = cos(phi);
-        data[idx++] = sin(phi);
-        phi -= inc;
-        data[idx++] = cos(phi) * (1 - stroke_thickness);
-        data[idx++] = sin(phi) * (1 - stroke_thickness);
+        let x_new = x * c - y * s;
+        y = x * s + y * c;
+        x = x_new;
+        f32[idx++] = x * (1 - stroke_thickness);
+        f32[idx++] = y * (1 - stroke_thickness);
+        f32[idx++] = x;
+        f32[idx++] = y;
       }
-      data[idx++] = cos(phi);
-      data[idx++] = sin(phi);
-      phi -= inc;
-      data[idx++] = cos(phi);
-      data[idx++] = sin(phi);
+      f32[idx++] = -1;
+      f32[idx++] = 0;
     }
-    
+    console.assert(idx == data_len);
+
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, data, GL.DYNAMIC_DRAW);
+    this.gl.bufferData(GL.ARRAY_BUFFER, f32.subarray(0, data_len), GL.DYNAMIC_DRAW);
     let p;
     if(has_fill) {
       p = precision;
     } else if(bright_stroke) {
       p = (precision << 1) + 2;
     } else {
-      p = 0
+      p = 0;
     }
     this.gl.uniform1i(this.u_precision, p);
-    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, data.length >> 1, this.num);
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, data_len >> 1, this.num);
   }
 }
 
@@ -713,144 +793,328 @@ class Circle_WebGL extends WebGL {
  * TEX WEBGL, TEX_WEBGL
  */
 
+/**
+ * @typedef {{
+ *           tex: WebGLTexture,
+ *           w: number,
+ *           h: number,
+ *           size: number,
+ *           color: string,
+ *           date: number
+ *          }}
+ */
+var Tex;
+
+/**
+ * @typedef {{
+ *           tex: WebGLTexture,
+ *           w: number,
+ *           h: number
+ *          }}
+ */
+var TexMin;
+
 class Tex_WebGL extends WebGL {
+  /** @param {!string | !WebGL2RenderingContext} id */
   constructor(id) {
     super(id,
       `
-      layout(location = 0) in vec3 a_position;
+      layout(location = 0) in vec2 a_position;
       layout(location = 1) in vec2 a_texcoord;
+      layout(location = 2) in float a_depth;
+      layout(location = 3) in mat3 a_matrix;
 
       out vec2 v_texcoord;
-      
-      uniform mat3 u_matrix;
+      flat out int v_id;
 
       void main() {
-        gl_Position = vec4((u_matrix * vec3(a_position.xy, 1.0)).xy, a_position.z, 1.0);
+        gl_Position = vec4((a_matrix * vec3(a_position, 1.0)).xy, -1.0 / a_depth, 1.0);
         v_texcoord = a_texcoord;
+        v_id = gl_InstanceID;
       }
       `,
       `
       in vec2 v_texcoord;
+      flat in int v_id;
 
-      uniform sampler2D u_texture;
+      uniform sampler2D u_texture[16];
 
       void main() {
-        fragColor = texture(u_texture, v_texcoord);
+        switch(v_id) {
+          ${[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(r => `case ${r}: fragColor = texture(u_texture[${r}], v_texcoord); break;\n`).join("")}
+        }
       }
     `);
 
     this.gl.pixelStorei(GL.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
+
+
     this.buffer = this.gl.createBuffer();
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.vertexAttribPointer(0, 3, GL.FLOAT, false, 20, 0);
-    this.gl.vertexAttribPointer(1, 2, GL.FLOAT, false, 20, 12);
+    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
+      -1,  1,     0, 1,
+      -1, -1,     0, 0,
+       1,  1,     1, 1,
+       1, -1,     1, 0,
+    ]), GL.STATIC_DRAW);
+
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 16, 0);
+    this.gl.vertexAttribPointer(1, 2, GL.FLOAT, false, 16, 8);
+
     this.gl.enableVertexAttribArray(0);
     this.gl.enableVertexAttribArray(1);
 
-    /**
-     * @type {HTMLCanvasElement}
-     */
-    this.canvas = createElement("canvas");
-    /**
-     * @type {CanvasRenderingContext2D}
-     */
-    this.ctx = this.canvas.getContext("2d");
 
+
+    this.transform_buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+
+    this.gl.vertexAttribPointer(2, 1, GL.FLOAT, false, 40, 0);
+    for(let i = 0; i < 3; ++i) {
+      this.gl.vertexAttribPointer(3 + i, 3, GL.FLOAT, false, 40, 4 + i * 4 * 3);
+    }
+
+    this.gl.vertexAttribDivisor(2, 1);
+    for(let i = 0; i < 3; ++i) {
+      this.gl.vertexAttribDivisor(3 + i, 1);
+    }
+
+    this.gl.enableVertexAttribArray(2);
+    for(let i = 0; i < 3; ++i) {
+      this.gl.enableVertexAttribArray(3 + i);
+    }
+
+    this.prealloc(40 * 16);
+
+    this.drawing = false;
+
+    /**
+     * @type {!Array<WebGLTexture>}
+     */
+    this.textures = new Array(16);
+
+    this.gl.useProgram(this.program);
+    for(let i = 0; i < 16; ++i) {
+      this.gl.uniform1i(this.gl.getUniformLocation(this.program, `u_texture[${i}]`), i);
+    }
+
+
+
+    /** @type {!Array<Object<string, Tex>>} */
     this.cache = new Array(CONSTS.texture_ids);
     for(let i = 0; i < CONSTS.texture_ids; ++i) {
       this.cache[i] = {};
     }
 
-    setInterval(function() {
-      const now = performance.now();
-      for(let i = 0; i < CONSTS.texture_ids; ++i) {
-        for(const combined in this.cache[i]) {
-          const tex = this.cache[i][combined];
-          if(now - tex.date > 1000) {
-            this.gl.deleteTexture(tex.tex);
-            delete this.cache[i][combined];
-          }
+    setInterval(this.purge.bind(this), 1000);
+
+
+
+    /** @type {!Array<Tex>} */
+    this.numbers = new Array(10);
+    for(let i = 0; i < 10; ++i) {
+      this.numbers[i] = this.create_cacheless(i.toString(), CONSTS.default_player_radius, "#f00");
+    }
+  }
+  purge() {
+    const now = performance.now();
+    for(let i = 0; i < CONSTS.texture_ids; ++i) {
+      for(const combined in this.cache[i]) {
+        const tex = this.cache[i][combined];
+        if(now - tex.date > 1000) {
+          this.delete(tex);
+          delete this.cache[i][combined];
         }
       }
-    }.bind(this), 1000);
+    }
   }
-  begin_text() {
-    this.use();
+  /**
+   * @param {Tex | TexMin} param0
+   */
+  delete({ tex }) {
+    this.gl.deleteTexture(tex);
+  }
+  /**
+   * @param {string} text
+   * @param {number} size
+   * @param {string} color
+   * @returns {Tex}
+   */
+  create_cacheless(text, size, color) {
+    size *= fov_max;
 
-    this.gl.blendFunc(GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
-    this.gl.depthFunc(GL.LEQUAL);
-  }
-  end_text() {
-    this.gl.depthFunc(GL.LESS);
-  }
-  create(text, size, div, precision, color, tex_id) {
-    size /= div;
-    div *= precision;
+    const canvas = /** @type {HTMLCanvasElement} */ (createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    ctx.font = `700 ${size}px Ubuntu`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = color;
+    const info = ctx.measureText(text);
+    const w = Math.ceil(info.width);
+    const h = Math.ceil(info.actualBoundingBoxAscent + info.actualBoundingBoxDescent);
+    canvas.width = w;
+    canvas.height = h;
+    ctx.font = `700 ${size}px Ubuntu`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = color;
+    ctx.fillText(text, info.actualBoundingBoxLeft, info.actualBoundingBoxAscent);
 
+    const texture = this.create_texture_raw(canvas, w, h);
+    return { tex: texture, w: w * 0.5 / fov_max, h: h * 0.5 / fov_max, size: size / fov_max, color, date: performance.now() };
+  }
+  /**
+   * @param {string} text
+   * @param {number} size
+   * @param {string} color
+   * @param {number} tex_id
+   * @returns {Tex}
+   */
+  create(text, size, color, tex_id) {
     const combined = "EVADING" + text;
     const cached = this.cache[tex_id][combined];
     if(cached !== undefined) {
-      if(abs(cached.size - size) < 0.01 && abs(cached.div - div) < 0.01 && abs(cached.precision - precision) < 0.01 && cached.color == color) {
+      if(abs(cached.size - size) < 0.01 && cached.color == color) {
         cached.date = performance.now();
         return cached;
       } else {
-        this.gl.deleteTexture(cached.tex);
+        this.delete(cached);
         delete this.cache[tex_id][combined];
       }
     }
 
-    const canvas = createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    ctx.font = `700 ${size}px Ubuntu`;
-    ctx.fillStyle = color;
-    const info = ctx.measureText(text);
-    const half_w = (info.actualBoundingBoxLeft + info.actualBoundingBoxRight) * 0.75;
-    const half_h = (info.actualBoundingBoxAscent + info.actualBoundingBoxDescent) * 0.75;
-    canvas.width = Math.ceil(half_w * 2 * div);
-    canvas.height = Math.ceil(half_h * 2 * div);
-    ctx.font = `700 ${size * div}px Ubuntu`;
-    ctx.fillStyle = color;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, half_w * div, half_h * div);
-
-    const texture = this.gl.createTexture();
-    this.gl.bindTexture(GL.TEXTURE_2D, texture);
-    this.gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, canvas.width, canvas.height, 0, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
-    this.gl.generateMipmap(GL.TEXTURE_2D);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
-
-    const tex = { tex: texture, w: half_w, h: half_h, size, div, precision, color, date: performance.now() };
+    const tex = this.create_cacheless(text, size, color);
     this.cache[tex_id][combined] = tex;
     return tex;
   }
-  create_raw(canvas, div) {
-    const texture = this.gl.createTexture();
-    this.gl.bindTexture(GL.TEXTURE_2D, texture);
-    this.gl.texImage2D(GL.TEXTURE_2D, 0, GL.RGBA, canvas.width, canvas.height, 0, GL.RGBA, GL.UNSIGNED_BYTE, canvas);
-    this.gl.generateMipmap(GL.TEXTURE_2D);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MAG_FILTER, GL.LINEAR);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-    this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
-
-    return { tex: texture, w: canvas.width * 0.5 / div, h: canvas.height * 0.5 / div };
-  }
+  /**
+   * @param {Tex | TexMin} param0
+   * @param {number} x
+   * @param {number} y
+   * @param {number} z
+   */
   draw({ tex, w, h }, x, y, z) {
-    this.gl.bindTexture(GL.TEXTURE_2D, tex);
+    this.use();
+
+    if(!this.drawing) {
+      this.num = 0;
+      this.drawing = true;
+    }
+
+    this.textures[this.num] = tex;
+
+    const matrix = this.matrix.translate(x, y).scale(w, h);
+
+    view.setFloat32(this.num * 40, z, true);
+    for(let _x = 0; _x < 3; ++_x) {
+      for(let _y = 0; _y < 3; ++_y) {
+        view.setFloat32(this.num * 40 + 4 + 4 * (_x * 3 + _y), matrix[_x * 3 + _y], true);
+      }
+    }
+
+    if(++this.num == 16) {
+      this.finish();
+    }
+  }
+  /**
+   * @param {number} number
+   * @param {number} x
+   * @param {number} y
+   * @param {number} z
+   */
+  draw_player_death_counter(number, x, y, z) {
+    /** @type {!Array<number>} */
+    let nums = [];
+    if(number == 0) {
+      nums = [0];
+    } else {
+      let num = number;
+      while(num) {
+        nums[nums.length] = num % 10;
+        num = Math.floor(num / 10);
+      }
+    }
+    const x_left = x - (nums.length - 1) * CONSTS.default_player_radius * 0.3;
+    for(let i = nums.length - 1; i >= 0; --i) {
+      this.draw(this.numbers[nums[i]], x_left + (nums.length - i - 1) * CONSTS.default_player_radius * 0.6, y, z);
+    }
+  }
+  finish() {
+    this.drawing = false;
+    if(this.num == 0) return;
+    this.subset(buffer.slice(0, this.num * 40));
+    for(let i = 0; i < this.num; ++i) {
+      this.gl.activeTexture(GL.TEXTURE0 + i);
+      this.gl.bindTexture(GL.TEXTURE_2D, this.textures[i]);
+    }
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 4, this.num);
+    this.num = 0;
+    this.gl.activeTexture(GL.TEXTURE0);
+  }
+}
+
+/*
+ * MINIMAP WEBGL, MINIMAP_WEBGL
+ */
+
+class Minimap_WebGL extends WebGL {
+  /** @param {!string | !WebGL2RenderingContext} id */
+  constructor(id) {
+    super(id,
+      `
+      layout(location = 0) in vec2 a_position;
+      layout(location = 1) in vec2 a_offset;
+
+      uniform mat3 u_matrix;
+
+      void main() {
+        gl_Position = vec4((u_matrix * vec3(a_position + a_offset, 1.0)).xy, -1.0, 1.0);
+      }
+      `,
+      `
+      void main() {
+        fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      }
+    `);
+
+    this.vertical_model_data = new Float32Array([
+      0, 0,
+      0, 1
+    ]);
+    this.horizontal_model_data = new Float32Array([
+      0, 0,
+      1, 0
+    ]);
+    
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 0, 0);
+    this.gl.enableVertexAttribArray(0);
+
+    this.transform_buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    /* [
+       offset
+      100, 100
+    ] */
+    this.gl.vertexAttribPointer(1, 2, GL.BYTE, false, 0, 0);
+    this.gl.vertexAttribDivisor(1, 1);
+    this.gl.enableVertexAttribArray(1);
+  }
+  draw_vertical() {
+    this.use();
 
     this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
-    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
-      x - w, y - h, z,      0, 0,
-      x + w, y - h, z,      1, 0,
-      x - w, y + h, z,      0, 1,
-      x + w, y + h, z,      1, 1
-    ]), GL.DYNAMIC_DRAW);
-    this.gl.drawArrays(GL.TRIANGLE_STRIP, 0, 4);
+    this.gl.bufferData(GL.ARRAY_BUFFER, this.vertical_model_data, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.LINES, 0, 2, this.num);
+  }
+  draw_horizontal() {
+    this.use();
+
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, this.horizontal_model_data, GL.DYNAMIC_DRAW);
+    this.gl.drawArraysInstanced(GL.LINES, 0, 2, this.num);
   }
 }
 
@@ -860,49 +1124,47 @@ class Tex_WebGL extends WebGL {
 
 class Menu {
   constructor() {
-    this.div = getElementById("ID_menu");
-    this.name = getElementById("ID_name");
+    this.div = /** @type {HTMLDivElement} */ (getElementById("ID_menu"));
+    this.name = /** @type {HTMLInputElement} */ (getElementById("ID_name"));
 
-    this.select_server = getElementById("ID_select_serv");
+    this.select_server = /** @type {HTMLSelectElement} */ (getElementById("ID_select_serv"));
     /**
      * @type {HTMLOptionElement}
      */
-    this.selected_server = null;
+    this.selected_server;
+    /** @type {!Array<!Array>} */
     this.servers = window["s"];
 
-    this.picked_server_div = getElementById("ID_picked_server_for_you");
-    this.picked_server_tooltip = getElementById("ID_picked_server_for_you_tooltip");
+    this.picked_server_div = /** @type {HTMLDivElement} */ (getElementById("ID_picked_server_for_you"));
+    this.picked_server_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_picked_server_for_you_tooltip"));
 
-    this.try_map_editor = getElementById("ID_try_map_editor");
-    this.try_map_editor_tooltip = getElementById("ID_try_map_editor_tooltip");
-    getElementById("ID_map_editor_click").onclick = function() {
-      setItem("tume_tooltip", "");
-      this.try_map_editor.style.display = "none";
-    }.bind(this);
+    this.try_map_editor = /** @type {HTMLDivElement} */ (getElementById("ID_try_map_editor"));
+    this.try_map_editor_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_map_editor_tooltip"));
+    getElementById("ID_map_editor_click").onclick = this.map_editor_clicked.bind(this);
 
-    this.petos = getElementById("ID_press_esc_to_open_settings");
+    this.petos = /** @type {HTMLHeadingElement} */ (getElementById("ID_press_esc_to_open_settings"));
 
-    this.ping = getElementById("ID_ping");
+    this.ping = /** @type {HTMLHeadingElement} */ (getElementById("ID_ping"));
     this.ping_update();
 
-    this.play = getElementById("ID_play");
-    this.spec = getElementById("ID_spec");
+    this.play = /** @type {HTMLButtonElement} */ (getElementById("ID_play"));
+    this.spec = /** @type {HTMLButtonElement} */ (getElementById("ID_spec"));
     /**
      * @type {Element}
      */
-    this.spec_help = null;
-    this.spec_help_text = "";
-    this.init_spec_help_text();
-    this.spectating = getElementById("ID_spectating");
-    this.refresh = getElementById("ID_refresh");
+    this.general_tooltip = null;
+    this.general_tooltip_text = "";
+    this.general_tooltip_id = -1;
+    this.spectating = /** @type {HTMLHeadingElement} */ (getElementById("ID_spectating"));
+    this.refresh = /** @type {HTMLButtonElement} */ (getElementById("ID_refresh"));
     
-    const spec_help = getElementById("ID_spec_help");
-    spec_help.parentElement.removeChild(spec_help);
+    const general_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_general_tooltip"));
+    general_tooltip.parentElement.removeChild(general_tooltip);
 
-    this.refresh.onclick = location.reload.bind(location);
+    this.refresh.onclick = reload_now;
 
     this.name.onkeypress = this.name.onpaste = limit_input_to(CONSTS.max_name_len);
-    this.name.onchange = function() {
+    this.name.onchange = /** @this {HTMLInputElement} */ function() {
       CLIENT.sent_name = false;
       setItem("name", this.value);
     };
@@ -931,11 +1193,15 @@ class Menu {
     this.init_server_list();
 
     this.int = setInterval(function() {
-      fetch("servers.json").then(r => r.json()).then(function(res) {
+      fetch("servers.json", { cache: "no-store" }).then(r => r.json()).then(function(res) {
         MENU.servers = res;
         MENU.init_server_list();
       });
     }, 5000);
+  }
+  map_editor_clicked() {
+    setItem("tume_tooltip", "");
+    this.try_map_editor.style.display = "none";
   }
   get_name() {
     return new TextEncoder().encode(this.name.value);
@@ -987,24 +1253,44 @@ class Menu {
     this.refresh.style.display = "block";
     clearInterval(this.int);
   }
-  init_spec_help_text() {
-    this.spec_help_text = `Press ${keybinds["spec_prev"]} or ${keybinds["spec_next"]} to switch between players<br><br>Type "/menu" in chat to return to the main menu`;
+  get_general_tooltip_text() {
+    switch(this.general_tooltip_id) {
+      case CONSTS.general_tooltip_id_spec_help: {
+        return `Press ${keybinds["spec_prev"]} or ${keybinds["spec_next"]} to switch between players<br><br>Type "/menu" in chat to return to the main menu`;
+      }
+      /*case CONSTS.general_tooltip_id_map_help: {
+        return `Press ${keybinds["map"]} to quit the map mode<br><br>Move with ${keybinds["up"]} ${keybinds["left"]} ${keybinds["down"]} ${keybinds["right"]}<br><br>Scroll out to see more of the map`;
+      }*/
+    }
   }
-  show_spec_help() {
-    const h5 = createElement("h5");
-    h5.id = "ID_spec_help";
-    h5.innerHTML = this.spec_help_text;
+  set_general_tooltip(to) {
+    this.general_tooltip_id = to;
+    this.general_tooltip_text = this.get_general_tooltip_text();
+    if(this.general_tooltip != null) {
+      this.general_tooltip.innerHTML = this.general_tooltip_text;
+    }
+  }
+  maybe_set_general_tooltip(to) {
+    if(this.general_tooltip_id == to) {
+      this.set_general_tooltip(to);
+    }
+  }
+  show_general_tooltip() {
+    const h5 = /** @type {HTMLHeadingElement} */ (createElement("h5"));
+    h5.id = "ID_general_tooltip";
+    h5.innerHTML = this.general_tooltip_text;
     setTimeout(function() {
       h5.style.opacity = 0;
-    }, 3000);
-    h5.addEventListener("transitionend", this.hide_spec_help.bind(this));
+    }, 5000);
+    h5.addEventListener("transitionend", this.hide_general_tooltip.bind(this));
     document.body.insertBefore(h5, MENU.div);
-    this.spec_help = h5;
+    this.general_tooltip = h5;
   }
-  hide_spec_help() {
-    if(this.spec_help != null) {
-      this.spec_help.parentElement.removeChild(this.spec_help);
-      this.spec_help = null;
+  hide_general_tooltip() {
+    if(this.general_tooltip != null) {
+      this.general_tooltip.parentElement.removeChild(this.general_tooltip);
+      this.general_tooltip = null;
+      this.general_tooltip_id = -1;
     }
   }
   can_spectate_state(on) {
@@ -1025,50 +1311,59 @@ class Menu {
   }
   init_server_list() {
     this.select_server.innerHTML = "";
-    for(const server of this.servers) {
-      const option = createElement("option");
-      option.value = server[2];
-      if(server[2] == SOCKET.ws.url) {
+    /** @type {number} */
+    let count;
+    /** @type {number} */
+    let max;
+    /** @type {string} */
+    let ip;
+    for([count, max, ip] of this.servers) {
+      const option = /** @type {HTMLOptionElement} */ (createElement("option"));
+      option.value = ip;
+      if(ip == SOCKET.ws.url) {
         option.selected = true;
         option.disabled = true;
         this.selected_server = option;
       }
-      if(server[0] >= server[1]) {
-        option.disabled = 1;
+      if(count >= max) {
+        option.disabled = true;
       }
-      const server_name = server[2].get_server_name();
-      option.innerHTML = server_name[0].toUpperCase() + server_name.substring(1) + ` (${server[0]}/${server[1]})`;
+      const server_name = ip.get_server_name();
+      option.innerHTML = server_name[0].toUpperCase() + server_name.substring(1) + ` (${count}/${max})`;
       this.select_server.appendChild(option);
     }
-    this.select_server.onfocus = function() {
-      setItem("psfy_tooltip", "");
-      this.picked_server_div.style.display = "none";
-    }.bind(this);
-    this.select_server.onchange = async function() {
-      this.selected_server.disabled = false;
-      const old = this.selected_server;
-      this.selected_server = this.select_server.selectedOptions[0];
-      this.selected_server.disabled = true;
-      CLIENT.onconnecting();
-      let resolver;
-      const promise = new Promise(function(resolve) {
-        resolver = resolve;
-      });
-      const sock = new Latency_socket(this.selected_server.value, resolver, 1);
-      setTimeout(resolver, 2000);
-      await promise;
-      if(sock.packets == 0 || sock.ws.readyState != WebSocket.OPEN) {
-        sock.stop();
-        status.innerHTML = "Couldn't connect, returning to previous server";
-        this.selected_server.disabled = false;
-        this.selected_server = old;
-        this.selected_server.disabled = true;
-        setTimeout(CLIENT.onconnected.bind(CLIENT), 1000);
-      } else {
-        SOCKET.takeover(sock);
-      }
-    }.bind(this);
+    this.select_server.onfocus = this.select_server_onfocus.bind(this);
+    this.select_server.onchange = this.select_server_onchange.bind(this);
     this.init_tooltip();
+  }
+  select_server_onfocus() {
+    setItem("psfy_tooltip", "");
+    this.picked_server_div.style.display = "none";
+  }
+  async select_server_onchange() {
+    this.selected_server.disabled = false;
+    const old = this.selected_server;
+    this.selected_server = this.select_server.selectedOptions[0];
+    this.selected_server.disabled = true;
+    CLIENT.onconnecting();
+    /** @type {Function} */
+    let resolver;
+    const promise = new Promise(function(resolve) {
+      resolver = resolve;
+    });
+    const sock = new Latency_socket(this.selected_server.value, resolver, 1);
+    setTimeout(resolver, 2000);
+    await promise;
+    if(sock.packets == 0 || sock.ws.readyState != WebSocket.OPEN) {
+      sock.stop();
+      status.innerHTML = "Couldn't connect, returning to previous server";
+      this.selected_server.disabled = false;
+      this.selected_server = old;
+      this.selected_server.disabled = true;
+      setTimeout(CLIENT.onconnected.bind(CLIENT), 1000);
+    } else {
+      SOCKET.takeover(sock);
+    }
   }
 }
 
@@ -1078,15 +1373,14 @@ class Menu {
 
 class Socket {
   constructor() {
-    /**
-     * @type {WebSocket}
-     */
+    /** @type {WebSocket} */
     this.ws = null;
 
     this.once = false;
 
     this.game_init = false;
 
+    /** @type {Array<number>} */
     this.pings = new Array(CONSTS.max_pings).fill(0);
     this.ping_sent_at = 0;
     this.cached_ping = 0;
@@ -1115,7 +1409,7 @@ class Socket {
       try {
         this.message({ data });
       } catch(err) {
-        console.log(err);
+        console.log(PACKET.idx, PACKET.len, err);
         console.log(Array.from(new Uint8Array(data)).map(r => r.toString(16).padStart(2, "0")).join(" "));
       }
     }.bind(this);
@@ -1170,17 +1464,16 @@ class Socket {
     this.updates[0] = this.updates[1];
     this.updates[1] = performance.now();
     PLAYERS.ip();
-    BALLS.ip();
     CAMERA.ip();
-    let updated_background = false;
+    const area_id = PACKET.byte();
+    if(area_id != BACKGROUND.area_id) {
+      BACKGROUND.update(area_id);
+      BALLS.clear();
+    } else {
+      BALLS.ip();
+    }
     while(PACKET.idx < PACKET.len) {
       switch(PACKET.byte()) {
-        case CONSTS.server_opcode_area: {
-          updated_background = true;
-          BALLS.clear();
-          BACKGROUND.parse();
-          break;
-        }
         case CONSTS.server_opcode_players: {
           PLAYERS.parse();
           break;
@@ -1201,15 +1494,12 @@ class Socket {
     }
     if(CLIENT.id == -1) {
       CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
-    } else {
-      if(updated_id) {
-        CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
-      }
-      if(updated_background || PLAYERS.reset_camera) {
-        CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
+    } else if(PLAYERS.reset_camera) {
+      CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
 
-        PLAYERS.reset_camera = false;
-      }
+      PLAYERS.reset_camera = false;
+    } else if(updated_id) {
+      CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
     }
     if(this.updates[0] != 0 && !this.game_init) {
       this.game_init = true;
@@ -1232,7 +1522,7 @@ class Socket {
   }
   ping() {
     this.ping_sent_at = new Date().getTime();
-    this.ws.send(new Uint8Array(0));
+    this.ws.send(new ArrayBuffer(0));
   }
   calculate_ping() {
     this.cached_ping = 0;
@@ -1254,7 +1544,7 @@ class Socket {
     this.ws.close();
   }
   send() {
-    this.ws.send(PACKET.u8.subarray(0, PACKET.len));
+    this.ws.send(PACKET.buffer.slice(0, PACKET.len));
   }
 }
 
@@ -1263,12 +1553,20 @@ class Socket {
  */
 
 class Latency_socket extends Socket {
+  /**
+   * @param {string} ip
+   * @param {Function} resolver
+   * @param {number} pings_to_finish
+   */
   constructor(ip, resolver, pings_to_finish=8) {
     super();
 
     this.packets = 0;
+    /** @type {number} */
     this.pings_to_finish = pings_to_finish;
+    /** @type {Function} */
     this.resolver = resolver;
+    /** @type {string} */
     this.ip = ip;
 
     this.connect();
@@ -1306,6 +1604,7 @@ class Packet {
     this.len = 0;
     this.idx = 0;
   }
+  /** @param {!Uint8Array} arr */
   set(arr) {
     this.u8.set(arr);
     this.len = arr.length;
@@ -1328,6 +1627,7 @@ class Packet {
     this.idx += 4;
     return ret;
   }
+  /** @param {number} len */
   string(len) {
     const ret = new TextDecoder().decode(this.u8.subarray(this.idx, this.idx + len));
     this.idx += len;
@@ -1403,17 +1703,18 @@ class Death_arrow {
   constructor() {
     this.size = 0;
 
-    this.tex = null;
+    /** @type {TexMin} */
+    this.tex;
+    this.has_tex = false;
   }
   init() {
-    if(this.tex != null) {
-      CANVAS.t_gl.gl.deleteTexture(this.tex.tex);
+    if(this.has_tex) {
+      CANVAS.t_gl.delete(this.tex);
     }
 
-    const p = 2;
     this.size = settings["death_arrow_size"]["value"];
-    const canvas = createElement("canvas");
-    canvas.width = canvas.height = Math.ceil(this.size * p);
+    const canvas = /** @type {HTMLCanvasElement} */ (createElement("canvas"));
+    canvas.width = canvas.height = Math.ceil(this.size * fov_max);
     const h = canvas.width * 0.5;
     const k = canvas.width;
     const ctx = canvas.getContext("2d");
@@ -1428,10 +1729,7 @@ class Death_arrow {
     ctx.strokeStyle = "#f00";
     ctx.stroke();
 
-    this.tex = CANVAS.t_gl.create_raw(canvas, p);
-  }
-  draw() {
-    CANVAS.t_gl.draw(this.tex, 0, 0, -1);
+    this.tex = { tex: CANVAS.t_gl.create_texture_raw(canvas, k, k), w: h / fov_max, h: h / fov_max };
   }
 }
 
@@ -1441,15 +1739,17 @@ class Death_arrow {
 
 class Chat {
   constructor() {
+    /** @type {!Array<number>} */
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
     this.timestamps_idx = 0;
 
-    this.div = getElementById("ID_chat");
-    this.messages = getElementById("ID_messages");
-    this.sendmsg = getElementById("ID_sendmsg");
+    this.div = /** @type {HTMLDivElement} */ (getElementById("ID_chat"));
+    this.messages = /** @type {HTMLDivElement} */ (getElementById("ID_messages"));
+    this.sendmsg = /** @type {HTMLInputElement}*/ (getElementById("ID_sendmsg"));
 
-    this.try_typing_help_div = getElementById("ID_try_typing_help");
-    this.try_typing_help_tooltip = getElementById("ID_try_typing_help_tooltip");
+    this.chat_fix = /** @type {HTMLDivElement} */ (getElementById("ID_chat_fix"));
+    this.try_typing_help_div = /** @type {HTMLDivElement} */ (getElementById("ID_try_typing_help"));
+    this.try_typing_help_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_typing_help_tooltip"));
     this.init_tooltip();
 
     this.limit = limit_input_to(CONSTS.max_chat_message_len);
@@ -1480,6 +1780,7 @@ class Chat {
             this.post_send();
             setItem("tth_tooltip", "");
             this.try_typing_help_div.style.display = "none";
+            this.chat_fix.style["width"] = "100%";
             return;
           }
           case "/c":
@@ -1585,7 +1886,7 @@ class Chat {
     CANVAS.gl.canvas.focus();
   }
   new(author, msg, no_author = false) {
-    const p = createElement("p");
+    const p = /** @type {HTMLParagraphElement} */ (createElement("p"));
     p.appendChild(document.createTextNode((no_author ? "" : (author + ": ")) + msg));
     this.messages.insertBefore(p, this.messages.firstChild);
     if(++this.len > settings["max_chat_messages"]["value"]) {
@@ -1605,6 +1906,7 @@ class Chat {
     if(getItem("tth_tooltip") == undefined) {
       this.try_typing_help_tooltip.innerHTML = "Try \"/help\"";
       this.try_typing_help_div.style.display = "inline-block";
+      this.chat_fix.style["width"] = "130%";
     }
   }
   parse() {
@@ -1648,7 +1950,10 @@ class Camera {
     this.move_f(x, y);
   }
   instant_move(x, y) {
-    this.move(x, y);
+    if(this.blocked) {
+      return;
+    }
+    this.move_f(x, y);
     this.ip();
   }
   move_x(x) {
@@ -1681,29 +1986,25 @@ class Camera {
  * PLAYERS
  */
 
-/**
- * @typedef {{
- *            x: number,
- *            y: number,
- *            r: number,
- *            x1: number,
- *            y1: number,
- *            r1: number,
- *            x2: number,
- *            y2: number,
- *            r2: number,
- *            name: string,
- *            dead: boolean,
- *            death_counter: number,
- *            name_y: number
- *          }}
- */
-var Player;
-
 class Players {
   constructor() {
     /**
-     * @type {Array<Player>}
+     * @type {!Array<{
+     *         x: number,
+     *         y: number,
+     *         r: number,
+     *         x1: number,
+     *         y1: number,
+     *         r1: number,
+     *         x2: number,
+     *         y2: number,
+     *         r2: number,
+     *         name: string,
+     *         dead: boolean,
+     *         death_counter: number,
+     *         name_tex: Tex,
+     *         name_y: number
+     *       }>}
      */
     this.arr = new Array(CONSTS.max_players);
     this.len = 0;
@@ -1711,8 +2012,12 @@ class Players {
     this.reset_camera = false;
   }
   clear() {
-    this.arr = new Array(CONSTS.max_players);
-    this.len = 0;
+    for(let i = 0; this.len; ++i) {
+      if(this.arr[i] == undefined) continue;
+      CANVAS.t_gl.delete(this.arr[i].name_tex);
+      delete this.arr[i];
+      --this.len;
+    }
 
     this.reset_camera = false;
   }
@@ -1750,7 +2055,8 @@ class Players {
         if(chat_len > 0) {
           CHAT.new(name, PACKET.string(chat_len));
         }
-        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_y: 0 };
+        const name_tex = CANVAS.t_gl.create_cacheless(name, r2 * 0.666, "#00000080");
+        this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_tex, name_y: 0 };
         if(CLIENT.id == id) {
           CAMERA.move(x2, y2);
         }
@@ -1758,9 +2064,12 @@ class Players {
       } else {
         let field = PACKET.byte();
         if(field == 0) {
-          if(delete this.arr[id]) {
-            --this.len;
+          if(this.arr[id] == undefined) {
+            throw new Error("trying to delete an unknown player entity id " + id);
           }
+          CANVAS.t_gl.delete(this.arr[id].name_tex);
+          delete this.arr[id];
+          --this.len;
           continue;
         }
         do {
@@ -1801,7 +2110,7 @@ class Players {
         } while(field > 0 && field < 16);
         if(field == 128) {
           this.ip_one(id);
-          this.reset_camera = true;
+          this.reset_camera = id == CLIENT.id;
         }
       }
     }
@@ -1812,26 +2121,21 @@ class Players {
  * BALLS
  */
 
-/**
- * @typedef {{
- *            x: number,
- *            y: number,
- *            r: number,
- *            x1: number,
- *            y1: number,
- *            r1: number,
- *            x2: number,
- *            y2: number,
- *            r2: number,
- *            type: number
- *          }}
- */
-var Ball;
-
 class Balls {
   constructor() {
     /**
-     * @type {Array<Ball>}
+     * @type {!Array<{
+     *         x: number,
+     *         y: number,
+     *         r: number,
+     *         x1: number,
+     *         y1: number,
+     *         r1: number,
+     *         x2: number,
+     *         y2: number,
+     *         r2: number,
+     *         type: number
+     *       }>}
      */
     this.arr = new Array(CONSTS.max_balls);
     this.len = 0;
@@ -1864,9 +2168,11 @@ class Balls {
       } else {
         let field = PACKET.byte();
         if(field == 0) {
-          if(delete this.arr[id]) {
-            --this.len;
+          if(this.arr[id] == undefined) {
+            throw new Error("trying to delete an unknown ball entity id " + id);
           }
+          delete this.arr[id];
+          --this.len;
           continue;
         }
         do {
@@ -1966,7 +2272,7 @@ class Tutorial {
   }
   /**
    * @param {number} by
-   * @return {{ _x: number, _y: number }}
+   * @returns {{ _x: number, _y: number }}
    */
   pre(by) {
     let _x = 0;
@@ -2022,154 +2328,155 @@ class Tutorial {
     return { _x, _y };
   }
   post({_x, _y }) {
+    const c = "#f48";
     switch(this.stage) {
       case 0: {
         if(settings["show_tutorial"] && BACKGROUND.area_id == CONSTS.default_area_id) {
-          CANVAS.t_gl.draw(CANVAS.t_gl.create(
-            "Need help? Press KeyT for a tutorial.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), BACKGROUND.width * 0.5, BACKGROUND.cell_size * 2.5, -1);
+          CANVAS.t_gl.draw(CANVAS.t_gl.create("Need help? Press KeyT for a tutorial.",
+					20, c, CONSTS.texture_id_tutorial), BACKGROUND.width * 0.5, BACKGROUND.cell_size * 2.5, 1);
         }
         break;
       }
       case 1: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<-- Your character", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x + 110, CAMERA.y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Your character -->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x - 110, CAMERA.y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "This is your character. You can control it with these keys:", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 220, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          `${keybinds["up"]}: up`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 170, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          `${keybinds["left"]}: left`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 130, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          `${keybinds["down"]}: down`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 90, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          `${keybinds["right"]}: right`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "You can also control it with mouse. Just", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "press any mouse button to start or stop moving.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 70, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Scroll to change your field of view.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 110, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Note that you won't be able to perform some", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 150, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "of the above actions until the tutorial ends.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 170, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to continue", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 220, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<-- Your character",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x + 110, CAMERA.y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Your character -->",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x - 110, CAMERA.y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("This is your character. You can control it with these keys:",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 220, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create(`${keybinds["up"]}: up`,
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 170, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create(`${keybinds["left"]}: left`,
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 130, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create(`${keybinds["down"]}: down`,
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 90, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create(`${keybinds["right"]}: right`,
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y - 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("You can also control it with mouse. Just",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("press any mouse button to start or stop moving.",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 70, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Scroll to change your field of view.",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 110, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Note that you won't be able to perform some",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 150, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("of the above actions until the tutorial ends.",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 170, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to continue",
+					20, c, CONSTS.texture_id_tutorial), CAMERA.x, CAMERA.y + 220, 1);
         break;
       }
       case 2: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 3, _y - BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 4, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 3, _y + BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "These are safezones. Enemies can't", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 130, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "reach you inside of these tiles.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 110, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to continue", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 110, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 3, _y - BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 4, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 3, _y + BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("These are safezones. Enemies can't",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 130, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("reach you inside of these tiles.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 110, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to continue",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 110, 1);
         break;
       }
       case 3: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 1, _y - BACKGROUND.cell_size * 3, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - BACKGROUND.cell_size * 4, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 1, _y + BACKGROUND.cell_size * 3, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + BACKGROUND.cell_size * 4, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 3, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 3, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 5, _y - BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 6, _y - BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 7, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 6, _y + BACKGROUND.cell_size * 1, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<--", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 5, _y + BACKGROUND.cell_size * 2, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "These are walls. Players can't walk over them.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 40, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "However, some types (colors) of enemies can.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 10, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to continue", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 40, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 1, _y - BACKGROUND.cell_size * 3, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - BACKGROUND.cell_size * 4, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x - BACKGROUND.cell_size * 1, _y + BACKGROUND.cell_size * 3, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + BACKGROUND.cell_size * 4, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y - BACKGROUND.cell_size * 3, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 2, _y + BACKGROUND.cell_size * 3, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 5, _y - BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 6, _y - BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 7, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 6, _y + BACKGROUND.cell_size * 1, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<--",
+					20, c, CONSTS.texture_id_tutorial), _x + BACKGROUND.cell_size * 5, _y + BACKGROUND.cell_size * 2, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("These are walls. Players can't walk over them.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 40, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("However, some types (colors) of enemies can.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 10, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to continue",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 40, 1);
         break;
       }
       case 4: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "-->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "This is a teleport tile. If you walk on it,", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 130, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "you will be teleported to the area it points to.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 110, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Minimap is not yet implemented, but once it is, you", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 70, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "will be able to see where any area is located at.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "If a teleport doesn't have a number on it, it doesn't point", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "anywhere (perhaps because the next area is under construction).", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 70, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to continue", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 120, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("-->",
+					20, c, CONSTS.texture_id_tutorial), _x, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("This is a teleport tile. If you walk on it,",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 130, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("you will be teleported to the area it points to.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 110, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("If instead of an arrow you see a dot, that means you",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 70, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("will be teleported to a tile somewhere in the same area.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("If instead you see an X mark, that teleport does not lead",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("anywhere. Simply, the next area does not exist in that case.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 70, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to continue",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 120, 1);
         break;
       }
       case 5: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Enemy ball -->", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x - 110, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "<-- Enemy ball", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x + 110, _y, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "This is an enemy, also called a ball. A grey ball", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 110, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "doesn't do a lot - it simply moves in one direction. However,", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 90, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "as you are about to find out when you start exploring the game,", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 70, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "there are lots of types of enemies, each having their own color.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Coming in contact with an enemy downs you. While downed, you can't move,", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 50, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "and after a while, you die, unless other players revive you by touching you.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 70, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to continue", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 120, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Enemy ball -->",
+					20, c, CONSTS.texture_id_tutorial), _x - 110, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("<-- Enemy ball",
+					20, c, CONSTS.texture_id_tutorial), _x + 110, _y, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("This is an enemy, also called a ball. A grey ball",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 110, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("doesn't do a lot - it simply moves in one direction. However,",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 90, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("as you are about to find out when you start exploring the game,",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 70, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("there are lots of types of enemies, each having their own color.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Coming in contact with an enemy downs you. While downed, you can't move,",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 50, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("and after a while, you die, unless other players revive you by touching you.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 70, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to continue",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 120, 1);
         break;
       }
       case 6: {
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          `You can press ${keybinds["settings"]} to open settings.`, 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 80, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "There are a lot of cool options to change. Try it out later.", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y - 60, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "That's it for this tutorial. See how far you can go!", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 60, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "GLHF!", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 80, -1);
-        CANVAS.t_gl.draw(CANVAS.t_gl.create(
-          "Press KeyT to end the tutorial", 20, 1, 2, "#f48", CONSTS.texture_id_tutorial), _x, _y + 130, -1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create(`You can press ${keybinds["settings"]} to open settings.`,
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 80, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("There are a lot of cool options to change. Try it out later.",
+					20, c, CONSTS.texture_id_tutorial), _x, _y - 60, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("That's it for this tutorial. See how far you can go!",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 60, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("GLHF!",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 80, 1);
+        CANVAS.t_gl.draw(CANVAS.t_gl.create("Press KeyT to end the tutorial",
+					20, c, CONSTS.texture_id_tutorial), _x, _y + 130, 1);
         break;
       }
     }
@@ -2234,11 +2541,11 @@ class Settings {
     this.insert.appendChild(el);
   }
   add(left, right) {
-    const tr = createElement("tr");
-    let td = createElement("td");
+    const tr = /** @type {HTMLTableRowElement} */ (createElement("tr"));
+    let td = /** @type {HTMLTableCellElement} */ (createElement("td"));
     td.appendChild(left);
     tr.appendChild(td);
-    td = createElement("td");
+    td = /** @type {HTMLTableCellElement} */ (createElement("td"));
     td.appendChild(right);
     right.onchange = save_settings;
     tr.appendChild(td);
@@ -2253,10 +2560,10 @@ class Settings {
   new(name) {
     this.end();
     this.show_el(this.header(name));
-    this.table = createElement("table");
+    this.table = /** @type {HTMLTableElement} */ (createElement("table"));
   }
   _create_h(which, content) {
-    const h = createElement(which);
+    const h = /** @type {HTMLHeadingElement} */ (createElement(which));
     h.innerHTML = content;
     return h;
   }
@@ -2270,7 +2577,7 @@ class Settings {
     return this._create_h("h5", content);
   }
   switch(name, cb=function(a){}) {
-    const btn = createElement("button");
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
     settings[name] = !settings[name];
     let first = true;
     btn.onclick = function() {
@@ -2293,12 +2600,12 @@ class Settings {
     return btn;
   }
   list(name) {
-    const select = createElement("select");
+    const select = /** @type {HTMLSelectElement} */ (createElement("select"));
     for(let option of settings[name]["options"]) {
-      const opt = createElement("option");
+      const opt = /** @type {HTMLOptionElement} */ (createElement("option"));
       opt.value = option;
       if(option == settings[name]["selected"]) {
-        opt.selected = 1;
+        opt.selected = true;
       }
       opt.innerHTML = option;
       select.appendChild(opt);
@@ -2307,7 +2614,7 @@ class Settings {
     return select;
   }
   keybind(name, cb=function(){}) {
-    const btn = createElement("button");
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
     btn.innerHTML = keybinds[name];
     btn.onclick = async function() {
       btn.innerHTML = "...";
@@ -2321,9 +2628,9 @@ class Settings {
     return btn;
   }
   slider(name, suffix="", cb=function(){}) {
-    const div = createElement("div");
+    const div = /** @type {HTMLDivElement} */ (createElement("div"));
     div.className = "input";
-    const input = createElement("input");
+    const input = /** @type {HTMLInputElement} */ (createElement("input"));
     input.type = "range";
     input.min = settings[name]["min"];
     input.max = settings[name]["max"];
@@ -2340,7 +2647,7 @@ class Settings {
     return div;
   }
   button(name, cb) {
-    const btn = createElement("button");
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
     btn.innerHTML = name;
     btn.onclick = cb;
     return btn;
@@ -2364,6 +2671,7 @@ class Settings {
     this.new("GAME");
     TUTORIAL.btn = this.switch("show_tutorial");
     this.add(this.text("Enable tutorial"), TUTORIAL.btn);
+    this.add(this.text("Slow movement speed"), this.slider("slowwalk_speed", "%"));
 
     this.new("VISUALS");
     this.add(this.text("Default FOV"), this.slider("fov"));
@@ -2378,7 +2686,6 @@ class Settings {
     this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
     this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
     this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
-    this.add(this.text("Slow movement speed"), this.slider("slowwalk_speed", "%"));
 
     this.new("KEYBINDS");
     this.show_el(this.comment("To change, click a button on the right side and then press the key you want to assign to it."));
@@ -2388,9 +2695,15 @@ class Settings {
     this.add(this.text("Move down"), this.keybind("down"));
     this.add(this.text("Move right"), this.keybind("right"));
     this.add(this.text("Move slowly"), this.keybind("slowwalk"));
-    this.add(this.text("Spectate the previous player"), this.keybind("spec_prev", MENU.init_spec_help_text.bind(MENU)));
-    this.add(this.text("Spectate the next player"), this.keybind("spec_next", MENU.init_spec_help_text.bind(MENU)));
-    //this.add(this.text("Big minimap"), this.keybind("minimap"));
+    this.add(this.text("Spectate the previous player"), this.keybind("spec_prev", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
+    }));
+    this.add(this.text("Spectate the next player"), this.keybind("spec_next", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
+    }));
+    /*this.add(this.text("Map mode"), this.keybind("map", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_map_help);
+    }));*/
 
     this.new("RESET");
     this.add(this.text("Reset settings"), this.button("RESET", function() {
@@ -2399,7 +2712,7 @@ class Settings {
       this.init();
     }.bind(this)));
     this.add(this.text("Reset keybinds"), this.button("RESET", function() {
-      keybinds = JSON.parse(JSON.stringify(default_keybinds));
+      keybinds = /** @type {Object<string, string>} */ (JSON.parse(JSON.stringify(default_keybinds)));
       save_keybinds();
       this.init();
     }.bind(this)));
@@ -2425,7 +2738,9 @@ class Canvas {
 
     this.c_gl = new Circle_WebGL(this.gl);
     this.t_gl = new Tex_WebGL(this.gl);
+    this.m_gl = new Minimap_WebGL(this.gl);
 
+    /** @type {number} */
     this.fov = settings["fov"]["value"];
     this.target_fov = this.fov;
 
@@ -2445,14 +2760,19 @@ class Canvas {
     this.draw_at = 0;
     this.last_draw_at = 0;
   }
-  wheel(e) {
+  /** @param {WheelEvent} e */
+  _wheel(e) {
     const add = -Math.sign(e.deltaY) * 0.05;
     if(this.target_fov > 1) {
       this.target_fov += add * 3;
     } else {
       this.target_fov += add;
     }
-    this.target_fov = min(max(this.target_fov, settings["fov"]["min"]), settings["fov"]["max"]);
+    this.target_fov = min(max(this.target_fov, settings["fov"]["min"]), fov_max);
+  }
+  /** @param {Event} e */
+  wheel(e) {
+    this._wheel(/** @type {WheelEvent} */ (e));
   }
   mousedown() {
     MOVEMENT.mouse_movement = !MOVEMENT.mouse_movement;
@@ -2464,7 +2784,7 @@ class Canvas {
   draw(when) {
     this.draw_at = min(max(this.draw_at, SOCKET.updates[0]), SOCKET.updates[1]);
     const old = this.fov;
-    this.fov = lerp(this.fov, this.target_fov, 0.1);
+    this.fov = +lerp(this.fov, this.target_fov, 0.1).toPrecision(5);
     if(this.fov != old) {
       MOVEMENT.send();
     }
@@ -2485,14 +2805,15 @@ class Canvas {
     CAMERA.x = lerp(CAMERA.x1, CAMERA.x2, by);
     CAMERA.y = lerp(CAMERA.y1, CAMERA.y2, by);
     BACKGROUND.draw();
-    this.c_gl.matrix = BACKGROUND.gl.matrix;
-    this.t_gl.matrix = BACKGROUND.gl.matrix;
+    this.c_gl.matrix = BACKGROUND.base_matrix;
+    this.t_gl.matrix = BACKGROUND.base_matrix;
     let idx = 0;
     let to_go = BALLS.len;
     for(let i = 0; to_go; ++i) {
       const ball = BALLS.arr[i];
       if(ball == undefined) continue;
       --to_go;
+
       ball.x = lerp(ball.x1, ball.x2, by);
       view.setFloat32(idx, ball.x, true);
       idx += 4;
@@ -2518,6 +2839,7 @@ class Canvas {
       const player = PLAYERS.arr[i];
       if(player == undefined) continue;
       --to_go;
+
       player.x = lerp(player.x1, player.x2, by);
       view.setFloat32(idx, player.x, true);
       idx += 4;
@@ -2527,7 +2849,7 @@ class Canvas {
       player.r = lerp(player.r1, player.r2, by);
       view.setFloat32(idx, player.r, true);
       idx += 4;
-      view.setUint32(idx, 0xebebf0ff);
+      view.setUint32(idx, 0xededf0ff);
       idx += 4;
     }
     this.c_gl.set(buffer.slice(0, idx), idx >> 4);
@@ -2538,45 +2860,50 @@ class Canvas {
       settings["draw_player_stroke_bright"]
     );
 
-    this.t_gl.begin_text();
     to_go = PLAYERS.len;
     for(let i = 0; to_go; ++i) {
       const player = PLAYERS.arr[i];
       if(player == undefined) continue;
       --to_go;
+
       if(settings["draw_player_name"] && player.name.length != 0) {
-        let target_name_y;
-        if(this.fov > 1) {
-          target_name_y = player.r * 0.5;
-        } else {
-          target_name_y = player.r * 0.5 + (2 / (this.fov * this.fov));
-        }
-        player.name_y = lerp(player.name_y, target_name_y, 0.1);
-        const tex = this.t_gl.create(player.name, player.r, this.fov, 4, "#00000080", CONSTS.texture_id_player_name);
-        this.t_gl.draw(tex, player.x, player.y - player.r - player.name_y, -1 / player.r);
+        //const tex = this.t_gl.create(player.name, 12, "#00000080", CONSTS.texture_id_player_name);
+        //this.t_gl.draw(tex, player.x, player.y - player.r - 10, player.r);
+        player.name_y = lerp(player.name_y, 10, 0.1);
+        this.t_gl.draw(player.name_tex, player.x, player.y - player.r - player.name_y, player.r);
       }
       if(player.dead) {
-        let tex = this.t_gl.create(player.death_counter, player.r, min(this.fov, 1), max(this.fov, 1) * 4, "#f00", CONSTS.texture_id_player_death_counter);
-        this.t_gl.draw(tex, player.x, player.y, -1 / player.r);
+        this.t_gl.draw_player_death_counter(player.death_counter, player.x, player.y, player.r);
         if(settings["draw_death_arrow"]) {
           const [x, y, out] = get_sticky_position(player.x, player.y, DEATH_ARROW.size * 0.75, true, true, true);
           if(out) {
             const angle = Math.atan2(player.y - y, player.x - x);
-            this.t_gl.matrix = this.t_gl.matrix.translate(x, y).rotate(-angle);
-            this.t_gl.use_matrix();
-            DEATH_ARROW.draw();
-            this.t_gl.matrix = this.t_gl.matrix.rotate(angle);
-            this.t_gl.use_matrix();
-            tex = this.t_gl.create(player.death_counter, DEATH_ARROW.size * 0.3, 1, 4, "#f00", CONSTS.texture_id_player_death_arrow_counter);
-            this.t_gl.draw(tex, 0, 0, -1);
-            this.t_gl.matrix = this.t_gl.matrix.translate(-x, -y);
-            this.t_gl.use_matrix();
+            const translated = BACKGROUND.base_matrix.translate(x, y);
+            this.t_gl.matrix = translated.rotate(-angle);
+            this.t_gl.draw(DEATH_ARROW.tex, 0, 0, 1);
+            this.t_gl.matrix = translated.scale((DEATH_ARROW.size * 0.3) / CONSTS.default_player_radius);
+            this.t_gl.draw_player_death_counter(player.death_counter, 0, 0, 1);
+            this.t_gl.matrix = BACKGROUND.base_matrix;
           }
         }
       }
     }
     TUTORIAL.post(ret);
-    this.t_gl.end_text();
+    this.t_gl.finish();
+    /*if(CLIENT.in_game) {
+      const w = BACKGROUND.cells_x;
+      const h = BACKGROUND.cells_y;
+      const scale = CONSTS.minimap_size / max(w, h);
+      this.t_gl.matrix = new M3(WINDOW.width, WINDOW.height).translate(WINDOW.width - CONSTS.minimap_pad - w * scale, CONSTS.minimap_pad);
+      //this.t_gl.draw({ tex: BACKGROUND.shade, w: w * scale * 0.5, h: h * scale * 0.5 }, w * scale * 0.5, h * scale * 0.5, 1);
+      //this.t_gl.finish();
+
+      this.m_gl.matrix = this.t_gl.matrix.scale(scale);
+      this.m_gl.set(BACKGROUND.area.outline_vertical, BACKGROUND.area.outline_vertical.length >> 1);
+      this.m_gl.draw_vertical();
+      this.m_gl.set(BACKGROUND.area.outline_horizontal, BACKGROUND.area.outline_horizontal.length >> 1);
+      this.m_gl.draw_horizontal();
+    }*/
     this.animation = window.requestAnimationFrame(this.draw.bind(this));
   }
 }
@@ -2592,73 +2919,197 @@ class Background {
     this.width = 0;
     this.height = 0;
     this.cell_size = 0;
+    this.cells_x = 0;
+    this.cells_y = 0;
 
     /**
-     * @type {Array<Array<number,number,number>>}
+     * @type {!Array<{
+     *         cell_size: number,
+     *         width: number,
+     *         height: number,
+     *         cells_x: number,
+     *         cells_y: number,
+     *         tile_data: Uint8Array,
+     *         outline_vertical: Uint8Array,
+     *         outline_horizontal: Uint8Array,
+     *         teleports: !Array<!Array<number>>
+     *       }>}
      */
-    this.teleports = [];
+    this.areas = [];
+
+    /**
+     * @type {Float32Array}
+     */
+    this.base_matrix = null;
+
+    /**
+     * @type {!Array<WebGLTexture>}
+     */
+    this.teleports = new Array(6);
+
+    const canvas = /** @type {HTMLCanvasElement} */ (createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    const w = 512;
+    const v = w >> 1;
+    const k = v >> 1;
+    
+    canvas.width = canvas.height = w;
+    ctx.fillStyle = ctx.strokeStyle = "#cbb260";
+    ctx.lineWidth = k >> 2;
+    ctx.lineCap = "round";
+
+    /* 0 = self */
+    ctx.arc(v, v, k >> 1, 0, Math.PI * 2);
+    ctx.fill();
+    this.teleports[0] = this.gl.create_texture_raw(canvas, w, w);
+
+    /* 1 = top */
+    ctx.beginPath();
+    ctx.clearRect(0, 0, w, w);
+    ctx.moveTo(v, w - k);
+    ctx.lineTo(v, k);
+    ctx.moveTo(v, k);
+    ctx.lineTo(k, v);
+    ctx.moveTo(v, k);
+    ctx.lineTo(w - k, v);
+    ctx.stroke();
+    this.teleports[1] = this.gl.create_texture_raw(canvas, w, w);
+
+    /* 2 = left */
+    ctx.beginPath();
+    ctx.clearRect(0, 0, w, w);
+    ctx.moveTo(w - k, v);
+    ctx.lineTo(k, v);
+    ctx.moveTo(k, v);
+    ctx.lineTo(v, k);
+    ctx.moveTo(k, v);
+    ctx.lineTo(v, w - k);
+    ctx.stroke();
+    this.teleports[2] = this.gl.create_texture_raw(canvas, w, w);
+
+    /* 3 = right */
+    ctx.beginPath();
+    ctx.clearRect(0, 0, w, w);
+    ctx.moveTo(k, v);
+    ctx.lineTo(w - k, v);
+    ctx.moveTo(w - k, v);
+    ctx.lineTo(v, k);
+    ctx.moveTo(w - k, v);
+    ctx.lineTo(v, w - k);
+    ctx.stroke();
+    this.teleports[3] = this.gl.create_texture_raw(canvas, w, w);
+
+    /* 4 = bottom */
+    ctx.beginPath();
+    ctx.clearRect(0, 0, w, w);
+    ctx.moveTo(v, k);
+    ctx.lineTo(v, w - k);
+    ctx.moveTo(v, w - k);
+    ctx.lineTo(k, v);
+    ctx.moveTo(v, w - k);
+    ctx.lineTo(w - k, v);
+    ctx.stroke();
+    this.teleports[4] = this.gl.create_texture_raw(canvas, w, w);
+
+    /* 5 = none */
+    ctx.beginPath();
+    ctx.clearRect(0, 0, w, w);
+    ctx.moveTo(k, k);
+    ctx.lineTo(w - k, w - k);
+    ctx.moveTo(w - k, k);
+    ctx.lineTo(k, w - k);
+    ctx.stroke();
+    this.teleports[5] = this.gl.create_texture_raw(canvas, w, w);
 
     this.area_id = -1;
   }
   clear() {
     this.area_id = -1;
   }
-  parse() {
-    this.area_id = PACKET.byte();
-    const w = PACKET.byte();
-    const h = PACKET.byte();
-    const cell_size = PACKET.byte();
-    this.teleports = new Array(PACKET.byte());
-    for(let i = 0; i < this.teleports.length; ++i) {
-      this.teleports[i] = [
-        (PACKET.byte() + 0.5) * cell_size,
-        (PACKET.byte() + 0.5) * cell_size,
-        PACKET.byte()
-      ];
-    }
-
+  /** @param {Uint8Array} mem */
+  parse(mem) {
     let idx = 0;
-    let x = 0;
-    for(let _x = 0; _x < w; ++_x) {
-      let y = 0;
-      for(let _y = 0; _y < h; ++_y) {
-        const i = PACKET.u8[PACKET.idx];
-        if(i != 2) {
-          view.setInt16(idx, x, true);
-          idx += 2;
-          view.setInt16(idx, y, true);
-          idx += 2;
-          view.setUint8(idx++, cell_size);
-          view.setUint8(idx++, Tile_colors[i] >> 16);
-          view.setUint8(idx++, Tile_colors[i] >> 8);
-          view.setUint8(idx++, Tile_colors[i]);
+    while(idx < mem.length) {
+      const w = mem[idx++];
+      const h = mem[idx++];
+      const cell_size = mem[idx++];
+      const area = {
+        cell_size,
+        width: w * cell_size,
+        height: h * cell_size,
+        cells_x: w,
+        cells_y: h,
+        tile_data: new Uint8Array(w * h * 3),
+        outline_vertical: new Uint8Array(65536 << 1),
+        outline_horizontal: new Uint8Array(65536 << 1),
+        teleports: []
+      };
+      let i = 0;
+      for(let x = 0; x < w; ++x) {
+        for(let y = 0; y < h; ++y) {
+          const type = mem[idx++];
+          if(type == 2) continue;
+          if(type == 3) {
+            area.teleports[area.teleports.length] = [(x + 0.5) * cell_size, (y + 0.5) * cell_size, 0];
+          }
+          area.tile_data[i++] = x;
+          area.tile_data[i++] = y;
+          area.tile_data[i++] = type;
         }
-        ++PACKET.idx;
-        y += cell_size;
       }
-      x += cell_size;
+      area.tile_data = area.tile_data.subarray(0, i);
+      i = 0;
+      while(true) {
+        const x = mem[idx++];
+        if(x == 255) {
+          break;
+        }
+        area.outline_vertical[i++] = x;
+        area.outline_vertical[i++] = mem[idx++];
+      }
+      area.outline_vertical = area.outline_vertical.subarray(0, i);
+      i = 0;
+      while(true) {
+        const x = mem[idx++];
+        if(x == 255) {
+          break;
+        }
+        area.outline_horizontal[i++] = x;
+        area.outline_horizontal[i++] = mem[idx++];
+      }
+      area.outline_horizontal = area.outline_horizontal.subarray(0, i);
+      for(i = 0; i < area.teleports.length; ++i) {
+        area.teleports[i][2] = mem[idx++];
+      }
+      this.areas[this.areas.length] = area;
     }
-    
-    this.gl.set(buffer.slice(0, idx), idx >> 3);
-
-    this.width = w * cell_size;
-    this.height = h * cell_size;
-    this.cell_size = cell_size;
+  }
+  /** @param {number} area_id */
+  update(area_id) {
+    this.area_id = area_id;
+    this.width = this.area.width;
+    this.height = this.area.height;
+    this.cell_size = this.area.cell_size;
+    this.cells_x = this.area.cells_x;
+    this.cells_y = this.area.cells_y;
+  }
+  get area() {
+    return this.areas[this.area_id];
   }
   draw() {
-    this.gl.matrix = new M3(WINDOW.width, WINDOW.height);
-    this.gl.matrix.translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
+    this.gl.set(this.area.tile_data, this.area.tile_data.length / 3);
+
+    this.base_matrix = new M3(WINDOW.width, WINDOW.height).translate(WINDOW.width * 0.5, WINDOW.height * 0.5).scale(CANVAS.fov).translate(-CAMERA.x, -CAMERA.y);
+
+    this.gl.matrix = this.base_matrix.scale(this.cell_size);
     this.gl.draw();
 
-    CANVAS.t_gl.matrix = this.gl.matrix;
-    CANVAS.t_gl.begin_text();
-    const size = (this.cell_size / CONSTS.default_fov) | 0;
-    const color = Tile_colors_str[3].darken();
-    for(const tp of this.teleports) {
-      const tex = CANVAS.t_gl.create(tp[2], size, 1, 4, color, CONSTS.texture_id_teleport_tile_number);
-      CANVAS.t_gl.draw(tex, tp[0], tp[1], 0.5);
+    CANVAS.t_gl.matrix = this.base_matrix;
+    const size = this.cell_size >> 1;
+    for(const [x, y, type] of this.area.teleports) {
+      CANVAS.t_gl.draw({ tex: this.teleports[type], w: size, h: size }, x, y, -2);
     }
-    CANVAS.t_gl.end_text();
+    CANVAS.t_gl.finish();
   }
 }
 
@@ -2721,8 +3172,16 @@ class _Window {
           SOCKET.send();
           break;
         }
+        /*case keybinds["map"]: {
+          if(!CLIENT.map_mode) {
+            CLIENT.map_mode = true;
+            CLIENT.onmapmodeon();
+          }
+          break;
+        }*/
         default: break;
       }
+      return;
     }
     switch(e.code) {
       case "Enter": {
@@ -2764,6 +3223,13 @@ class _Window {
         }
         break;
       }
+      /*case keybinds["map"]: {
+        if(CLIENT.in_game && !CLIENT.map_mode) {
+          CLIENT.map_mode = true;
+          CLIENT.onmapmodeon();
+        }
+        break;
+      }*/
       case "KeyT": {
         TUTORIAL.progress();
         break;
@@ -2811,13 +3277,26 @@ class _Window {
         }
         break;
       }
+      /*case keybinds["map"]: {
+        if(CLIENT.map_mode) {
+          CLIENT.map_mode = false;
+          CLIENT.onmapmodeoff();
+        }
+        break;
+      }*/
       default: break;
     }
   }
-  mousemove(e) {
+  /** @param {MouseEvent} e */
+  _mousemove(e) {
     this.mouse = [e.clientX * this.devicePixelRatio, e.clientY * this.devicePixelRatio];
     MOVEMENT.send();
   }
+  /** @param {Event} e */
+  mousemove(e) {
+    this._mousemove(/** @type {MouseEvent} */ (e));
+  }
+  // not supported by GCC: /** @param {BeforeUnloadEvent} e */
   beforeunload(e) {
     if(!CLIENT.in_game) {
       return;
@@ -2848,12 +3327,12 @@ class Movement {
     this.right = 0;
   }
   clear() {
-    this.unblock();
-
     this.mouse_movement = false;
-
+    
     this.old_mult = 1;
     this.mult = 1;
+
+    this.unblock();
   }
   block() {
     this.blocked = true;
@@ -2906,7 +3385,7 @@ class Client {
     this.spectating = false;
     this.sent_name = false;
     this.id = -1;
-
+    //this.map_mode = false;
     this.connected_before = false;
   }
   clear() {
@@ -2914,6 +3393,7 @@ class Client {
     this.spectating = false;
     this.sent_name = false;
     this.id = -1;
+    //this.map_mode = false;
   }
   onconnecting() {
     status.innerHTML = "Connecting";
@@ -2935,7 +3415,7 @@ class Client {
     CHAT.enable();
     SETTINGS.unblock();
   }
-  ondisconnected() {
+  ondisconnected() { // done
     this.in_game = false;
     status.innerHTML = "Disconnected";
     MENU.show();
@@ -2943,56 +3423,108 @@ class Client {
     MENU.show_refresh();
     SETTINGS.block_hide();
   }
-  onserverfull() {
+  onserverfull() { // done
     this.ondisconnected();
     status.innerHTML = "Server is full";
   }
   onspectatestart() {
     MENU.hide();
-    MENU.show_spec_help();
+    MENU.set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
+    MENU.show_general_tooltip();
     MENU.spectating.style.display = "block";
   }
   onspectatestop() {
     MENU.show();
-    MENU.hide_spec_help();
+    MENU.hide_general_tooltip();
     MENU.spectating.style.display = "none";
     MOVEMENT.zero();
   }
   onspawn() {
     MENU.hide();
+    PLAYERS.reset_camera = true;
   }
   ondeath() {
     MENU.show();
     TUTORIAL.stop();
     MOVEMENT.zero();
   }
+  /*onmapmodeon() {
+    MENU.set_general_tooltip(CONSTS.general_tooltip_id_map_help);
+    MENU.show_general_tooltip();
+    CAMERA.block();
+    MOVEMENT.stop();
+    MOVEMENT.block();
+  }
+  onmapmodeoff() {
+    MENU.hide_general_tooltip();
+    CAMERA.unblock();
+    MOVEMENT.unblock();
+    MOVEMENT.start();
+  }*/
 }
 
 /*
  * INIT
  */
 
-const MENU = new Menu();
-const SOCKET = new Socket();
-const PACKET = new Packet();
-const DEATH_ARROW = new Death_arrow();
-const CHAT = new Chat();
-const CAMERA = new Camera();
-const PLAYERS = new Players();
-const BALLS = new Balls();
-const KEY_PROBER = new Key_prober();
-const TUTORIAL = new Tutorial();
-const SETTINGS = new Settings();
-const CANVAS = new Canvas();
-const BACKGROUND = new Background();
-const WINDOW = new _Window();
-const MOVEMENT = new Movement();
-const CLIENT = new Client();
-
-WINDOW.resize();
-DEATH_ARROW.init();
+/** @type {Menu} */
+var MENU;
+/** @type {Socket} */
+var SOCKET;
+/** @type {Packet} */
+var PACKET;
+/** @type {Death_arrow} */
+var DEATH_ARROW;
+/** @type {Chat} */
+var CHAT;
+/** @type {Camera} */
+var CAMERA;
+/** @type {Players} */
+var PLAYERS;
+/** @type {Balls} */
+var BALLS;
+/** @type {Key_prober} */
+var KEY_PROBER;
+/** @type {Tutorial} */
+var TUTORIAL;
+/** @type {Settings} */
+var SETTINGS;
+/** @type {Canvas} */
+var CANVAS;
+/** @type {Background} */
+var BACKGROUND;
+/** @type {_Window} */
+var WINDOW;
+/** @type {Movement} */
+var MOVEMENT;
+/** @type {Client} */
+var CLIENT;
 
 (async function() {
+  const mem = new Uint8Array(await (await fetch("memory.mem", { cache: "force-cache" })).arrayBuffer());
+  await document.fonts.ready;
+
+  MENU = new Menu();
+  SOCKET = new Socket();
+  PACKET = new Packet();
+  DEATH_ARROW = new Death_arrow();
+  CHAT = new Chat();
+  CAMERA = new Camera();
+  PLAYERS = new Players();
+  BALLS = new Balls();
+  KEY_PROBER = new Key_prober();
+  TUTORIAL = new Tutorial();
+  SETTINGS = new Settings();
+  CANVAS = new Canvas();
+  BACKGROUND = new Background();
+  WINDOW = new _Window();
+  MOVEMENT = new Movement();
+  CLIENT = new Client();
+
+  WINDOW.resize();
+  DEATH_ARROW.init();
+  BACKGROUND.parse(mem);
+
   CLIENT.onconnecting();
   let resolver;
   const promise = new Promise(function(resolve) {

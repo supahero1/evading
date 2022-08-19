@@ -1,15 +1,14 @@
-Last modified: Jul 30 2022
+Last modified: Aug 19 2022
 <br>
 <br>
-* Added a setting to adjust the speed of movement
-<br>
-  when holding down SHIFT (or other key you'd bound)
+* Improved the client
 <br>
 <br>
-* Slightly changed areas 8 & 9
+No more updates are due to arrive in the nearest future.
 <br>
+Minimap is nearly done, but I wasn't able to finish it
 <br>
-* Added areas 10 & 11
+in time, so it will not be added anytime soon. Sorry.
 <br>
 <br>
 Before reporting any problems, please make sure you've seen
@@ -21,6 +20,4 @@ move with WASD or press SHIFT, go to settings (ESC by default),
 scroll down, and change the keybinds to your liking, then try again.
 <br>
 <br>
-Join our Discord server to be always
-<br>
-up-to-date and to suggest new changes!
+Join our Discord server:

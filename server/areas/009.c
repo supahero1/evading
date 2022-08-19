@@ -397,7 +397,6 @@ const struct area_info area_009 = {
   },
   (struct pos[]){ { 22, 12 } },
   (struct teleport[]){ { { 22, 14 }, { 5 } }, { { 12, 2 }, { 9 } }, { { 13, 0 }, { 9, { 0, 0 }, 1 } }, { { 2, 6 }, { 9, { 2, 8 }, 1 } } },
-  (struct teleport_min[]){ { 22, 14, 5 }, { 12, 2, 9 }, { 13, 0, 9 }, { 2, 6, 9 } },
   1, 4,
   .right = 5,
   .has_right = 1

@@ -219,18 +219,11 @@ struct teleport {
   const struct teleport_dest dest;
 };
 
-struct teleport_min {
-  const uint8_t tile_x;
-  const uint8_t tile_y;
-  const uint8_t target;
-};
-
 struct area_info {
   const struct tile_info* const tile_info;
   const struct ball_info* const balls;
   const struct pos* const spawn_tiles;
   const struct teleport* const teleport_tiles;
-  const struct teleport_min* const serial;
   const uint8_t spawn_tiles_len;
   const uint8_t teleport_tiles_len;
   const uint8_t top;

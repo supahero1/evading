@@ -1,6 +1,6 @@
 * {
   font-weight: 700;
-  font-family: 'Ubuntu';
+  font-family: "Ubuntu", Arial, Helvetica, sans-serif;
   text-decoration: none;
 }
 
@@ -27,7 +27,7 @@ html, body, #canvas, #settings_container, #menu {
   -webkit-user-select: none;
 }
 
-#settings, #name, #status, #splash, #play, #spec, #refresh, #spec_help {
+#settings, #name, #status, #splash, #play, #spec, #refresh, #general_tooltip {
   top: 50%;
 	left: 50%;
   position: absolute;
@@ -135,7 +135,7 @@ button {
   cursor: default;
 }
 
-#spec_help {
+#general_tooltip {
   top: 50px;
   font-size: 16pt;
   transition: opacity 3s;
@@ -182,8 +182,8 @@ button {
 }
 
 #discord {
-  top: 335px;
-  left: 390px;
+  top: 305px;
+  left: 245px;
   position: absolute;
 }
 
@@ -244,7 +244,7 @@ button {
 }
 
 #chat_fix {
-  width: 200%;
+  width: 100%;
 }
 
 #bottom_right_text {

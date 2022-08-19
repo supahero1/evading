@@ -261,7 +261,6 @@ const struct area_info area_000 = {\n
   },\n
   (struct pos[]){ ${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")} },\n
   (struct teleport[]){ ${teleports.map(r => `{ { ${r.pos.join(", ")} }, { ${r.area_id} } }`).join(", ")} },\n
-  (struct teleport_min[]){ ${teleports.map(r => `{ ${r.pos.join(", ")}, ${r.area_id} }`).join(", ")} },\n
   ${cached_vals.length}, ${teleports.length}\n
 };\n
 \n

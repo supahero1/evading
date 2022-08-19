@@ -10,8 +10,9 @@ const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
 const favicon_ico = readFileSync("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-let main_js = read("../client/main.min2.js");
+let main_js = read("../client/main.js");
 let style_css = read("../client/style.min.css");
+const memory_mem = readFileSync("../client/memory.mem");
 const policy_txt = read("../client/policy.txt");
 const map_editor_png = readFileSync("../client/map_editor.png");
 
@@ -34,18 +35,22 @@ for(const ID of ID_sorted) {
   ++i;
 }
 
+const memory_checksum = createHash("sha256").update(memory_mem).digest("hex").substring(0, 8) + ".mem";
+main_js = main_js.replaceAll("memory.mem", memory_checksum);
+
 const main_checksum = createHash("sha256").update(main_js).digest("hex").substring(0, 8) + ".js";
 const style_checksum = createHash("sha256").update(style_css).digest("hex").substring(0, 8) + ".css";
 index_html = index_html
-.replace("main.js", main_checksum)
-.replace("style.css", style_checksum)
+.replaceAll("main.js", main_checksum)
+.replaceAll("style.css", style_checksum)
+.replaceAll("memory.mem", memory_checksum)
 .replace("__CHANGELOG__", changelog_txt);
 
 const map_editor_main_js = read("../map_editor/main.min2.js");
 const map_editor_style_css = read("../map_editor/style.min.css");
 const map_editor_main_checksum = createHash("sha256").update(map_editor_main_js).digest("hex").substring(0, 8) + ".js";
 const map_editor_style_checksum = createHash("sha256").update(map_editor_style_css).digest("hex").substring(0, 8) + ".css";
-const map_editor_index_html = read("../map_editor/index.html").replace("main.js", map_editor_main_checksum).replace("style.css", map_editor_style_checksum);
+const map_editor_index_html = read("../map_editor/index.html").replaceAll("main.js", map_editor_main_checksum).replaceAll("style.css", map_editor_style_checksum);
 
 const options = {
   key: read("./key.pem"),
@@ -110,6 +115,11 @@ app.get("/" + style_checksum, function(req, res) {
 app.get("/policy.txt", function(req, res) {
   res.set("Content-Type", "text/plain");
   res.status(200).end(policy_txt);
+});
+
+app.get("/" + memory_checksum, function(req, res) {
+  res.set("Content-Type", "application/octet-stream");
+  res.status(200).end(memory_mem);
 });
 
 app.get("/map_editor.png", function(req, res) {

@@ -1,6 +1,7 @@
 #include <math.h>
 #include <errno.h>
 #include <stdio.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -26,9 +27,6 @@ static uint32_t buffer_len = 0;
 
 static uint8_t buf[16777216];
 static uint32_t buf_len = 0;
-
-static uint8_t minimap_data[65536];
-static uint32_t minimap_data_len = 0;
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -64,9 +62,7 @@ struct client {
   uint8_t  name_len;
   uint8_t  chat_len;
   uint8_t  chat_timestamp_idx;
-  uint8_t  sent_area:1;
   uint8_t  sent_balls:1;
-  uint8_t  sent_minimap:1;
   uint8_t  exists:1;
   uint8_t  in_area:1;
   uint8_t  spectating_a_player:1;
@@ -143,8 +139,6 @@ static uint8_t alpha_tokens[][8] = (uint8_t[][8]) {
 };
 
 #define alpha_tokens_len (sizeof(alpha_tokens) / sizeof(alpha_tokens[0]))
-
-static struct data_frame area_info_serials[area_infos_size];
 
 static uint8_t area_traversal[area_infos_size];
 
@@ -449,25 +443,12 @@ do { \
   ball->vx *= time_scale;
   ball->vy *= time_scale;
   ball->speed *= time_scale;
-  if(ball->tick & (UINT32_C(1) << UINT32_C(31))) {
+  if(ball->tick >> 31) {
     ball->tick = -(-ball->tick / tick_interval);
   } else {
     ball->tick /= tick_interval;
   }
   return idx;
-}
-
-static void send_arena(const uint8_t client_id) {
-  struct client* const client = clients + client_id;
-  if(client->sent_area) {
-    return;
-  }
-  client->sent_area = 1;
-  
-  const struct area* const area = areas + client->area_id;
-  const struct data_frame* const serial = area_info_serials + area->area_info_id;
-  memcpy(buf + buf_len, serial->data, serial->len);
-  buf_len += serial->len;
 }
 
 static uint8_t create_area(const uint8_t area_info_id) {
@@ -516,6 +497,7 @@ static void set_player_pos_to_tile(const uint8_t client_id, const uint8_t tile_x
   grid_recalculate(&area->grid, &client->entity);
   client->updated_x = 1;
   client->updated_y = 1;
+  client->updated_tp = 1;
   client->last_meaningful_movement = current_tick;
   const struct tile_info* const info = area_infos[area->area_info_id]->tile_info;
   client->targetable = (info->tiles[(uint16_t) tile_x * info->height + tile_y] == tile_path);
@@ -553,7 +535,6 @@ static void add_client_to_area(const uint8_t client_id, const uint8_t area_info_
   const uint8_t area_id = find_or_create_area(area_info_id);
   client->area_id = area_id;
   client->in_area = 1;
-  client->sent_area = 0;
   client->sent_balls = 0;
   ++areas[area_id].players_len;
 }
@@ -654,7 +635,6 @@ static void client_start_spectating(const uint8_t client_id) {
 }
 
 static void client_set_nonexisting(const uint8_t client_id) {
-  remove_client_from_its_area(client_id);
   struct client* const client = clients + client_id;
   client->exists = 0;
   --existing_clients_len;
@@ -665,6 +645,7 @@ static void client_set_nonexisting(const uint8_t client_id) {
   client->updated_y = 0;
   client->updated_r = 0;
   client->updated_dc = 0;
+  client->updated_tp = 0;
   client->speed = 0;
   client_start_spectating(client_id);
 }
@@ -1199,7 +1180,6 @@ static void player_tick(const uint8_t client_id) {
             if(dest == NULL) {
               continue;
             }
-            client->updated_tp = 1;
             if(dest->area_info_id == area->area_info_id) {
               if(!dest->not_random_spawn) {
                 set_player_pos_to_area_spawn_tiles(client_id);
@@ -1322,10 +1302,11 @@ static void send_players(const uint8_t client_id) {
             memcpy(buf + buf_len, client->chat, client->chat_len);
             buf_len += client->chat_len;
           }
-          if(save == buf_len) {
+          const uint8_t flags = client->updated_tp << 7;
+          if(save == buf_len && flags == 0) {
             --buf_len;
           } else {
-            buf[buf_len++] = client->updated_tp << 7;
+            buf[buf_len++] = flags;
             ++updated;
           }
         } else {
@@ -1392,6 +1373,8 @@ void send_balls(const uint8_t client_id) {
     if(client->sent_balls) {
       buf[buf_len++] = 0;
       ++updated;
+    } else {
+      buf_len -= 2;
     }
   } else if(ball->updated_created || !client->sent_balls) {
     /* CREATE */
@@ -1481,18 +1464,6 @@ void send_chat(const uint8_t client_id) {
   }
 }
 
-void send_minimap(const uint8_t client_id) {
-  if(clients[client_id].sent_minimap) {
-    return;
-  }
-  clients[client_id].sent_minimap = 1;
-
-  buf[buf_len++] = server_opcode_minimap;
-  buf[buf_len++] = area_infos_size;
-  memcpy(buf + buf_len, minimap_data, minimap_data_len);
-  buf_len += minimap_data_len;
-}
-
 static void tick(void* nil) {
   pthread_mutex_lock(&mutex);
   if(++current_tick % send_interval == 0) {
@@ -1500,6 +1471,7 @@ static void tick(void* nil) {
     for(uint8_t client_id = 0; client_id < max_players; ++client_id) {
       struct client* const client = clients + client_id;
       if(client->js_id == 0) continue;
+      assert(client->in_area);
       if(!client->exists) {
         if(client->spectating_client_id == client_id) {
           buf[6] = 0;
@@ -1512,14 +1484,11 @@ static void tick(void* nil) {
       buf[7] = client->spectating_a_player;
       buf[7] |= client->exists << 1;
       buf[7] |= (existing_clients_len == 0) << 2;
-      buf_len = 8;
-      if(client->in_area) {
-        send_arena(client_id);
-        send_players(client_id);
-        send_balls(client_id);
-      }
+      buf[8] = areas[client->area_id].area_info_id;
+      buf_len = 9;
+      send_players(client_id);
+      send_balls(client_id);
       send_chat(client_id);
-      //send_minimap(client_id);
       buf[0] = buf_len;
       buf[1] = buf_len >> 8;
       buf[2] = buf_len >> 16;
@@ -1574,53 +1543,10 @@ static void tick(void* nil) {
 
 static void start_game(void) {
   const uint64_t start = time_get_time();
-  puts("Initialising minimap data and area info serials...");
+  puts("Initialising area traversal...");
   for(uint8_t i = 0; i < area_infos_size; ++i) {
-    const struct area_info* const info = area_infos[i];
-    minimap_data[minimap_data_len] = 0;
-    uint32_t relative = 0;
-    if(info->has_top) {
-      minimap_data[minimap_data_len] |= 1;
-      minimap_data[minimap_data_len + relative++] = info->top;
-    }
-    if(info->has_left) {
-      minimap_data[minimap_data_len] |= 2;
-      minimap_data[minimap_data_len + relative++] = info->left;
-    }
-    if(info->has_right) {
-      minimap_data[minimap_data_len] |= 4;
-      minimap_data[minimap_data_len + relative++] = info->right;
-    }
-    if(info->has_bottom) {
-      minimap_data[minimap_data_len] |= 8;
-      minimap_data[minimap_data_len + relative++] = info->bottom;
-    }
-    minimap_data_len += relative;
-
-    const uint32_t teleports_size = sizeof(*info->serial) * info->teleport_tiles_len;
-    const uint32_t area_size = (uint32_t) info->tile_info->width * info->tile_info->height;
-    const uint32_t len = 6 + teleports_size + area_size;
-    uint8_t* const ptr = malloc(len);
-    assert(ptr);
-    ptr[0] = server_opcode_area;
-    ptr[1] = i;
-    ptr[2] = info->tile_info->width;
-    ptr[3] = info->tile_info->height;
-    ptr[4] = info->tile_info->cell_size;
-    ptr[5] = info->teleport_tiles_len;
-    memcpy(ptr + 6, info->serial, teleports_size);
-    memcpy(ptr + 6 + teleports_size, info->tile_info->tiles, area_size);
-    area_info_serials[i] = (struct data_frame) {
-      .data = (char*) ptr,
-      .len = len,
-      .read_only = 1,
-      .dont_free = 1,
-      .free_onerr = 0
-    };
-
     area_traversal[i] = i;
   }
-  puts("Initialising area traversal...");
   for(uint8_t k = 0; k < 10; ++k) {
     for(uint8_t i = 0; i < area_infos_size; ++i) {
       const uint8_t idx = fast_rand() % area_infos_size;
@@ -1631,6 +1557,153 @@ static void start_game(void) {
   }
   puts("Initialising commands...");
   init_commands();
+  puts("Initialising client memory data...");
+  uint32_t total = 0;
+  for(uint8_t i = 0; i < area_infos_size; ++i) {
+    const struct tile_info* const info = area_infos[i]->tile_info;
+    total += info->width * info->height + 3 + 2;
+    for(uint8_t x = 0; x < info->width; ++x) {
+      for(uint8_t y = 0; y < info->height; ++y) {
+        if(info->tiles[(uint16_t) x * info->height + y] != tile_wall) {
+          if(x == 0) {
+            total += 2;
+          }
+          if(x + 1 == info->width) {
+            total += 2;
+          }
+          if(y == 0) {
+            total += 2;
+          }
+          if(y + 1 == info->height) {
+            total += 2;
+          }
+          if(info->tiles[(uint16_t) x * info->height + y] == tile_teleport) {
+            ++total;
+          }
+          continue;
+        }
+        if(x != 0 && info->tiles[(uint16_t) (x - 1) * info->height + y] != tile_wall) {
+          total += 2;
+        }
+        if(x + 1 != info->width && info->tiles[(uint16_t) (x + 1) * info->height + y] != tile_wall) {
+          total += 2;
+        }
+        if(y != 0 && info->tiles[(uint16_t) x * info->height + y - 1] != tile_wall) {
+          total += 2;
+        }
+        if(y + 1 != info->height && info->tiles[(uint16_t) x * info->height + y + 1] != tile_wall) {
+          total += 2;
+        }
+      }
+    }
+  }
+  printf("Client data size: %.2fkb\n", total / 1000.0f);
+  uint8_t* const data = malloc(total);
+  assert(data);
+  uint32_t idx = 0;
+  for(uint8_t i = 0; i < area_infos_size; ++i) {
+    const struct tile_info* const info = area_infos[i]->tile_info;
+    data[idx++] = info->width;
+    data[idx++] = info->height;
+    data[idx++] = info->cell_size;
+    const uint16_t len = (uint16_t) info->width * info->height;
+    memcpy(data + idx, info->tiles, len);
+    idx += len;
+    uint16_t edges = 0;
+    for(uint8_t x = 0; x < info->width; ++x) {
+      for(uint8_t y = 0; y < info->height; ++y) {
+        if(info->tiles[(uint16_t) x * info->height + y] != tile_wall) {
+          if(x == 0) {
+            data[idx++] = x;
+            data[idx++] = y;
+            ++edges;
+          }
+          if(x + 1 == info->width) {
+            data[idx++] = x + 1;
+            data[idx++] = y;
+            ++edges;
+          }
+          continue;
+        }
+        if(x != 0 && info->tiles[(uint16_t) (x - 1) * info->height + y] != tile_wall) {
+          data[idx++] = x;
+          data[idx++] = y;
+          ++edges;
+        }
+        if(x + 1 != info->width && info->tiles[(uint16_t) (x + 1) * info->height + y] != tile_wall) {
+          data[idx++] = x + 1;
+          data[idx++] = y;
+          ++edges;
+        }
+      }
+    }
+    data[idx++] = 255;
+    edges = 0;
+    for(uint8_t x = 0; x < info->width; ++x) {
+      for(uint8_t y = 0; y < info->height; ++y) {
+        if(info->tiles[(uint16_t) x * info->height + y] != tile_wall) {
+          if(y == 0) {
+            data[idx++] = x;
+            data[idx++] = y;
+            ++edges;
+          }
+          if(y + 1 == info->height) {
+            data[idx++] = x;
+            data[idx++] = y + 1;
+            ++edges;
+          }
+          continue;
+        }
+        if(y != 0 && info->tiles[(uint16_t) x * info->height + y - 1] != tile_wall) {
+          data[idx++] = x;
+          data[idx++] = y;
+          ++edges;
+        }
+        if(y + 1 != info->height && info->tiles[(uint16_t) x * info->height + y + 1] != tile_wall) {
+          data[idx++] = x;
+          data[idx++] = y + 1;
+          ++edges;
+        }
+      }
+    }
+    data[idx++] = 255;
+    for(uint8_t x = 0; x < info->width; ++x) {
+      for(uint8_t y = 0; y < info->height; ++y) {
+        if(info->tiles[(uint16_t) x * info->height + y] != tile_teleport) continue;
+        uint8_t found = 0;
+        for(uint8_t j = 0; j < area_infos[i]->teleport_tiles_len; ++j) {
+          const struct teleport* const teleport = area_infos[i]->teleport_tiles + j;
+          if(x != teleport->pos.tile_x || y != teleport->pos.tile_y) continue;
+          found = 1;
+          if(teleport->dest.area_info_id == i) {
+            data[idx++] = 0;
+          } else if(area_infos[i]->has_top && teleport->dest.area_info_id == area_infos[i]->top) {
+            data[idx++] = 1;
+          } else if(area_infos[i]->has_left && teleport->dest.area_info_id == area_infos[i]->left) {
+            data[idx++] = 2;
+          } else if(area_infos[i]->has_right && teleport->dest.area_info_id == area_infos[i]->right) {
+            data[idx++] = 3;
+          } else if(area_infos[i]->has_bottom && teleport->dest.area_info_id == area_infos[i]->bottom) {
+            data[idx++] = 4;
+          } else {
+            assert(0);
+          }
+          break;
+        }
+        if(!found) {
+          data[idx++] = 5;
+        }
+      }
+    }
+  }
+  assert(total == idx);
+  const int fd = openat(AT_FDCWD, "../client/memory.mem", O_WRONLY | O_CREAT, 0666);
+  assert(fd != -1);
+  assert(!ftruncate(fd, total));
+  assert(lseek(fd, 0, SEEK_SET) != -1);
+  assert(write(fd, data, total) == total);
+  assert(fsync(fd) != -1);
+  assert(close(fd) != -1);
   printf("Init done in %lums\n", time_ns_to_ms(time_get_time() - start));
   assert(!time_add_interval(&timers, &((struct time_interval) {
     .base_time = time_get_time(),
@@ -1650,7 +1723,7 @@ static void parse(void) {
       client_id = create_client(js_id);
       struct client* const client = clients + client_id;
       client->js_id = js_id;
-      if(token_required || len == sizeof(alpha_tokens[0])) {
+      if(token_required) {
         if(len != sizeof(alpha_tokens[0])) {
           goto close;
         }
@@ -1664,7 +1737,18 @@ static void parse(void) {
         if(ok == alpha_tokens_len) {
           goto close;
         }
-        if(ok == 0) {
+        if(0 && ok == 0) {
+          client->admin = 1;
+        }
+      } else if(len == sizeof(alpha_tokens[0])) {
+        uint8_t ok = alpha_tokens_len;
+        for(uint8_t i = 0; i < alpha_tokens_len; ++i) {
+          if(memcmp(msg, alpha_tokens[i], sizeof(alpha_tokens[0])) == 0) {
+            ok = i;
+            break;
+          }
+        }
+        if(0 && ok == 0) {
           client->admin = 1;
         }
       } else if(len != 1) {
@@ -1959,7 +2043,7 @@ static struct tcp_socket* server_onevent(struct tcp_server* a, struct tcp_socket
 int main() {
   fast_srand(time_get_time());
   assert(!time_timers(&timers));
-  //assert(!time_start(&timers)); //
+  assert(!time_start(&timers)); //
   struct async_loop loop = {0};
   assert(!tcp_async_loop(&loop));
   server.loop = &loop;
@@ -1969,8 +2053,8 @@ int main() {
     .port = "23456",
     .backlog = 1
   })));
-  //(void) async_loop_thread(&loop); //
-  assert(!async_loop_start(&loop)); //
-  (void) time_thread(&timers); //
+  (void) async_loop_thread(&loop); //
+  //assert(!async_loop_start(&loop)); //
+  //(void) time_thread(&timers); //
   assert(0);
 }
