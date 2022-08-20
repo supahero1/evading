@@ -3454,8 +3454,8 @@ class Client {
     CAMERA.block();
     MOVEMENT.stop();
     MOVEMENT.block();
-  }
-  onmapmodeoff() {
+  }*/
+  /*onmapmodeoff() {
     MENU.hide_general_tooltip();
     CAMERA.unblock();
     MOVEMENT.unblock();
