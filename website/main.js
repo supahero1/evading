@@ -16,7 +16,7 @@ const memory_mem = readFileSync("../client/memory.mem");
 const policy_txt = read("../client/policy.txt");
 const map_editor_png = readFileSync("../client/map_editor.png");
 
-const IDs = index_html.match(/ID_(\w+)/g);
+const IDs = index_html.match(/ID_(\w+)/g);//
 const ID_map = {};
 const ID_sorted = [];
 for(const ID of IDs) {
