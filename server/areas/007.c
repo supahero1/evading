@@ -2,12 +2,12 @@
 
 static const struct tile_info t;
 
-#define V 4
+#define V TIME_SCALE(1)
 #define R 10
 
 #define BALL \
   .type = ball_grey, \
-  .position_type = position_tile_fixed, \
+  .position_type = position_fixed, \
   .movement_type = movement_velocity, \
   .r = R, \
   .speed = V, \

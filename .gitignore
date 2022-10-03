@@ -1,14 +1,7 @@
 node_modules
 package-lock.json
 package.json
-yarn.lock
 
 website/node_modules
 website/package-lock.json
 website/package.json
-website/yarn.lock
-
-server/node_modules
-server/package-lock.json
-server/package.json
-server/yarn.lock

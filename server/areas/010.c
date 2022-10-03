@@ -9,20 +9,19 @@ const struct area_info area_010 = {
       .type = ball_purple,
       .radius_type = radius_random,
       .r_min = 5,
-      .r_max = 20,
+      .r_max = 15,
       .frequency_type = frequency_float_fixed,
-      .frequency_float = 0.2f,
-      .range_type = range_fixed,
+      .frequency_float = 0.01f,
       .range = 160,
-      .speed = 4,
+      .speed = TIME_SCALE(1),
       .count = 50
     },
     {
       .type = ball_grey,
       .radius_type = radius_random,
       .r_min = 20,
-      .r_max = 60,
-      .speed = 1,
+      .r_max = 50,
+      .speed = TIME_SCALE(0.25),
       .count = 20
     },
     {0}

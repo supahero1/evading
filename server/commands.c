@@ -5,17 +5,17 @@
 #include <assert.h>
 
 static struct command_def command_defs[] = (struct command_def[]) {
-  { "respawn", command_respawn, .in_game = 1, .out_game = 1 },
-  { "r", command_respawn, .in_game = 1, .out_game = 1 },
   { "die", command_die, .in_game = 1 },
   { "d", command_die, .in_game = 1 },
   { "menu", command_menu, .in_game = 1, .out_game = 1 },
   { "m", command_menu, .in_game = 1, .out_game = 1 },
-  { "spectate", command_spectate, .out_game = 1 },
-  { "s", command_spectate, .out_game = 1 },
+  { "spectate", command_spectate, .in_game = 1, .out_game = 1 },
+  { "s", command_spectate, .in_game = 1, .out_game = 1 },
   { "godmode", command_godmode, .in_game = 1, .admin = 1 },
   { "gm", command_godmode, .in_game = 1, .admin = 1 },
   { "server_reboot", command_server_reboot, .in_game = 1, .out_game = 1, .admin = 1 },
+  { "server_restart", command_server_restart, .in_game = 1, .out_game = 1, .admin = 1 },
+  { "undying", command_undying, .in_game = 1, .admin = 1 },
   {0}
 };
 

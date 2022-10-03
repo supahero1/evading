@@ -1,16 +1,17 @@
-#ifndef game_commands_h
-#define game_commands_h 1
+#ifndef _game_commands_h_
+#define _game_commands_h_ 1
 
 #include <stdint.h>
 
 enum game_command {
   command_invalid,
-  command_respawn,
   command_die,
   command_menu,
   command_spectate,
   command_godmode,
-  command_server_reboot
+  command_server_reboot,
+  command_server_restart,
+  command_undying
 };
 
 struct command_def {
@@ -31,4 +32,4 @@ extern void init_commands(void);
 
 extern const struct command_def* find_command(const char*, uint32_t);
 
-#endif // game_commands_h
+#endif /* _game_commands_h_ */

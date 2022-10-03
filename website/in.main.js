@@ -4,13 +4,13 @@ const { createHash } = require("crypto");
 
 function read(path) {
   return readFileSync(path, "utf8");
-};
+}
 
 const changelog_txt = read("../client/changelog.txt");
 let index_html = read("../client/index.html");
 const favicon_ico = readFileSync("../client/favicon.ico");
 const discord_svg = read("../client/discord.svg");
-let main_js = read("../client/main.min2.js");
+let main_js = read("../client/main.min.js");
 let style_css = read("../client/style.min.css");
 const memory_mem = readFileSync("../client/memory.mem");
 const policy_txt = read("../client/policy.txt");
@@ -46,7 +46,7 @@ index_html = index_html
 .replaceAll("memory.mem", memory_checksum)
 .replace("__CHANGELOG__", changelog_txt);
 
-const map_editor_main_js = read("../map_editor/main.min2.js");
+const map_editor_main_js = read("../map_editor/main.min.js");
 const map_editor_style_css = read("../map_editor/style.min.css");
 const map_editor_main_checksum = createHash("sha256").update(map_editor_main_js).digest("hex").substring(0, 8) + ".js";
 const map_editor_style_checksum = createHash("sha256").update(map_editor_style_css).digest("hex").substring(0, 8) + ".css";
@@ -85,7 +85,11 @@ setInterval(function() {
 }, 1000);
 
 const app = express();
-app.use(express.json());
+const body_parser = require("body-parser");
+app.use(body_parser.raw({
+  inflate: false,
+  type: "text/plain"
+}));
 
 app.get(["/", "/index.html"], function(req, res) {
   res.set("Content-Type", "text/html");
@@ -149,12 +153,16 @@ app.get("/servers.json", function(req, res) {
 });
 
 app.post("/XnAD9SZs3xJ9SAcHmHQlh17bD6V8DzOvNAhw3WGZwL2JAn7MeWD06cx4YnmuLU78", function(req, res) {
-  if(req.body && typeof req.body.ip == "string" && typeof req.body.players == "number" && typeof req.body.max_players == "number") {
-    add_server(req.body.ip, req.body.players, req.body.max_players);
-    res.status(204).end();
-  } else {
-    res.status(400).end();
+  if(!req.body) return res.status(400).end();
+  let info;
+  try {
+    info = new TextDecoder().decode(req.body).split(",");
+  } catch(err) {
+    return res.status(400).end();
   }
+  if(info.length != 3) return res.status(400).end();
+  add_server(info[0], parseInt(info[1], 10), parseInt(info[2], 10));
+  res.status(204).end();
 });
 
 if(__SECURE_WEBSITE__) {

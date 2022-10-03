@@ -11,11 +11,11 @@ const struct area_info area_004 = {
       .radius_type = radius_random,
       .r_min = 4,
       .r_max = 10,
-      .speed = 4,
+      .speed = TIME_SCALE(1),
       .count = 20,
       .frequency_type = frequency_float_random,
       .frequency_float_min = 0.01f,
-      .frequency_float_max = 0.1f
+      .frequency_float_max = 0.05f
     },
     {
       .type = ball_teal,
@@ -23,11 +23,11 @@ const struct area_info area_004 = {
       .radius_type = radius_random,
       .r_min = 4,
       .r_max = 10,
-      .speed = 4,
+      .speed = TIME_SCALE(1),
       .count = 20,
       .frequency_type = frequency_float_random,
-      .frequency_float_min = 0.1f,
-      .frequency_float_max = 0.5f
+      .frequency_float_min = 0.05f,
+      .frequency_float_max = 0.2f
     },
     {0}
   },

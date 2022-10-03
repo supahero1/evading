@@ -1,10 +1,10 @@
-#ifndef game_consts_h
-#define game_consts_h 1
+#ifndef _game_consts_h_
+#define _game_consts_h_ 1
 
+#include <math.h>
 #include <stdint.h>
 
 /*
-
 1. MAX 65534 balls in one area
 2. NEVER allow balls to be in a situation where
    colliding with a corner + their speed + their radius = out of bounds
@@ -12,6 +12,13 @@
    smallest passage with a corner at the beginning/end of it. The
    ball might "appear" to be out of bounds (it really isn't, but
    it can't do anything else - it gets TPed back and forth).
+3. Rotation:
+  .speed = TIME_SCALE(1),
+  .frequency_float = 0.25
+  The above will rotate in a 3x3 tile box.
+  For every new tile on one axis, multiply speed by 1 up.
+  If you want a 5x5 tile box, speed *= 2 and change its starting position.
+  If you want it to be slower, divide speed and frequency_float by some number.
 */
 
 enum game_const {
@@ -23,20 +30,19 @@ enum game_const {
   chat_timeout = (1000 / tick_interval) * 1,
   spectating_interval = (1000 / tick_interval) * 10,
   token_required = 0,
+  tokens_active = 1,
   max_players = 100,
   max_chat_message_len = 128,
   max_chat_timestamps = 6, /* in main.js this is -1 */
   max_name_len = 16,
+  max_message_len = max_chat_message_len + 1,
   area_infos_size = 12
 };
 
-#define base_tick_interval (40.0f)
+#define base_tick_interval (10.0f)
 #define time_scale (tick_interval / base_tick_interval)
-#define default_player_speed (15.0f * time_scale)
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#define TIME_SCALE(n) ((n) * time_scale)
+#define default_player_speed TIME_SCALE(4)
 
 enum server_opcodes {
   server_opcode_area,
@@ -51,7 +57,8 @@ enum client_opcodes {
   client_opcode_movement,
   client_opcode_chat,
   client_opcode_name,
-  client_opcode_spec
+  client_opcode_spec,
+  client_opcode_init
 };
 
 enum ball_type {
@@ -66,6 +73,13 @@ enum ball_type {
   ball_null
 };
 
+enum game_tile {
+  tile_path,
+  tile_safe,
+  tile_wall,
+  tile_teleport
+};
+
 enum radius_type {
   radius_fixed,
   radius_random,
@@ -75,13 +89,13 @@ enum radius_type {
 enum position_type {
   position_random,
   position_random_in_range,
-  position_tile_random,
-  position_tile_random_in_range,
-  position_tile_random_in_range_snap_to_tiles,
   position_fixed,
-  position_tile_fixed,
-  position_relative,
-  position_relative_tile
+  position_relative
+};
+
+enum position_mode {
+  position_tile,
+  position_precise
 };
 
 enum movement_type {
@@ -114,25 +128,17 @@ enum spawn_idx_type {
   spawn_idx_relative
 };
 
-enum range_type {
-  range_none,
-  range_fixed,
-  range_random,
-  range_relative
-};
-
 struct ball_info {
   const uint8_t type;
   const uint8_t radius_type:2;
-  const uint8_t position_type:4;
+  const uint8_t position_type:2;
+  const uint8_t position_mode:1;
   const uint8_t movement_type:3;
   const uint8_t frequency_type:3;
   const uint8_t tick_type:2;
   const uint8_t spawn_idx_type:2;
-  const uint8_t range_type:2;
   const uint8_t allow_walls:1;
   const uint8_t die_on_collision:1;
-  const uint16_t count;
   union {
     struct {
       const uint32_t frequency_num;
@@ -183,17 +189,9 @@ struct ball_info {
   const uint16_t spawn_idx;
   const uint16_t spawn_idx_min;
   const uint16_t spawn_idx_max;
+  const uint16_t count;
   const float range;
-  const float range_min;
-  const float range_max;
   const uint32_t relative_entity_id;
-};
-
-enum game_tile {
-  tile_path,
-  tile_safe,
-  tile_wall,
-  tile_teleport
 };
 
 struct tile_info {
@@ -262,4 +260,4 @@ extern const struct area_info area_017;
 extern const struct area_info area_018;
 extern const struct area_info area_019;
 
-#endif // game_consts_h
+#endif /* _game_consts_h_ */

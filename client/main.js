@@ -31,18 +31,19 @@ const default_keybinds = {
   ["slowwalk"]: "ShiftLeft",
   ["spec_prev"]: "KeyA",
   ["spec_next"]: "KeyD",
-  //["map"]: "KeyM"
+  ["menu"]: "KeyM",
+  ["freecam"]: "KeyF"
 };
 /** @type {Object<string, string>} */
 let keybinds = _keybinds != null ? /** @type {Object<string, string>} */ (JSON.parse(_keybinds)) : default_keybinds;
-for(const prop in default_keybinds) {
-  if(!(prop in keybinds)) {
-    keybinds[prop] = default_keybinds[prop];
-  }
-}
 for(const prop in keybinds) {
   if(!(prop in default_keybinds)) {
     delete keybinds[prop];
+  }
+}
+for(const prop in default_keybinds) {
+  if(!(prop in keybinds)) {
+    keybinds[prop] = default_keybinds[prop];
   }
 }
 function save_keybinds() {
@@ -113,6 +114,25 @@ const default_settings = {
     ["value"]: 50,
     ["step"]: 1
   },
+  ["show_target_arrows"]: true,
+  ["target_arrow_size"]: {
+    ["min"]: 0.2,
+    ["max"]: 4,
+    ["value"]: 1.2,
+    ["step"]: 0.05
+  },
+  ["target_arrow_dist"]: {
+    ["min"]: 0.05,
+    ["max"]: 4,
+    ["value"]: 0.6,
+    ["step"]: 0.05
+  },
+  ["target_arrow_opacity"]: {
+    ["min"]: 0,
+    ["max"]: 100,
+    ["value"]: 20,
+    ["step"]: 1
+  }
 };
 let settings = _settings != null ? JSON.parse(_settings) : JSON.parse(JSON.stringify(default_settings));
 for(const prop in default_settings) {
@@ -159,7 +179,7 @@ function createElement(id) {
 
 const status = getElementById("ID_status");
 
-const _token = getItem("token");
+const _token = window["token"];
 let token = [];
 if(typeof _token == "string") {
   token = _token.split(",").map(r => +r);
@@ -234,6 +254,12 @@ function limit_input_to(n) {
   return /** @type {function(Event):void} */ (_limit_input_to(n));
 }
 
+/** @param {Function} func */
+function iife(func) {
+  func();
+  return func;
+}
+
 /** @type {function(number, number, number, boolean, boolean, boolean):!Array<number, number, boolean>} */
 function get_sticky_position(_x, _y, k, whole_out, preserve_x, preserve_y) {
   k *= CANVAS.fov;
@@ -265,6 +291,8 @@ if(window["s"].length == 0) {
   throw new Error(status.innerHTML);
 }
 
+var GAME_INIT = false;
+
 /** @enum {number} */
 const CONSTS = {
   server_opcode_area: 0,
@@ -278,6 +306,7 @@ const CONSTS = {
   client_opcode_chat: 2,
   client_opcode_name: 3,
   client_opcode_spec: 4,
+  client_opcode_init: 5,
 
   max_players: 100,
   max_balls: 65535,
@@ -295,11 +324,18 @@ const CONSTS = {
   minimap_size: 256 * 4,
   minimap_pad: 20,
 
+  buffer_size_in: 1048576,
+  buffer_size_out: 129,
+
   texture_id_tutorial: 0,
   texture_ids: 1,
 
   general_tooltip_id_spec_help: 0,
-  general_tooltip_id_map_help: 1
+  general_tooltip_id_map_help: 1,
+
+  tooltip_picked_server: 1 << 0,
+  tooltip_try_map_editor: 1 << 1,
+  tooltip_try_help: 1 << 2
 };
 
 const Tile_colors = new Uint32Array([0xddddddff, 0xaaaaaaff, 0x333333ff, 0xfedf78ff]);
@@ -399,8 +435,7 @@ class M3 extends Float32Array {
  */
 
 const GL = WebGL2RenderingContext.prototype;
-/** @type {?WebGL} */
-let WebGL_used = null;
+const GL_used = new Map();
 
 class WebGL {
   /**
@@ -515,15 +550,15 @@ class WebGL {
     this.gl.bufferSubData(GL.ARRAY_BUFFER, 0, data);
   }
   use() {
-    if(WebGL_used == this) {
+    if(GL_used.get(this.gl) == this) {
       return;
     }
-    WebGL_used = this;
+    GL_used.set(this.gl, this);
 
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     
-    if(this.u_matrix != null) {
+    if(this.u_matrix != null && this.matrix != null) {
       this.gl.uniformMatrix3fv(this.u_matrix, false, this.matrix);
     }
   }
@@ -544,6 +579,14 @@ class WebGL {
     this.gl.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE);
 
     return tex;
+  }
+  /**
+   * @param {WebGLUniformLocation} location
+   * @param {number} value
+   */
+  uniform1f(location, value) {
+    this.use();
+    this.gl.uniform1f(location, value);
   }
 }
 
@@ -819,10 +862,10 @@ class Tex_WebGL extends WebGL {
   constructor(id) {
     super(id,
       `
-      layout(location = 0) in vec2 a_position;
-      layout(location = 1) in vec2 a_texcoord;
+      layout(location = 0) in vec2  a_position;
+      layout(location = 1) in vec2  a_texcoord;
       layout(location = 2) in float a_depth;
-      layout(location = 3) in mat3 a_matrix;
+      layout(location = 3) in mat3  a_matrix;
 
       out vec2 v_texcoord;
       flat out int v_id;
@@ -900,7 +943,6 @@ class Tex_WebGL extends WebGL {
     }
 
 
-
     /** @type {!Array<Object<string, Tex>>} */
     this.cache = new Array(CONSTS.texture_ids);
     for(let i = 0; i < CONSTS.texture_ids; ++i) {
@@ -909,6 +951,9 @@ class Tex_WebGL extends WebGL {
 
     setInterval(this.purge.bind(this), 1000);
 
+
+    this.buffer = new ArrayBuffer(40 * 16);
+    this.view = new DataView(this.buffer);
 
 
     /** @type {!Array<Tex>} */
@@ -995,8 +1040,6 @@ class Tex_WebGL extends WebGL {
    * @param {number} z
    */
   draw({ tex, w, h }, x, y, z) {
-    this.use();
-
     if(!this.drawing) {
       this.num = 0;
       this.drawing = true;
@@ -1006,10 +1049,10 @@ class Tex_WebGL extends WebGL {
 
     const matrix = this.matrix.translate(x, y).scale(w, h);
 
-    view.setFloat32(this.num * 40, z, true);
+    this.view.setFloat32(this.num * 40, z, true);
     for(let _x = 0; _x < 3; ++_x) {
       for(let _y = 0; _y < 3; ++_y) {
-        view.setFloat32(this.num * 40 + 4 + 4 * (_x * 3 + _y), matrix[_x * 3 + _y], true);
+        this.view.setFloat32(this.num * 40 + 4 + 4 * (_x * 3 + _y), matrix[_x * 3 + _y], true);
       }
     }
 
@@ -1043,7 +1086,8 @@ class Tex_WebGL extends WebGL {
   finish() {
     this.drawing = false;
     if(this.num == 0) return;
-    this.subset(buffer.slice(0, this.num * 40));
+    this.use();
+    this.subset(this.buffer.slice(0, this.num * 40));
     for(let i = 0; i < this.num; ++i) {
       this.gl.activeTexture(GL.TEXTURE0 + i);
       this.gl.bindTexture(GL.TEXTURE_2D, this.textures[i]);
@@ -1119,12 +1163,271 @@ class Minimap_WebGL extends WebGL {
 }
 
 /*
+ * ARROW WEBGL, ARROW_WEBGL
+ */
+
+class Arrow_WebGL extends WebGL {
+  /** @param {!string | !WebGL2RenderingContext} id */
+  constructor(id) {
+    super(id,
+      `
+      layout(location = 0) in vec2  a_position;
+      layout(location = 1) in vec2  a_offset;
+      layout(location = 2) in vec2  a_angle;
+      layout(location = 3) in float a_depth;
+
+      uniform mat3 u_matrix;
+      uniform float u_size;
+      uniform float u_dist;
+
+      void main() {
+        mat3 rotation;
+        rotation[0] = vec3(a_angle[0], -a_angle[1], 0);
+        rotation[1] = vec3(a_angle[1], a_angle[0], 0);
+        rotation[2] = vec3(0, 0, 1);
+        vec2 pos = ((vec3(a_position, 1.0) * rotation).xy + a_angle * u_size * u_dist) * a_depth * u_size * 0.5;
+        pos = (u_matrix * vec3(pos + a_offset + a_angle * a_depth * 1.2, 1.0)).xy;
+        gl_Position = vec4(pos, -1.0 / a_depth, 1.0);
+      }
+      `,
+      `
+      uniform float u_opacity;
+
+      void main() {
+        fragColor = vec4(0.0, 0.0, 0.0, u_opacity);
+      }
+    `);
+    
+    this.u_size = this.gl.getUniformLocation(this.program, "u_size");
+    this.u_dist = this.gl.getUniformLocation(this.program, "u_dist");
+    this.u_opacity = this.gl.getUniformLocation(this.program, "u_opacity");
+
+    this.buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.buffer);
+    this.gl.bufferData(GL.ARRAY_BUFFER, new Float32Array([
+      -0.8660254037844386, -1,
+      -0.8660254037844386,  1,
+       0.8660254037844386,  0
+    ]), GL.STATIC_DRAW);
+    this.gl.vertexAttribPointer(0, 2, GL.FLOAT, false, 0, 0);
+    this.gl.enableVertexAttribArray(0);
+
+    this.transform_buffer = this.gl.createBuffer();
+    this.gl.bindBuffer(GL.ARRAY_BUFFER, this.transform_buffer);
+    /* [
+       offset          angle          depth
+      100, 100,    cos(a), sin(a),      2
+    ] */
+    this.gl.vertexAttribPointer(1, 2, GL.FLOAT, false, 20, 0);
+    this.gl.vertexAttribPointer(2, 2, GL.FLOAT, false, 20, 8);
+    this.gl.vertexAttribPointer(3, 1, GL.FLOAT, false, 20, 16);
+
+    this.gl.vertexAttribDivisor(1, 1);
+    this.gl.vertexAttribDivisor(2, 1);
+    this.gl.vertexAttribDivisor(3, 1);
+
+    this.gl.enableVertexAttribArray(1);
+    this.gl.enableVertexAttribArray(2);
+    this.gl.enableVertexAttribArray(3);
+  }
+  size() {
+    this.uniform1f(this.u_size, settings["target_arrow_size"]["value"]);
+  }
+  dist() {
+    this.uniform1f(this.u_dist, settings["target_arrow_dist"]["value"]);
+  }
+  opacity() {
+    this.uniform1f(this.u_opacity, settings["target_arrow_opacity"]["value"] / 100);
+  }
+  draw() {
+    this.use();
+    
+    this.gl.drawArraysInstanced(GL.TRIANGLE_STRIP, 0, 3, this.num);
+  }
+}
+
+/*
+ * TOGGLER
+ */
+
+class Toggler {
+  constructor() {
+    /** @type {function():void} */
+    this._on;
+    /** @type {function():boolean} */
+    this._on_rule = function() { return true; };
+    /** @type {function():void} */
+    this._off;
+    /** @type {function():boolean} */
+    this._off_rule = function() { return true; };
+    /** @type {!Array<!Array<number | boolean>>} */
+    this._states;
+    /** @type {number | boolean} */
+    this._last_state;
+    /** @type {boolean} */
+    this._repeat;
+  }
+  /**
+   * @param {function():void} on
+   * @param {function():void} off
+   * @param {boolean} state
+   * @param {boolean} init_needed
+   * @param {boolean} repeat
+   */
+  toggler_init(on, off, state, init_needed = true, repeat = false) {
+    [this._on, this._off, this._states, this._repeat] = [on, off, [[0, state]], repeat];
+    if(init_needed) {
+      this._last_state = !state;
+      this.toggler_update();
+    } else {
+      this._last_state = state;
+    }
+  }
+  toggler_on(cb) {
+    this._on_rule = cb;
+  }
+  toggler_off(cb) {
+    this._off_rule = cb;
+  }
+  toggler_update() {
+    if(!this._repeat && this._states[0][1] == this._last_state) {
+      return;
+    }
+    this._last_state = this._states[0][1];
+    if(this._last_state) {
+      if(this._on_rule()) {
+        this._on();
+      }
+    } else {
+      if(this._off_rule()) {
+        this._off();
+      }
+    }
+  }
+  /**
+   * @param {number} prio
+   * @param {boolean} state
+   */
+  toggler_mod(prio, state) {
+    const idx = this._states.findIndex(r => r[0] == prio);
+    if(idx == -1) {
+      this._states.push([prio, state]);
+      this._states.sort((a, b) => b[0] - a[0]);
+    } else {
+      this._states[idx][1] = state;
+    }
+    this.toggler_update();
+  }
+  /** @param {number} prio */
+  toggler_del(prio) {
+    const idx = this._states.findIndex(r => r[0] == prio);
+    if(idx == -1) return;
+    this._states.splice(idx, 1);
+    this.toggler_update();
+  }
+  /** @param {number} prio */
+  toggler_check(prio) {
+    if(prio == this.toggler_prio) {
+      return this.toggler_state;
+    }
+    return prio >= this.toggler_prio;
+  }
+  /** @param {number} prio */
+  toggler_toggle(prio) {
+    const idx = this._states.findIndex(r => r[0] == prio);
+    if(idx == -1) return;
+    this._states[idx][1] = !this._states[idx][1];
+    this.toggler_update();
+  }
+  get toggler_prio() {
+    return this._states[0][0];
+  }
+  get toggler_state() {
+    return this._states[0][1];
+  }
+}
+
+/*
+ * MOVEMENT
+ */
+
+class Movement extends Toggler {
+  constructor() {
+    super();
+    this.toggler_init(this.send.bind(this), this.send.bind(this), true, false);
+
+    this.mouse_movement = false;
+    this.mult = 1;
+    this.packet = new Uint8Array(0);
+
+    this.up = 0;
+    this.down = 0;
+    this.left = 0;
+    this.right = 0;
+  }
+  clear() {
+    this.reset();
+    this.packet = new Uint8Array(0);
+  }
+  reset() {
+    this.mouse_movement = false;
+    this.mult = 1;
+  }
+  upd_mult(mult) {
+    this.mult = mult;
+  }
+  get_mult() {
+    return this.mult;
+  }
+  send() {
+    if(!GAME_INIT || !CLIENT.in_game) {
+      return;
+    }
+    if(this.toggler_state) {
+      PACKET_OUT.create_movement_packet(this.mult);
+    } else {
+      PACKET_OUT.create_movement_packet(0);
+    }
+    if(PACKET_OUT.len == this.packet.length) {
+      let ok = 1;
+      for(let i = 0; i < PACKET_OUT.len; ++i) {
+        if(PACKET_OUT.u8[i] != this.packet[i]) {
+          ok = 0;
+          break;
+        }
+      }
+      if(ok) {
+        return;
+      }
+    }
+    SOCKET.send();
+  }
+}
+
+/*
  * MENU
  */
 
-class Menu {
+class Menu extends Toggler {
   constructor() {
+    super();
+
     this.div = /** @type {HTMLDivElement} */ (getElementById("ID_menu"));
+    this.toggler_off(function() {
+      if(this.toggler_prio != 99) {
+        return CLIENT.in_game || CLIENT.spectating;
+      } else {
+        return true;
+      }
+    });
+    this.toggler_init(function() {
+      MOVEMENT.toggler_mod(1, false);
+      this.div.style.display = "block";
+    }.bind(this), function() {
+      this.div.style.display = "none";
+      MOVEMENT.toggler_del(1);
+    }.bind(this), true);
+
     this.name = /** @type {HTMLInputElement} */ (getElementById("ID_name"));
 
     this.select_server = /** @type {HTMLSelectElement} */ (getElementById("ID_select_serv"));
@@ -1134,15 +1437,6 @@ class Menu {
     this.selected_server;
     /** @type {!Array<!Array>} */
     this.servers = window["s"];
-
-    this.picked_server_div = /** @type {HTMLDivElement} */ (getElementById("ID_picked_server_for_you"));
-    this.picked_server_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_picked_server_for_you_tooltip"));
-
-    this.try_map_editor = /** @type {HTMLDivElement} */ (getElementById("ID_try_map_editor"));
-    this.try_map_editor_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_map_editor_tooltip"));
-    getElementById("ID_map_editor_click").onclick = this.map_editor_clicked.bind(this);
-
-    this.petos = /** @type {HTMLHeadingElement} */ (getElementById("ID_press_esc_to_open_settings"));
 
     this.ping = /** @type {HTMLHeadingElement} */ (getElementById("ID_ping"));
     this.ping_update();
@@ -1169,9 +1463,6 @@ class Menu {
       setItem("name", this.value);
     };
 
-    this.visible = false;
-    this.blocked = false;
-
     this.int = -1;
 
     const cached_name = getItem("name");
@@ -1180,12 +1471,12 @@ class Menu {
     }
 
     this.play.onclick = function() {
-      PACKET.create_spawn_packet();
+      PACKET_OUT.create_spawn_packet();
       SOCKET.send();
     };
 
     this.spec.onclick = function() {
-      PACKET.create_spec_packet(0);
+      PACKET_OUT.create_spec_packet(0);
       SOCKET.send();
     };
   }
@@ -1199,43 +1490,8 @@ class Menu {
       });
     }, 5000);
   }
-  map_editor_clicked() {
-    setItem("tume_tooltip", "");
-    this.try_map_editor.style.display = "none";
-  }
   get_name() {
     return new TextEncoder().encode(this.name.value);
-  }
-  block_show() {
-    if(!this.visible) {
-      this.blocked = false;
-      this.show();
-    }
-    this.blocked = true;
-  }
-  block_hide() {
-    if(this.visible) {
-      this.blocked = false;
-      this.hide();
-    }
-    this.blocked = true;
-  }
-  unblock() {
-    this.blocked = false;
-  }
-  show() {
-    if(this.blocked) {
-      return;
-    }
-    this.visible = true;
-    this.div.style.display = "block";
-  }
-  hide() {
-    if(this.blocked) {
-      return;
-    }
-    this.visible = false;
-    this.div.style.display = "none";
   }
   show_name() {
     this.name.style.display = "block";
@@ -1299,16 +1555,6 @@ class Menu {
   ping_update() {
     this.ping.style.display = settings["show_ping"] ? "block" : "none";
   }
-  init_tooltip() {
-    if(getItem("psfy_tooltip") == undefined) {
-      this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
-      this.picked_server_div.style.display = "table";
-    }
-    if(getItem("tume_tooltip") == undefined) {
-      this.try_map_editor_tooltip.innerHTML = "Try out the map editor!<br><br>Submit your maps<br>in our Discord server";
-      this.try_map_editor.style.display = "inline-block";
-    }
-  }
   init_server_list() {
     this.select_server.innerHTML = "";
     /** @type {number} */
@@ -1332,13 +1578,7 @@ class Menu {
       option.innerHTML = server_name[0].toUpperCase() + server_name.substring(1) + ` (${count}/${max})`;
       this.select_server.appendChild(option);
     }
-    this.select_server.onfocus = this.select_server_onfocus.bind(this);
     this.select_server.onchange = this.select_server_onchange.bind(this);
-    this.init_tooltip();
-  }
-  select_server_onfocus() {
-    setItem("psfy_tooltip", "");
-    this.picked_server_div.style.display = "none";
   }
   async select_server_onchange() {
     this.selected_server.disabled = false;
@@ -1346,7 +1586,7 @@ class Menu {
     this.selected_server = this.select_server.selectedOptions[0];
     this.selected_server.disabled = true;
     CLIENT.onconnecting();
-    /** @type {Function} */
+    /** @type {function(string):void} */
     let resolver;
     const promise = new Promise(function(resolve) {
       resolver = resolve;
@@ -1405,17 +1645,18 @@ class Socket {
     this.idx = latency_sock.idx;
 
     this.ws = latency_sock.ws;
-    this.ws.onmessage = function({ data }) {
+    this.ws.onmessage = function(x) {
+      x = new Uint8Array(x.data);
       try {
-        this.message({ data });
+        this.message(x);
       } catch(err) {
-        console.log(PACKET.idx, PACKET.len, err);
-        console.log(Array.from(new Uint8Array(data)).map(r => r.toString(16).padStart(2, "0")).join(" "));
+        console.log(PACKET_IN.idx, PACKET_IN.len, err);
+        console.log(Array.from(x).map(r => r.toString(16).padStart(2, "0")).join(" "));
       }
     }.bind(this);
     this.ws.onclose = this.close.bind(this);
 
-    PACKET.create_init_packet();
+    PACKET_OUT.create_init_packet();
     this.send();
 
     this.open();
@@ -1423,7 +1664,7 @@ class Socket {
   open() {
     this.once = true;
     CHAT.clear();
-    CAMERA.unblock();
+    //CAMERA.unblock();
     PLAYERS.clear();
     BALLS.clear();
     CANVAS.clear();
@@ -1431,19 +1672,19 @@ class Socket {
     MOVEMENT.clear();
     CLIENT.clear();
   }
-  message({ data }) {
-    PACKET.set(new Uint8Array(data));
-    if(PACKET.len == 0) {
+  message(x) {
+    PACKET_IN.set(x);
+    if(PACKET_IN.len == 0) {
       this.onping();
       return;
     }
-    const id = PACKET.byte() - 1;
+    const id = PACKET_IN.byte();
     let updated_id = false;
     if(id != CLIENT.id) {
       CLIENT.id = id;
       updated_id = true;
     }
-    const info = PACKET.byte();
+    const info = PACKET_IN.byte();
     const spectating = info & 0x01;
     if(spectating && !CLIENT.spectating) {
       CLIENT.spectating = true;
@@ -1461,25 +1702,29 @@ class Socket {
       CLIENT.ondeath();
     }
     MENU.can_spectate_state(info & 0x04);
+    const reset_camera = info & 0x08;
     this.updates[0] = this.updates[1];
     this.updates[1] = performance.now();
     PLAYERS.ip();
     CAMERA.ip();
-    const area_id = PACKET.byte();
+    const area_id = PACKET_IN.byte();
+    let area_updated;
     if(area_id != BACKGROUND.area_id) {
       BACKGROUND.update(area_id);
       BALLS.clear();
+      area_updated = true;
     } else {
       BALLS.ip();
+      area_updated = false;
     }
-    while(PACKET.idx < PACKET.len) {
-      switch(PACKET.byte()) {
+    while(PACKET_IN.idx < PACKET_IN.len) {
+      switch(PACKET_IN.byte()) {
         case CONSTS.server_opcode_players: {
           PLAYERS.parse();
           break;
         }
         case CONSTS.server_opcode_balls: {
-          BALLS.parse();
+          BALLS.parse(area_updated);
           break;
         }
         case CONSTS.server_opcode_chat: {
@@ -1489,17 +1734,14 @@ class Socket {
         default: throw new Error();
       }
     }
-    if(PACKET.idx > PACKET.len) {
+    if(PACKET_IN.idx > PACKET_IN.len) {
       throw new Error();
     }
-    if(CLIENT.id == -1) {
-      CAMERA.instant_move(BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
-    } else if(PLAYERS.reset_camera) {
-      CAMERA.instant_move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
-
-      PLAYERS.reset_camera = false;
-    } else if(updated_id) {
-      CAMERA.move(PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
+    if(CLIENT.id == 255) {
+      CAMERA.instant_move(0, BACKGROUND.width * 0.5, BACKGROUND.height * 0.5);
+    } else if(reset_camera || updated_id) {
+      PLAYERS.ip_one(CLIENT.id);
+      CAMERA.instant_move(0, PLAYERS.arr[CLIENT.id].x2, PLAYERS.arr[CLIENT.id].y2);
     }
     if(this.updates[0] != 0 && !this.game_init) {
       this.game_init = true;
@@ -1544,7 +1786,7 @@ class Socket {
     this.ws.close();
   }
   send() {
-    this.ws.send(PACKET.buffer.slice(0, PACKET.len));
+    this.ws.send(PACKET_OUT.buffer.slice(0, PACKET_OUT.len));
   }
 }
 
@@ -1555,19 +1797,17 @@ class Socket {
 class Latency_socket extends Socket {
   /**
    * @param {string} ip
-   * @param {Function} resolver
+   * @param {function(string):void} resolver
    * @param {number} pings_to_finish
    */
   constructor(ip, resolver, pings_to_finish=8) {
     super();
 
     this.packets = 0;
-    /** @type {number} */
-    this.pings_to_finish = pings_to_finish;
-    /** @type {Function} */
-    this.resolver = resolver;
-    /** @type {string} */
     this.ip = ip;
+    this.resolver = resolver;
+    this.pings_to_finish = pings_to_finish;
+    this.code = 0;
 
     this.connect();
   }
@@ -1587,18 +1827,23 @@ class Latency_socket extends Socket {
       this.resolver(this.ws.url);
     }
   }
-  close() {
-    this.connect();
+  /** @param {CloseEvent} ev */
+  close(ev) {
+    this.code = ev.code;
+    if(this.code != 4000) {
+      setTimeout(this.connect.bind(this), 100);
+    }
   }
 }
 
 /*
- * PACKET
+ * PACKET, PACKET IN, PACKET_IN, PACKET OUT, PACKET_OUT
  */
 
 class Packet {
-  constructor() {
-    this.buffer = new ArrayBuffer(1048576);
+  /** @param {number} size */
+  constructor(size) {
+    this.buffer = new ArrayBuffer(size);
     this.u8 = new Uint8Array(this.buffer);
     this.view = new DataView(this.buffer);
     this.len = 0;
@@ -1634,11 +1879,12 @@ class Packet {
     return ret;
   }
   create_init_packet() {
+    this.u8[0] = CONSTS.client_opcode_init;
     if(token.length == 0) {
       this.len = 1;
     } else {
-      this.u8.set(token);
-      this.len = token.length;
+      this.u8.set(token, 1);
+      this.len = token.length + 1;
     }
   }
   maybe_send_name() {
@@ -1653,7 +1899,8 @@ class Packet {
     this.u8[0] = CONSTS.client_opcode_spawn;
     this.len = 1;
   }
-  create_movement_packet() {
+  /** @param {number} mult */
+  create_movement_packet(mult) {
     let angle = 0;
     let distance = 0;
     if(!MOVEMENT.mouse_movement) {
@@ -1670,12 +1917,14 @@ class Packet {
     this.u8[0] = CONSTS.client_opcode_movement;
     this.view.setFloat32(1, angle, true);
     if(distance >= 160 * WINDOW.devicePixelRatio) {
-      this.u8[5] = 255 * MOVEMENT.mult;
+      this.u8[5] = 255;
     } else {
-      this.u8[5] = distance * 1.59375 / WINDOW.devicePixelRatio * MOVEMENT.mult;
+      this.u8[5] = distance * 1.59375 / WINDOW.devicePixelRatio;
     }
+    this.u8[5] *= mult;
     this.len = 6;
   }
+  /** @param {!Uint8Array} chat */
   create_chat_packet(chat) {
     this.maybe_send_name();
     this.u8[0] = CONSTS.client_opcode_chat;
@@ -1737,27 +1986,29 @@ class Death_arrow {
  * CHAT
  */
 
-class Chat {
+class Chat extends Toggler {
   constructor() {
+    super();
+
+    this.messages = /** @type {HTMLDivElement} */ (getElementById("ID_messages"));
+    this.send = /** @type {HTMLDivElement}*/ (getElementById("ID_send"));
+    this.sendmsg = /** @type {HTMLInputElement}*/ (getElementById("ID_sendmsg"));
+
+    this.toggler_init(function() {
+      this.messages.style.display = "flex";
+      this.send.style.display = "flex";
+    }.bind(this), function() {
+      this.messages.style.display = "none";
+      this.send.style.display = "none";
+    }.bind(this), true);
+
     /** @type {!Array<number>} */
     this.timestamps = new Array(CONSTS.max_chat_timestamps).fill(0);
     this.timestamps_idx = 0;
 
-    this.div = /** @type {HTMLDivElement} */ (getElementById("ID_chat"));
-    this.messages = /** @type {HTMLDivElement} */ (getElementById("ID_messages"));
-    this.sendmsg = /** @type {HTMLInputElement}*/ (getElementById("ID_sendmsg"));
-
-    this.chat_fix = /** @type {HTMLDivElement} */ (getElementById("ID_chat_fix"));
-    this.try_typing_help_div = /** @type {HTMLDivElement} */ (getElementById("ID_try_typing_help"));
-    this.try_typing_help_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_typing_help_tooltip"));
-    this.init_tooltip();
-
     this.limit = limit_input_to(CONSTS.max_chat_message_len);
 
     this.len = 0;
-
-    this.visible = false;
-    this.blocked = false;
 
     this.old = "";
     this.timer = -1;
@@ -1778,9 +2029,7 @@ class Chat {
             this.new(null, "/spectate /s => start/stop spectating", true);
             this.new(null, ">", true);
             this.post_send();
-            setItem("tth_tooltip", "");
-            this.try_typing_help_div.style.display = "none";
-            this.chat_fix.style["width"] = "100%";
+            TOOLTIPS.chat();
             return;
           }
           case "/c":
@@ -1790,11 +2039,18 @@ class Chat {
             this.post_send();
             return;
           }
+          case "/r":
+          case "/respawn": {
+            PACKET_OUT.create_spawn_packet();
+            SOCKET.send();
+            this.post_send();
+            return;
+          }
           default: break;
         }
         const encoded = new TextEncoder().encode(val);
         if(encoded.length > 0) {
-          PACKET.create_chat_packet(encoded);
+          PACKET_OUT.create_chat_packet(encoded);
           SOCKET.send();
           /* Init */
           this.timestamps[this.timestamps_idx] = new Date().getTime();
@@ -1808,6 +2064,8 @@ class Chat {
           } else {
             this.post_send();
           }
+        } else {
+          this.post_send();
         }
       }
     }.bind(this);
@@ -1822,9 +2080,6 @@ class Chat {
 
     this.messages.innerHTML = "";
     this.len = 0;
-
-    this.visible = false;
-    this.blocked = false;
 
     this.old = "Press enter to chat";
     this.total_message_length = 0;
@@ -1845,37 +2100,6 @@ class Chat {
     }
     this.sendmsg.disabled = false;
     this.sendmsg.placeholder = this.old;
-  }
-  block_show() {
-    if(!this.visible) {
-      this.blocked = false;
-      this.show();
-    }
-    this.blocked = true;
-  }
-  block_hide() {
-    if(this.visible) {
-      this.blocked = false;
-      this.hide();
-    }
-    this.blocked = true;
-  }
-  unblock() {
-    this.blocked = false;
-  }
-  show() {
-    if(this.blocked || !settings["chat_on"]) {
-      return;
-    }
-    this.visible = true;
-    this.div.style.display = "block";
-  }
-  hide() {
-    if(this.blocked) {
-      return;
-    }
-    this.visible = false;
-    this.div.style.display = "none";
   }
   focus(e) {
     this.sendmsg.focus();
@@ -1902,22 +2126,22 @@ class Chat {
   font_update() {
     this.messages.style["font-size"] = settings["chat_text_scale"]["value"] + "em";
   }
-  init_tooltip() {
-    if(getItem("tth_tooltip") == undefined) {
-      this.try_typing_help_tooltip.innerHTML = "Try \"/help\"";
-      this.try_typing_help_div.style.display = "inline-block";
-      this.chat_fix.style["width"] = "130%";
+  settings_toggle() {
+    if(settings["chat_on"]) {
+      this.toggler_mod(0, true);
+    } else {
+      this.toggler_mod(0, false);
     }
   }
   parse() {
-    const count = PACKET.byte();
+    const count = PACKET_IN.byte();
     for(let i = 0; i < count; ++i) {
-      const name_len = PACKET.byte();
-      const name = new TextDecoder().decode(PACKET.u8.subarray(PACKET.idx, PACKET.idx + name_len));
-      PACKET.idx += name_len;
-      const msg_len = PACKET.byte();
-      this.new(name, new TextDecoder().decode(PACKET.u8.subarray(PACKET.idx, PACKET.idx + msg_len)));
-      PACKET.idx += msg_len;
+      const name_len = PACKET_IN.byte();
+      const name = new TextDecoder().decode(PACKET_IN.u8.subarray(PACKET_IN.idx, PACKET_IN.idx + name_len));
+      PACKET_IN.idx += name_len;
+      const msg_len = PACKET_IN.byte();
+      this.new(name, new TextDecoder().decode(PACKET_IN.u8.subarray(PACKET_IN.idx, PACKET_IN.idx + msg_len)));
+      PACKET_IN.idx += msg_len;
     }
   }
 }
@@ -1926,55 +2150,41 @@ class Chat {
  * CAMERA
  */
 
-class Camera {
+class Camera extends Toggler {
   constructor() {
+    super();
+    this.toggler_init(function(){}, function(){}, true);
+
     this.x = 0;
     this.y = 0;
     this.x1 = 0;
     this.y1 = 0;
     this.x2 = 0;
     this.y2 = 0;
-
-    this.blocked = false;
   }
-  block() {
-    this.blocked = true;
-  }
-  unblock() {
-    this.blocked = false;
-  }
-  move(x, y) {
-    if(this.blocked) {
-      return;
-    }
-    this.move_f(x, y);
-  }
-  instant_move(x, y) {
-    if(this.blocked) {
-      return;
-    }
-    this.move_f(x, y);
-    this.ip();
-  }
-  move_x(x) {
-    if(this.blocked) {
-      return;
-    }
-    this.x2 = x;
-  }
-  move_y(y) {
-    if(this.blocked) {
-      return;
-    }
-    this.y2 = y;
-  }
-  move_f(x, y) {
+  move(prio, x, y) {
+    if(!this.toggler_check(prio)) return;
     this.x2 = x;
     this.y2 = y;
   }
-  move_f_by(x, y, by) {
+  move_x(prio, x) {
+    if(!this.toggler_check(prio)) return;
+    this.x2 = x;
+  }
+  move_y(prio, y) {
+    if(!this.toggler_check(prio)) return;
+    this.y2 = y;
+  }
+  move_by(prio, x, y, by) {
+    if(!this.toggler_check(prio)) return;
     this.x2 = lerp(this.x2, x, by);
     this.y2 = lerp(this.y2, y, by);
+  }
+  instant_move(prio, x, y) {
+    if(!this.toggler_check(prio)) return;
+    this.x2 = x;
+    this.y2 = y;
+    this.ip();
   }
   ip() {
     this.x1 = this.x2;
@@ -2008,8 +2218,6 @@ class Players {
      */
     this.arr = new Array(CONSTS.max_players);
     this.len = 0;
-
-    this.reset_camera = false;
   }
   clear() {
     for(let i = 0; this.len; ++i) {
@@ -2018,8 +2226,6 @@ class Players {
       delete this.arr[i];
       --this.len;
     }
-
-    this.reset_camera = false;
   }
   ip() {
     let to_go = this.len;
@@ -2037,32 +2243,32 @@ class Players {
     this.arr[i].r1 = this.arr[i].r2;
   }
   parse() {
-    const count = PACKET.byte();
+    const count = PACKET_IN.byte();
     for(let i = 0; i < count; ++i) {
-      const id = PACKET.byte();
+      const id = PACKET_IN.byte();
       if(this.arr[id] == undefined) {
-        const x2 = PACKET.float();
-        const y2 = PACKET.float();
-        const r2 = PACKET.float();
-        const name_len = PACKET.byte();
-        const name = PACKET.string(name_len);
-        const dead = PACKET.byte();
+        const x2 = PACKET_IN.float();
+        const y2 = PACKET_IN.float();
+        const r2 = PACKET_IN.float();
+        const name_len = PACKET_IN.byte();
+        const name = PACKET_IN.string(name_len);
+        const dead = PACKET_IN.byte();
         let death_counter = 0;
         if(dead) {
-          death_counter = PACKET.byte();
+          death_counter = PACKET_IN.byte();
         }
-        const chat_len = PACKET.byte();
+        const chat_len = PACKET_IN.byte();
         if(chat_len > 0) {
-          CHAT.new(name, PACKET.string(chat_len));
+          CHAT.new(name, PACKET_IN.string(chat_len));
         }
         const name_tex = CANVAS.t_gl.create_cacheless(name, r2 * 0.666, "#00000080");
         this.arr[id] = { x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, name, dead, death_counter, name_tex, name_y: 0 };
         if(CLIENT.id == id) {
-          CAMERA.move(x2, y2);
+          CAMERA.move(0, x2, y2);
         }
         ++this.len;
       } else {
-        let field = PACKET.byte();
+        let field = PACKET_IN.byte();
         if(field == 0) {
           if(this.arr[id] == undefined) {
             throw new Error("trying to delete an unknown player entity id " + id);
@@ -2075,43 +2281,39 @@ class Players {
         do {
           switch(field) {
             case 1: {
-              this.arr[id].x2 = PACKET.float();
+              this.arr[id].x2 = PACKET_IN.float();
               if(CLIENT.id == id) {
-                CAMERA.move_x(this.arr[id].x2);
+                CAMERA.move_x(0, this.arr[id].x2);
               }
               break;
             }
             case 2: {
-              this.arr[id].y2 = PACKET.float();
+              this.arr[id].y2 = PACKET_IN.float();
               if(CLIENT.id == id) {
-                CAMERA.move_y(this.arr[id].y2);
+                CAMERA.move_y(0, this.arr[id].y2);
               }
               break;
             }
             case 3: {
-              this.arr[id].r2 = PACKET.float();
+              this.arr[id].r2 = PACKET_IN.float();
               break;
             }
             case 4: {
-              this.arr[id].dead = PACKET.byte();
+              this.arr[id].dead = PACKET_IN.byte();
               if(this.arr[id].dead) {
-                this.arr[id].death_counter = PACKET.byte();
+                this.arr[id].death_counter = PACKET_IN.byte();
               }
               break;
             }
             case 5: {
-              const chat_len = PACKET.byte();
-              CHAT.new(this.arr[id].name, PACKET.string(chat_len));
+              const chat_len = PACKET_IN.byte();
+              CHAT.new(this.arr[id].name, PACKET_IN.string(chat_len));
               break;
             }
             default: throw new Error();
           }
-          field = PACKET.byte();
+          field = PACKET_IN.byte();
         } while(field > 0 && field < 16);
-        if(field == 128) {
-          this.ip_one(id);
-          this.reset_camera = id == CLIENT.id;
-        }
       }
     }
   }
@@ -2134,7 +2336,8 @@ class Balls {
      *         x2: number,
      *         y2: number,
      *         r2: number,
-     *         type: number
+     *         type: number,
+     *         targets: boolean
      *       }>}
      */
     this.arr = new Array(CONSTS.max_balls);
@@ -2151,22 +2354,31 @@ class Balls {
       this.arr[i].x1 = this.arr[i].x2;
       this.arr[i].y1 = this.arr[i].y2;
       this.arr[i].r1 = this.arr[i].r2;
+      this.arr[i].targets = false;
       --to_go;
     }
   }
-  parse() {
-    const count = PACKET.short();
+  /** @param {boolean} area_changed */
+  parse(area_changed) {
+    const count = PACKET_IN.short();
     for(let i = 0; i < count; ++i) {
-      const id = PACKET.short();
+      let id;
+      if(area_changed && i < BACKGROUND.area.const_ball_len) {
+        id = i + 1;
+      } else {
+        id = PACKET_IN.short();
+      }
       if(this.arr[id] == undefined) {
-        const type = PACKET.byte() - 1;
-        const x2 = PACKET.float();
-        const y2 = PACKET.float();
-        const r2 = PACKET.float();
-        this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2 };
+        const type = PACKET_IN.byte() - 1;
+        if(type > 7) throw new Error("ball type out of bounds");
+        const x2 = PACKET_IN.float();
+        const y2 = PACKET_IN.float();
+        const r2 = PACKET_IN.float();
+        const flags = PACKET_IN.byte();
+        this.arr[id] = { type, x: 0, y: 0, r: 0, x1: x2, x2, y1: y2, y2, r1: r2, r2, targets: !!(flags & 128) };
         ++this.len;
       } else {
-        let field = PACKET.byte();
+        let field = PACKET_IN.byte();
         if(field == 0) {
           if(this.arr[id] == undefined) {
             throw new Error("trying to delete an unknown ball entity id " + id);
@@ -2178,21 +2390,24 @@ class Balls {
         do {
           switch(field) {
             case 1: {
-              this.arr[id].x2 = PACKET.float();
+              this.arr[id].x2 = PACKET_IN.float();
               break;
             }
             case 2: {
-              this.arr[id].y2 = PACKET.float();
+              this.arr[id].y2 = PACKET_IN.float();
               break;
             }
             case 3: {
-              this.arr[id].r2 = PACKET.float();
+              this.arr[id].r2 = PACKET_IN.float();
               break;
             }
             default: throw new Error();
           }
-          field = PACKET.byte();
-        } while(field);
+          field = PACKET_IN.byte();
+        } while(field > 0 && field < 16);
+        if(field & 128) {
+          this.arr[id].targets = true;
+        }
       }
     }
   }
@@ -2248,10 +2463,9 @@ class Tutorial {
         this.old_fov = CANVAS.target_fov;
         CHAT.disable("Waiting for the tutorial to finish...");
         CANVAS.target_fov = CONSTS.default_fov;
-        CAMERA.block();
-        SETTINGS.block_hide();
-        MOVEMENT.stop();
-        MOVEMENT.block();
+        CAMERA.toggler_mod(1, false);
+        SETTINGS.toggler_mod(1, false);
+        MOVEMENT.toggler_mod(4, false);
       }
     } else if(this.can_progress) {
       this.can_progress = false;
@@ -2265,10 +2479,9 @@ class Tutorial {
   stop() {
     this.stage = 0;
     CHAT.enable();
-    CAMERA.unblock();
-    SETTINGS.unblock();
-    MOVEMENT.unblock();
-    MOVEMENT.start();
+    CAMERA.toggler_del(1);
+    SETTINGS.toggler_del(1);
+    MOVEMENT.toggler_del(4);
   }
   /**
    * @param {number} by
@@ -2320,14 +2533,14 @@ class Tutorial {
       }
     }
     if(this.stage != 0) {
-      CAMERA.move_f_by(_x, _y, 0.2 * by);
+      CAMERA.move_by(2, _x, _y, 0.2 * by);
     }
     if(abs(CAMERA.x - _x) <= 10 * WINDOW.devicePixelRatio && abs(CAMERA.y - _y) <= 10 * WINDOW.devicePixelRatio) {
       this.can_progress = 1;
     }
     return { _x, _y };
   }
-  post({_x, _y }) {
+  post({ _x, _y }) {
     const c = "#f48";
     switch(this.stage) {
       case 0: {
@@ -2484,251 +2697,6 @@ class Tutorial {
 }
 
 /*
- * SETTINGS
- */
-
-class Settings {
-  constructor() {
-    this.div = getElementById("ID_settings_container");
-    this.insert = getElementById("ID_settings");
-
-    this.visible = false;
-    this.blocked = false;
-
-    /**
-     * @type {Element}
-     */
-    this.table = null;
-
-    this.init();
-  }
-  block_show() {
-    if(!this.visible) {
-      this.blocked = false;
-      this.show();
-    }
-    this.blocked = true;
-  }
-  block_hide() {
-    if(this.visible) {
-      this.blocked = false;
-      this.hide();
-    }
-    this.blocked = true;
-  }
-  unblock() {
-    this.blocked = false;
-  }
-  show() {
-    if(this.blocked) {
-      return;
-    }
-    this.visible = true;
-    this.div.style.display = "block";
-    MOVEMENT.stop();
-    MOVEMENT.block();
-  }
-  hide() {
-    if(this.blocked) {
-      return;
-    }
-    this.visible = false;
-    this.div.style.display = "none";
-    MOVEMENT.unblock();
-    MOVEMENT.start();
-  }
-  show_el(el) {
-    this.insert.appendChild(el);
-  }
-  add(left, right) {
-    const tr = /** @type {HTMLTableRowElement} */ (createElement("tr"));
-    let td = /** @type {HTMLTableCellElement} */ (createElement("td"));
-    td.appendChild(left);
-    tr.appendChild(td);
-    td = /** @type {HTMLTableCellElement} */ (createElement("td"));
-    td.appendChild(right);
-    right.onchange = save_settings;
-    tr.appendChild(td);
-    this.table.appendChild(tr);
-  }
-  end() {
-    if(this.table != null) {
-      this.show_el(this.table);
-      this.table = null;
-    }
-  }
-  new(name) {
-    this.end();
-    this.show_el(this.header(name));
-    this.table = /** @type {HTMLTableElement} */ (createElement("table"));
-  }
-  _create_h(which, content) {
-    const h = /** @type {HTMLHeadingElement} */ (createElement(which));
-    h.innerHTML = content;
-    return h;
-  }
-  header(content) {
-    return this._create_h("h1", content);
-  }
-  text(content) {
-    return this._create_h("h3", content);
-  }
-  comment(content) {
-    return this._create_h("h5", content);
-  }
-  switch(name, cb=function(a){}) {
-    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
-    settings[name] = !settings[name];
-    let first = true;
-    btn.onclick = function() {
-      settings[name] = !settings[name];
-      if(settings[name] == true) {
-        btn.innerHTML = "ON";
-        btn.style["background-color"] = "#23c552";
-      } else {
-        btn.innerHTML = "OFF";
-        btn.style["background-color"] = "#f84f31";
-      }
-      save_settings();
-      if(first) {
-        first = false;
-      } else {
-        cb(settings[name]);
-      }
-    };
-    btn.onclick();
-    return btn;
-  }
-  list(name) {
-    const select = /** @type {HTMLSelectElement} */ (createElement("select"));
-    for(let option of settings[name]["options"]) {
-      const opt = /** @type {HTMLOptionElement} */ (createElement("option"));
-      opt.value = option;
-      if(option == settings[name]["selected"]) {
-        opt.selected = true;
-      }
-      opt.innerHTML = option;
-      select.appendChild(opt);
-    }
-    select.onchange = save_settings;
-    return select;
-  }
-  keybind(name, cb=function(){}) {
-    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
-    btn.innerHTML = keybinds[name];
-    btn.onclick = async function() {
-      btn.innerHTML = "...";
-      const key = await KEY_PROBER.probe();
-      btn.innerHTML = key;
-      keybinds[name] = key;
-      save_keybinds();
-      cb();
-    };
-    btn.style.color = "#000";
-    return btn;
-  }
-  slider(name, suffix="", cb=function(){}) {
-    const div = /** @type {HTMLDivElement} */ (createElement("div"));
-    div.className = "input";
-    const input = /** @type {HTMLInputElement} */ (createElement("input"));
-    input.type = "range";
-    input.min = settings[name]["min"];
-    input.max = settings[name]["max"];
-    input.step = settings[name]["step"];
-    input.value = settings[name]["value"];
-    input.oninput = function() {
-      input.nextElementSibling.innerHTML = input.value + suffix;
-      settings[name]["value"] = input.valueAsNumber;
-      cb();
-    };
-    input.onchange = save_settings;
-    div.appendChild(input);
-    div.appendChild(this.text(input.value + suffix));
-    return div;
-  }
-  button(name, cb) {
-    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
-    btn.innerHTML = name;
-    btn.onclick = cb;
-    return btn;
-  }
-  init() {
-    this.insert.innerHTML = "";
-    this.new("CHAT");
-    this.add(this.text("Show chat"), this.switch("chat_on", function(visible) {
-      if(visible) {
-        CHAT.show();
-      } else {
-        CHAT.hide();
-      }
-    }));
-    this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", CHAT.update.bind(CHAT)));
-    this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", CHAT.font_update.bind(CHAT)));
-
-    this.new("MENU");
-    this.add(this.text("Show latency"), this.switch("show_ping", MENU.ping_update.bind(MENU)));
-
-    this.new("GAME");
-    TUTORIAL.btn = this.switch("show_tutorial");
-    this.add(this.text("Enable tutorial"), TUTORIAL.btn);
-    this.add(this.text("Slow movement speed"), this.slider("slowwalk_speed", "%"));
-
-    this.new("VISUALS");
-    this.add(this.text("Default FOV"), this.slider("fov"));
-    this.add(this.text("Draw balls' fill"), this.switch("draw_ball_fill"));
-    this.add(this.text("Draw balls' stroke"), this.switch("draw_ball_stroke"));
-    this.add(this.text("Draw stroke-only balls with brighter color"), this.switch("draw_ball_stroke_bright"));
-    this.add(this.text("Balls' stroke radius percentage"), this.slider("ball_stroke", "%"));
-    this.add(this.text("Draw players' fill"), this.switch("draw_player_fill"));
-    this.add(this.text("Draw players' stroke"), this.switch("draw_player_stroke"));
-    this.add(this.text("Draw stroke-only players with brighter color"), this.switch("draw_player_stroke_bright"));
-    this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
-    this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
-    this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
-    this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", DEATH_ARROW.init.bind(DEATH_ARROW)));
-
-    this.new("KEYBINDS");
-    this.show_el(this.comment("To change, click a button on the right side and then press the key you want to assign to it."));
-    this.add(this.text("Settings"), this.keybind("settings"));
-    this.add(this.text("Move up"), this.keybind("up"));
-    this.add(this.text("Move left"), this.keybind("left"));
-    this.add(this.text("Move down"), this.keybind("down"));
-    this.add(this.text("Move right"), this.keybind("right"));
-    this.add(this.text("Move slowly"), this.keybind("slowwalk"));
-    this.add(this.text("Spectate the previous player"), this.keybind("spec_prev", function() {
-      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
-    }));
-    this.add(this.text("Spectate the next player"), this.keybind("spec_next", function() {
-      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
-    }));
-    /*this.add(this.text("Map mode"), this.keybind("map", function() {
-      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_map_help);
-    }));*/
-
-    this.new("RESET");
-    this.add(this.text("Reset settings"), this.button("RESET", function() {
-      settings = JSON.parse(JSON.stringify(default_settings));
-      save_settings();
-      this.init();
-    }.bind(this)));
-    this.add(this.text("Reset keybinds"), this.button("RESET", function() {
-      keybinds = /** @type {Object<string, string>} */ (JSON.parse(JSON.stringify(default_keybinds)));
-      save_keybinds();
-      this.init();
-    }.bind(this)));
-    this.add(this.text("Reset all tooltips"), this.button("RESET", function() {
-      removeItem("psfy_tooltip");
-      removeItem("tume_tooltip");
-      MENU.init_tooltip();
-      removeItem("tth_tooltip");
-      CHAT.init_tooltip();
-    }));
-
-    this.end();
-  }
-}
-
-/*
  * CANVAS
  */
 
@@ -2739,6 +2707,7 @@ class Canvas {
     this.c_gl = new Circle_WebGL(this.gl);
     this.t_gl = new Tex_WebGL(this.gl);
     this.m_gl = new Minimap_WebGL(this.gl);
+    this.a_gl = new Arrow_WebGL(this.gl);
 
     /** @type {number} */
     this.fov = settings["fov"]["value"];
@@ -2779,12 +2748,12 @@ class Canvas {
     MOVEMENT.send();
   }
   start_drawing() {
-    this.animation = window.requestAnimationFrame(this.draw.bind(this));
+    this.animation = requestAnimationFrame(this.draw.bind(this));
   }
   draw(when) {
     this.draw_at = min(max(this.draw_at, SOCKET.updates[0]), SOCKET.updates[1]);
     const old = this.fov;
-    this.fov = +lerp(this.fov, this.target_fov, 0.1).toPrecision(5);
+    this.fov = +lerp(this.fov, this.target_fov, 0.1).toFixed(5);
     if(this.fov != old) {
       MOVEMENT.send();
     }
@@ -2796,9 +2765,8 @@ class Canvas {
     }
     this.draw_at += when - this.last_draw_at;
     this.last_draw_at = when;
-    if(settings["show_ping"]) {
-      MENU.ping.innerHTML = SOCKET.cached_ping.toFixed(1) + "ms";
-    }
+    MENU.ping.innerHTML = SOCKET.cached_ping.toFixed(1) + "ms";
+
 
     WebGL.pre_draw(this.gl);
     const ret = TUTORIAL.pre(by);
@@ -2807,6 +2775,9 @@ class Canvas {
     BACKGROUND.draw();
     this.c_gl.matrix = BACKGROUND.base_matrix;
     this.t_gl.matrix = BACKGROUND.base_matrix;
+    this.a_gl.matrix = BACKGROUND.base_matrix;
+
+
     let idx = 0;
     let to_go = BALLS.len;
     for(let i = 0; to_go; ++i) {
@@ -2833,6 +2804,8 @@ class Canvas {
       settings["ball_stroke"]["value"] / 100,
       settings["draw_ball_stroke_bright"]
     );
+
+
     idx = 0;
     to_go = PLAYERS.len;
     for(let i = 0; to_go; ++i) {
@@ -2849,7 +2822,7 @@ class Canvas {
       player.r = lerp(player.r1, player.r2, by);
       view.setFloat32(idx, player.r, true);
       idx += 4;
-      view.setUint32(idx, 0xededf0ff);
+      view.setUint32(idx, 0x4169e1ff);
       idx += 4;
     }
     this.c_gl.set(buffer.slice(0, idx), idx >> 4);
@@ -2859,6 +2832,7 @@ class Canvas {
       settings["player_stroke"]["value"] / 100,
       settings["draw_player_stroke_bright"]
     );
+
 
     to_go = PLAYERS.len;
     for(let i = 0; to_go; ++i) {
@@ -2874,7 +2848,42 @@ class Canvas {
       }
       if(player.dead) {
         this.t_gl.draw_player_death_counter(player.death_counter, player.x, player.y, player.r);
-        if(settings["draw_death_arrow"]) {
+      }
+    }
+    this.t_gl.finish();
+
+    
+    if(settings["show_target_arrows"]) {
+      idx = 0;
+      to_go = BALLS.len;
+      for(let i = 0; to_go; ++i) {
+        const ball = BALLS.arr[i];
+        if(ball == undefined) continue;
+        --to_go;
+
+        if(!ball.targets) continue;
+        const angle = Math.atan2(PLAYERS.arr[CLIENT.id].y - ball.y, PLAYERS.arr[CLIENT.id].x - ball.x);
+        const [x, y, out] = get_sticky_position(ball.x, ball.y, 0, false, true, true);
+        view.setFloat32(idx + 0, x, true);
+        view.setFloat32(idx + 4, y, true);
+        view.setFloat32(idx + 8, Math.cos(angle), true);
+        view.setFloat32(idx + 12, Math.sin(angle), true);
+        view.setFloat32(idx + 16, ball.r, true);
+        idx += 20;
+      }
+      this.a_gl.set(buffer.slice(0, idx), idx / 20);
+      this.a_gl.draw();
+    }
+
+
+    if(settings["draw_death_arrow"]) {
+      to_go = PLAYERS.len;
+      for(let i = 0; to_go; ++i) {
+        const player = PLAYERS.arr[i];
+        if(player == undefined) continue;
+        --to_go;
+
+        if(player.dead) {
           const [x, y, out] = get_sticky_position(player.x, player.y, DEATH_ARROW.size * 0.75, true, true, true);
           if(out) {
             const angle = Math.atan2(player.y - y, player.x - x);
@@ -2888,6 +2897,8 @@ class Canvas {
         }
       }
     }
+
+
     TUTORIAL.post(ret);
     this.t_gl.finish();
     /*if(CLIENT.in_game) {
@@ -2904,7 +2915,7 @@ class Canvas {
       this.m_gl.set(BACKGROUND.area.outline_horizontal, BACKGROUND.area.outline_horizontal.length >> 1);
       this.m_gl.draw_horizontal();
     }*/
-    this.animation = window.requestAnimationFrame(this.draw.bind(this));
+    this.animation = requestAnimationFrame(this.draw.bind(this));
   }
 }
 
@@ -2924,6 +2935,7 @@ class Background {
 
     /**
      * @type {!Array<{
+     *         const_ball_len: number,
      *         cell_size: number,
      *         width: number,
      *         height: number,
@@ -3033,7 +3045,10 @@ class Background {
       const w = mem[idx++];
       const h = mem[idx++];
       const cell_size = mem[idx++];
+      const const_ball_len = mem[idx] | (mem[idx + 1] << 8);
+      idx += 2;
       const area = {
+        const_ball_len,
         cell_size,
         width: w * cell_size,
         height: h * cell_size,
@@ -3153,32 +3168,29 @@ class _Window {
       return;
     }
     if(e.code == keybinds["settings"]) {
-      if(SETTINGS.visible) {
-        SETTINGS.hide();
-      } else {
-        SETTINGS.show();
-      }
+      SETTINGS.toggler_toggle(0);
       return;
     }
     if(CLIENT.spectating) {
       switch(e.code) {
+        case "Enter": {
+          CHAT.focus(e);
+          break;
+        }
         case keybinds["spec_prev"]: {
-          PACKET.create_spec_packet(-1);
+          PACKET_OUT.create_spec_packet(-1);
           SOCKET.send();
           break;
         }
         case keybinds["spec_next"]: {
-          PACKET.create_spec_packet(1);
+          PACKET_OUT.create_spec_packet(1);
           SOCKET.send();
           break;
         }
-        /*case keybinds["map"]: {
-          if(!CLIENT.map_mode) {
-            CLIENT.map_mode = true;
-            CLIENT.onmapmodeon();
-          }
+        case keybinds["menu"]: {
+          MENU.toggler_toggle(0);
           break;
-        }*/
+        }
         default: break;
       }
       return;
@@ -3223,13 +3235,10 @@ class _Window {
         }
         break;
       }
-      /*case keybinds["map"]: {
-        if(CLIENT.in_game && !CLIENT.map_mode) {
-          CLIENT.map_mode = true;
-          CLIENT.onmapmodeon();
-        }
+      case keybinds["menu"]: {
+        MENU.toggler_toggle(0);
         break;
-      }*/
+      }
       case "KeyT": {
         TUTORIAL.progress();
         break;
@@ -3277,13 +3286,6 @@ class _Window {
         }
         break;
       }
-      /*case keybinds["map"]: {
-        if(CLIENT.map_mode) {
-          CLIENT.map_mode = false;
-          CLIENT.onmapmodeoff();
-        }
-        break;
-      }*/
       default: break;
     }
   }
@@ -3305,73 +3307,6 @@ class _Window {
     const str = "Are you sure you want to quit?";
     e.returnValue = str;
     return str;
-  }
-}
-
-/*
- * MOVEMENT
- */
-
-class Movement {
-  constructor() {
-    this.mouse_movement = false;
-
-    this.old_mult = 1;
-    this.mult = 1;
-
-    this.blocked = false;
-
-    this.up = 0;
-    this.down = 0;
-    this.left = 0;
-    this.right = 0;
-  }
-  clear() {
-    this.mouse_movement = false;
-    
-    this.old_mult = 1;
-    this.mult = 1;
-
-    this.unblock();
-  }
-  block() {
-    this.blocked = true;
-  }
-  unblock() {
-    this.blocked = false;
-  }
-  stop() {
-    if(this.blocked) {
-      return;
-    }
-    this.old_mult = this.mult;
-    this.mult = 0;
-    this.send();
-  }
-  start() {
-    if(this.blocked) {
-      return;
-    }
-    this.mult = this.old_mult;
-    this.send();
-  }
-  zero() {
-    this.mouse_movement = false;
-  }
-  upd_mult(mult) {
-    if(!this.blocked) {
-      this.mult = mult;
-    }
-    this.old_mult = mult;
-  }
-  get_mult() {
-    return this.old_mult;
-  }
-  send() {
-    if(CLIENT.in_game && !this.blocked) {
-      PACKET.create_movement_packet();
-      SOCKET.send();
-    }
   }
 }
 
@@ -3398,81 +3333,364 @@ class Client {
   onconnecting() {
     status.innerHTML = "Connecting";
     if(this.connected_before) {
-      MENU.show();
+      MENU.toggler_mod(0, true);
       MENU.hide_name();
-      CHAT.show();
       CHAT.disable("Waiting for connection...");
-      SETTINGS.block_hide();
     } else {
       this.connected_before = true;
+
+      MENU.toggler_mod(99, false);
+      CHAT.toggler_mod(99, false);
+      SETTINGS.toggler_mod(99, false);
     }
   }
   onconnected() {
-    MENU.show();
+    MENU.toggler_del(99);
+    CHAT.toggler_del(99);
+    SETTINGS.toggler_del(99);
+
+    MENU.toggler_mod(0, true);
     MENU.show_name();
     status.innerHTML = "";
-    CHAT.show();
-    CHAT.enable();
-    SETTINGS.unblock();
   }
-  ondisconnected() { // done
+  ondisconnected() {
     this.in_game = false;
+    this.spectating = false;
     status.innerHTML = "Disconnected";
-    MENU.show();
+    MENU.toggler_mod(0, true);
     CHAT.disable("You have been disconnected");
     MENU.show_refresh();
-    SETTINGS.block_hide();
+    SETTINGS.toggler_mod(99, false);
   }
-  onserverfull() { // done
+  onserverfull() {
     this.ondisconnected();
     status.innerHTML = "Server is full";
   }
   onspectatestart() {
-    MENU.hide();
+    MENU.toggler_mod(0, false);
     MENU.set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
     MENU.show_general_tooltip();
     MENU.spectating.style.display = "block";
+    MENU.spec.innerHTML = "Stop";
+    MOVEMENT.toggler_mod(3, false);
   }
   onspectatestop() {
-    MENU.show();
+    if(!CLIENT.in_game) {
+      MENU.toggler_mod(0, true);
+    }
     MENU.hide_general_tooltip();
     MENU.spectating.style.display = "none";
-    MOVEMENT.zero();
+    MENU.spec.innerHTML = "Spectate";
+    MOVEMENT.toggler_del(3);
   }
   onspawn() {
-    MENU.hide();
-    PLAYERS.reset_camera = true;
+    MENU.toggler_mod(0, false);
+    MENU.play.innerHTML = "Respawn";
   }
   ondeath() {
-    MENU.show();
+    MENU.toggler_mod(0, true);
+    MENU.play.innerHTML = "Play";
     TUTORIAL.stop();
-    MOVEMENT.zero();
+    MOVEMENT.reset();
   }
   /*onmapmodeon() {
     MENU.set_general_tooltip(CONSTS.general_tooltip_id_map_help);
     MENU.show_general_tooltip();
-    CAMERA.block();
-    MOVEMENT.stop();
-    MOVEMENT.block();
+    CAMERA.toggler_mod(2, false);
+    MOVEMENT.toggler_mod(4, false);
   }*/
   /*onmapmodeoff() {
     MENU.hide_general_tooltip();
-    CAMERA.unblock();
-    MOVEMENT.unblock();
-    MOVEMENT.start();
+    CAMERA.toggler_del(2);
+    MOVEMENT.toggler_del(4);
   }*/
+}
+
+/*
+ * TOOLTIPS
+ */
+
+class Tooltips {
+  constructor() {
+    const _t = getItem("tooltips");
+    this.active = _t ? +_t : (2147483647 >>> 0);
+
+    this.picked_server_div = /** @type {HTMLDivElement} */ (getElementById("ID_picked_server_for_you"));
+    this.picked_server_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_picked_server_for_you_tooltip"));
+    MENU.select_server.onfocus = function() {
+      this.remove(CONSTS.tooltip_picked_server);
+      this.picked_server_div.style.display = "none";
+    }.bind(this);
+
+    this.try_map_editor = /** @type {HTMLDivElement} */ (getElementById("ID_try_map_editor"));
+    this.try_map_editor_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_map_editor_tooltip"));
+    getElementById("ID_map_editor_click").onclick = function() {
+      this.remove(CONSTS.tooltip_try_map_editor);
+      this.try_map_editor.style.display = "none";
+    }.bind(this);
+
+    this.try_typing_help_div = /** @type {HTMLDivElement} */ (getElementById("ID_try_typing_help"));
+    this.try_typing_help_tooltip = /** @type {HTMLHeadingElement} */ (getElementById("ID_try_typing_help_tooltip"));
+    this.chat = function() {
+      this.remove(CONSTS.tooltip_try_help);
+      this.try_typing_help_div.style.display = "none";
+    }.bind(this);
+
+    this.init();
+  }
+  init() {
+    if(this.set(CONSTS.tooltip_picked_server)) {
+      this.picked_server_tooltip.innerHTML = "We picked a server<br>for you automatically.<br><br>You can change it here.";
+      this.picked_server_div.style.display = "table";
+    }
+    if(this.set(CONSTS.tooltip_try_map_editor)) {
+      this.try_map_editor_tooltip.innerHTML = "Try out the map editor!<br><br>Submit your maps<br>in our Discord server";
+      this.try_map_editor.style.display = "inline-block";
+    }
+    if(this.set(CONSTS.tooltip_try_help)) {
+      this.try_typing_help_tooltip.innerHTML = "Try \"/help\"";
+      this.try_typing_help_div.style.display = "inline-block";
+    }
+  }
+  reset() {
+    this.remove(CONSTS.tooltip_picked_server);
+    this.remove(CONSTS.tooltip_try_map_editor);
+    this.remove(CONSTS.tooltip_try_help);
+    this.init();
+  }
+  set(num) {
+    return (this.active & (num >>> 0)) != 0;
+  }
+  remove(num) {
+    this.active &= ~(num >>> 0);
+    setItem("tooltips", this.active.toString());
+  }
+}
+
+/*
+ * SETTINGS
+ */
+
+class Settings extends Toggler {
+  constructor() {
+    super();
+
+    this.div = getElementById("ID_settings_container");
+    this.insert = getElementById("ID_settings");
+    this.toggler_init(function() {
+      MOVEMENT.toggler_mod(2, false);
+      this.div.style.display = "block";
+    }.bind(this), function() {
+      this.div.style.display = "none";
+      MOVEMENT.toggler_del(2);
+    }.bind(this), false);
+
+    /**
+     * @type {Element}
+     */
+    this.table = null;
+
+    this.init();
+  }
+  show_el(el) {
+    this.insert.appendChild(el);
+  }
+  add(left, right) {
+    const tr = /** @type {HTMLTableRowElement} */ (createElement("tr"));
+    let td = /** @type {HTMLTableCellElement} */ (createElement("td"));
+    td.appendChild(left);
+    tr.appendChild(td);
+    td = /** @type {HTMLTableCellElement} */ (createElement("td"));
+    td.appendChild(right);
+    right.onchange = save_settings;
+    tr.appendChild(td);
+    this.table.appendChild(tr);
+  }
+  end() {
+    if(this.table != null) {
+      this.show_el(this.table);
+      this.table = null;
+    }
+  }
+  new(name) {
+    this.end();
+    this.show_el(this.header(name));
+    this.table = /** @type {HTMLTableElement} */ (createElement("table"));
+  }
+  _create_h(which, content) {
+    const h = /** @type {HTMLHeadingElement} */ (createElement(which));
+    h.innerHTML = content;
+    return h;
+  }
+  header(content) {
+    return this._create_h("h1", content);
+  }
+  text(content) {
+    return this._create_h("h3", content);
+  }
+  comment(content) {
+    return this._create_h("h5", content);
+  }
+  switch(name, cb=function(){}) {
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
+    settings[name] = !settings[name];
+    let first = true;
+    btn.onclick = function() {
+      settings[name] = !settings[name];
+      if(settings[name] == true) {
+        btn.innerHTML = "ON";
+        btn.style["background-color"] = "#23c552";
+      } else {
+        btn.innerHTML = "OFF";
+        btn.style["background-color"] = "#f84f31";
+      }
+      save_settings();
+      if(first) {
+        first = false;
+      } else {
+        cb();
+      }
+    };
+    btn.onclick();
+    return btn;
+  }
+  list(name) {
+    const select = /** @type {HTMLSelectElement} */ (createElement("select"));
+    for(let option of settings[name]["options"]) {
+      const opt = /** @type {HTMLOptionElement} */ (createElement("option"));
+      opt.value = option;
+      if(option == settings[name]["selected"]) {
+        opt.selected = true;
+      }
+      opt.innerHTML = option;
+      select.appendChild(opt);
+    }
+    select.onchange = save_settings;
+    return select;
+  }
+  keybind(name, cb=function(){}) {
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
+    btn.innerHTML = keybinds[name];
+    btn.onclick = async function() {
+      btn.innerHTML = "...";
+      const key = await KEY_PROBER.probe();
+      btn.innerHTML = key;
+      keybinds[name] = key;
+      save_keybinds();
+      cb();
+    };
+    btn.style.color = "#000";
+    return btn;
+  }
+  slider(name, suffix="", cb=function(){}) {
+    const div = /** @type {HTMLDivElement} */ (createElement("div"));
+    div.className = "input";
+    const input = /** @type {HTMLInputElement} */ (createElement("input"));
+    input.type = "range";
+    input.min = settings[name]["min"];
+    input.max = settings[name]["max"];
+    input.step = settings[name]["step"];
+    input.value = settings[name]["value"];
+    input.oninput = function() {
+      input.nextElementSibling.innerHTML = input.value + suffix;
+      settings[name]["value"] = input.valueAsNumber;
+      cb();
+    };
+    input.onchange = save_settings;
+    div.appendChild(input);
+    div.appendChild(this.text(input.value + suffix));
+    return div;
+  }
+  button(name, cb) {
+    const btn = /** @type {HTMLButtonElement} */ (createElement("button"));
+    btn.innerHTML = name;
+    btn.onclick = cb;
+    return btn;
+  }
+  init() {
+    this.insert.innerHTML = "";
+    this.new("CHAT");
+    this.add(this.text("Show chat"), this.switch("chat_on", iife(CHAT.settings_toggle.bind(CHAT))));
+    this.add(this.text("Max number of chat messages"), this.slider("max_chat_messages", "", iife(CHAT.update.bind(CHAT))));
+    this.add(this.text("Chat text scale"), this.slider("chat_text_scale", "", iife(CHAT.font_update.bind(CHAT))));
+
+    this.new("MENU");
+    this.add(this.text("Show latency"), this.switch("show_ping", iife(MENU.ping_update.bind(MENU))));
+
+    this.new("GAME");
+    TUTORIAL.btn = this.switch("show_tutorial");
+    this.add(this.text("Enable tutorial"), TUTORIAL.btn);
+    this.add(this.text("Slow movement speed"), this.slider("slowwalk_speed", "%"));
+
+    this.new("VISUALS");
+    this.add(this.text("Default FOV"), this.slider("fov"));
+    this.add(this.text("Draw balls' fill"), this.switch("draw_ball_fill"));
+    this.add(this.text("Draw balls' stroke"), this.switch("draw_ball_stroke"));
+    this.add(this.text("Draw stroke-only balls with brighter color"), this.switch("draw_ball_stroke_bright"));
+    this.add(this.text("Balls' stroke radius percentage"), this.slider("ball_stroke", "%"));
+    this.add(this.text("Draw players' fill"), this.switch("draw_player_fill"));
+    this.add(this.text("Draw players' stroke"), this.switch("draw_player_stroke"));
+    this.add(this.text("Draw stroke-only players with brighter color"), this.switch("draw_player_stroke_bright"));
+    this.add(this.text("Players' stroke radius percentage"), this.slider("player_stroke", "%"));
+    this.add(this.text("Draw players' name"), this.switch("draw_player_name"));
+    this.add(this.text("Draw an arrow towards dead players"), this.switch("draw_death_arrow"));
+    this.add(this.text("Death arrow size"), this.slider("death_arrow_size", "px", iife(DEATH_ARROW.init.bind(DEATH_ARROW))));
+    this.add(this.text("Draw an arrow whenever a ball targets you"), this.switch("show_target_arrows"));
+    this.add(this.text("Target arrow size"), this.slider("target_arrow_size", "", iife(CANVAS.a_gl.size.bind(CANVAS.a_gl))));
+    this.add(this.text("Target arrow distance from the ball"), this.slider("target_arrow_dist", "", iife(CANVAS.a_gl.dist.bind(CANVAS.a_gl))));
+    this.add(this.text("Target arrow opacity"), this.slider("target_arrow_opacity", "%", iife(CANVAS.a_gl.opacity.bind(CANVAS.a_gl))));
+
+    this.new("KEYBINDS");
+    this.show_el(this.comment("To change, click a button on the right side and then press the key you want to assign to it."));
+    this.add(this.text("Settings"), this.keybind("settings"));
+    this.add(this.text("Menu"), this.keybind("menu"));
+    this.add(this.text("Move up"), this.keybind("up"));
+    this.add(this.text("Move left"), this.keybind("left"));
+    this.add(this.text("Move down"), this.keybind("down"));
+    this.add(this.text("Move right"), this.keybind("right"));
+    this.add(this.text("Move slowly"), this.keybind("slowwalk"));
+    this.add(this.text("Spectate the previous player"), this.keybind("spec_prev", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
+    }));
+    this.add(this.text("Spectate the next player"), this.keybind("spec_next", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_spec_help);
+    }));
+    this.add(this.text("Free cam"), this.keybind("freecam"));
+    /*this.add(this.text("Map mode"), this.keybind("map", function() {
+      MENU.maybe_set_general_tooltip(CONSTS.general_tooltip_id_map_help);
+    }));*/
+
+    this.new("RESET");
+    this.add(this.text("Reset settings"), this.button("RESET", function() {
+      settings = JSON.parse(JSON.stringify(default_settings));
+      save_settings();
+      this.init();
+    }.bind(this)));
+    this.add(this.text("Reset keybinds"), this.button("RESET", function() {
+      keybinds = /** @type {Object<string, string>} */ (JSON.parse(JSON.stringify(default_keybinds)));
+      save_keybinds();
+      this.init();
+    }.bind(this)));
+    this.add(this.text("Reset all tooltips"), this.button("RESET", TOOLTIPS.reset.bind(TOOLTIPS)));
+
+    this.end();
+  }
 }
 
 /*
  * INIT
  */
 
+/** @type {Movement} */
+var MOVEMENT;
 /** @type {Menu} */
 var MENU;
 /** @type {Socket} */
 var SOCKET;
 /** @type {Packet} */
-var PACKET;
+var PACKET_IN;
+/** @type {Packet} */
+var PACKET_OUT;
 /** @type {Death_arrow} */
 var DEATH_ARROW;
 /** @type {Chat} */
@@ -3487,26 +3705,28 @@ var BALLS;
 var KEY_PROBER;
 /** @type {Tutorial} */
 var TUTORIAL;
-/** @type {Settings} */
-var SETTINGS;
 /** @type {Canvas} */
 var CANVAS;
 /** @type {Background} */
 var BACKGROUND;
 /** @type {_Window} */
 var WINDOW;
-/** @type {Movement} */
-var MOVEMENT;
 /** @type {Client} */
 var CLIENT;
+/** @type {Tooltips} */
+var TOOLTIPS;
+/** @type {Settings} */
+var SETTINGS;
 
 (async function() {
   const mem = new Uint8Array(await (await fetch("memory.mem", { cache: "force-cache" })).arrayBuffer());
   await document.fonts.ready;
-
+  
+  MOVEMENT = new Movement();
   MENU = new Menu();
   SOCKET = new Socket();
-  PACKET = new Packet();
+  PACKET_IN = new Packet(CONSTS.buffer_size_in);
+  PACKET_OUT = new Packet(CONSTS.buffer_size_out);
   DEATH_ARROW = new Death_arrow();
   CHAT = new Chat();
   CAMERA = new Camera();
@@ -3514,15 +3734,16 @@ var CLIENT;
   BALLS = new Balls();
   KEY_PROBER = new Key_prober();
   TUTORIAL = new Tutorial();
-  SETTINGS = new Settings();
   CANVAS = new Canvas();
   BACKGROUND = new Background();
   WINDOW = new _Window();
-  MOVEMENT = new Movement();
   CLIENT = new Client();
+  TOOLTIPS = new Tooltips();
+  SETTINGS = new Settings();
+
+  GAME_INIT = true;
 
   WINDOW.resize();
-  DEATH_ARROW.init();
   BACKGROUND.parse(mem);
 
   CLIENT.onconnecting();
@@ -3548,17 +3769,28 @@ var CLIENT;
   } else {
     url = ret;
   }
-  if(url == undefined) {
-    status.innerHTML = "Couldn't connect to any server";
-    reload();
-    throw new Error(status.innerHTML);
-  }
   for(const socket of latency_sockets) {
     if(socket.ws.url != url) {
       socket.stop();
     } else {
       SOCKET.takeover(socket);
     }
+  }
+  if(url == undefined) {
+    let ok = 1;
+    for(const socket of latency_sockets) {
+      if(socket.code != 4000) {
+        ok = 0;
+        break;
+      }
+    }
+    if(ok) {
+      status.innerHTML = "Couldn't connect to any server - all servers are full";
+    } else {
+      status.innerHTML = "Couldn't connect to any server";
+    }
+    reload();
+    throw new Error(status.innerHTML);
   }
   MENU.init();
 })();

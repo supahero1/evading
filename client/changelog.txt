@@ -1,23 +1,31 @@
-Last modified: Aug 19 2022
+Last modified: Oct 3 2022
 <br>
 <br>
-* Improved the client
+* Fixed a bug where resetting settings
 <br>
+wouldn't apply the changes in-game
 <br>
-No more updates are due to arrive in the nearest future.
+* Fixed a bug where death arrow would overlap
 <br>
-Minimap is nearly done, but I wasn't able to finish it
+player names in a non-transparent way
 <br>
-in time, so it will not be added anytime soon. Sorry.
+* Many balance changes
 <br>
+* Added a target arrow showing whenever a
 <br>
-Before reporting any problems, please make sure you've seen
+ball targets you, customizable in settings
 <br>
-the tutorial (spawn in & press T). If you have, and you can't
+* Added FlipX and FlipY buttons to the map editor
 <br>
-move with WASD or press SHIFT, go to settings (ESC by default),
+* Menu is now openable from within the game (M by default)
 <br>
-scroll down, and change the keybinds to your liking, then try again.
+* Spectating is now available while in-game
+<br>
+* Map editor now allows up to 16 CTRL+Z (undo) operations
+<br>
+* A wide range of minor improvements
+<br>
+* Upcoming: free cam, new tutorial, and more!
 <br>
 <br>
 Join our Discord server:

@@ -9,7 +9,7 @@ const struct area_info area_003 = {
       .type = ball_sandy,
       .position_type = position_random,
       .r = 10,
-      .speed = 2,
+      .speed = TIME_SCALE(0.5),
       .count = 5,
       .frequency_type = frequency_num_fixed,
       .frequency_num = 1000,
@@ -20,8 +20,9 @@ const struct area_info area_003 = {
         {
           .type = ball_grey,
           .position_type = position_relative,
+          .position_mode = position_precise,
           .r = 3,
-          .speed = 2,
+          .speed = TIME_SCALE(0.5),
           .count = 1,
           .die_on_collision = 1
         },

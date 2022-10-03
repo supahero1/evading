@@ -36,11 +36,6 @@ first:
 
 endif
 
-ifdef SERVER_NAME
-ifdef WEBSITE_NAME
-ifdef SECURE_WEBSITE
-ifdef SECURE_SERVER
-
 .EXPORT_ALL_VARIABLES:
 
 ifeq ($(SECURE_WEBSITE),1)
@@ -64,8 +59,8 @@ prepare:
 	apt install npm nodejs net-tools -y
 	npm i n -g
 	n latest
-	iptables -A INPUT -p tcp --syn --dport 8191 -m connlimit --connlimit-above 1 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
 	echo "y" | ufw enable
+	ufw default reject incoming
 	ufw allow 22
 
 .PHONY: website
@@ -81,22 +76,38 @@ else
 	ufw allow 80
 endif
 	$(MAKE) -C $(DIR_TOP)/website
-	install evading_website_reboot.service /etc/systemd/system/
-	systemctl enable evading_website_reboot
 
 .PHONY: server
 server: prepare
 	$(DIR_TOP)/sed_in
-	ufw allow 80
-	ufw allow 443
+
 	cd /tmp; \
 	git clone https://github.com/supahero1/shnet
 	$(MAKE) -C /tmp/shnet install DEBUG=1
+
+	cd /tmp; \
+	git clone https://github.com/madler/zlib --depth 1 --branch v1.2.11; \
+	cd zlib; \
+	./configure
+	$(MAKE) -C /tmp/zlib
+	$(MAKE) -C /tmp/zlib install
+	
+	cd /tmp; \
+	git clone https://github.com/warmcat/libwebsockets; \
+	cd libwebsockets; \
+	mkdir build; \
+	cd build; \
+	cmake .. -DDISABLE_WERROR=ON; \
+	make -j6; \
+	sudo make install
+
 	cd /usr/local/lib; \
 	ldconfig
-	npm i yarn -g
-	cd $(DIR_TOP)/server; \
-	yarn add uWebSockets.js@uNetworking/uWebSockets.js\#v20.10.0
+	cd /usr/local/lib64; \
+	ldconfig
+
+	ufw allow 80
+	ufw allow 443
 	snap install core
 	snap refresh core
 	snap install --classic certbot
@@ -104,13 +115,9 @@ server: prepare
 	echo "$(SERVER_NAME)" | certbot certonly -m balcerakfranciszek@gmail.com --agree-tos --standalone
 	ufw deny 80
 	ufw deny 443
-	ufw allow 8191
+
+	rm -f /etc/ufw/after.rules
+	cp -f $(DIR_TOP)/after.rules /etc/ufw/after.rules
+	ufw reload
+
 	$(MAKE) -C $(DIR_TOP)/server
-	install evading_server_reboot.service /etc/systemd/system/
-	systemctl enable evading_server_reboot
-
-endif
-endif
-endif
-endif
-

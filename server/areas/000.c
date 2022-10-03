@@ -7,7 +7,7 @@ const struct area_info area_000 = {
   (struct ball_info[]) {
     {
       .type = ball_grey,
-      .position_type = position_tile_random_in_range,
+      .position_type = position_random_in_range,
       .tile_x_min = 5,
       .tile_x_max = 51,
       .tile_y_min = 0,
@@ -15,12 +15,12 @@ const struct area_info area_000 = {
       .radius_type = radius_random,
       .r_min = 15,
       .r_max = 20,
-      .speed = 1,
+      .speed = TIME_SCALE(0.25),
       .count = 30
     },
     {
       .type = ball_grey,
-      .position_type = position_tile_random_in_range,
+      .position_type = position_random_in_range,
       .tile_x_min = 59,
       .tile_x_max = 105,
       .tile_y_min = 0,
@@ -28,7 +28,7 @@ const struct area_info area_000 = {
       .radius_type = radius_random,
       .r_min = 10,
       .r_max = 15,
-      .speed = 3,
+      .speed = TIME_SCALE(0.75),
       .count = 30
     },
     {0}

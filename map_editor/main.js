@@ -502,6 +502,42 @@ gen_map();
     paint_bg();
   };
   tiles["a"](h);
+  h = createElement("button");
+  h[ih] = "Flip X";
+  h.onclick = function() {
+    for(let x = 0; x < (width >> 1); ++x) {
+      for(let y = 0; y < height; ++y) {
+        const temp = u8[x * height + y];
+        u8[x * height + y] = u8[(width - x - 1) * height + y];
+        u8[(width - x - 1) * height + y] = temp;
+      }
+    }
+    spawns = {};
+    for(let i = 0; i < cached_vals.length; ++i) {
+      cached_vals[i][0] = width - cached_vals[i][0] - 1;
+      spawns[`${cached_vals[i][0]},${cached_vals[i][1]}`] = [cached_vals[i][0], cached_vals[i][1]];
+    }
+    paint_bg();
+  };
+  tiles["a"](h);
+  h = createElement("button");
+  h[ih] = "Flip Y";
+  h.onclick = function() {
+    for(let x = 0; x < width; ++x) {
+      for(let y = 0; y < (height >> 1); ++y) {
+        const temp = u8[x * height + y];
+        u8[x * height + y] = u8[x * height + (height - y - 1)];
+        u8[x * height + (height - y - 1)] = temp;
+      }
+    }
+    spawns = {};
+    for(let i = 0; i < cached_vals.length; ++i) {
+      cached_vals[i][1] = height - cached_vals[i][1] - 1;
+      spawns[`${cached_vals[i][0]},${cached_vals[i][1]}`] = [cached_vals[i][0], cached_vals[i][1]];
+    }
+    paint_bg();
+  };
+  tiles["a"](h);
   h = createElement("h4");
   h[ih] = "Width";
   h.style[mb] = px2;

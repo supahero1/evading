@@ -1,31 +1,37 @@
 #include "grid.h"
 
-#include <math.h>
 #include <assert.h>
 #include <stdlib.h>
-#include <string.h>
-
-#include <stdio.h>
 
 #include <shnet/error.h>
 
-void grid_init(struct grid* const grid) {
-  grid->entities_size = 1;
-  grid->entities_used = 1;
-  grid->free_entity = 0;
-  
-  grid->node_entities_size = 1;
-  grid->node_entities_used = 1;
-  grid->free_node_entity = 0;
-  
-  grid->inverse_cell_size = 1.0f / grid->cell_size;
-  grid->half_cell_size = grid->cell_size >> 1;
+void grid_init(struct grid* const grid, const uint16_t prealloc) {
+  assert(prealloc);
+  grid->cells = shnet_calloc((uint16_t) grid->cells_x * grid->cells_y, sizeof(*grid->cells));
+  assert(grid->cells);
+  grid->entities = shnet_malloc(sizeof(*grid->entities) * prealloc);
+  assert(grid->entities);
+  grid->node_entities = shnet_malloc(sizeof(*grid->node_entities) * prealloc);
+  assert(grid->node_entities);
 
   grid->cells_x_mask = grid->cells_x - 1;
   grid->cells_y_mask = grid->cells_y - 1;
 
-  grid->cells = shnet_calloc((uint16_t) grid->cells_x * grid->cells_y, sizeof(*grid->cells));
-  assert(grid->cells);
+  grid->free_entity = 0;
+  grid->entities_used = 1;
+  grid->entities_size = prealloc;
+  
+  grid->free_node_entity = 0;
+  grid->node_entities_used = 1;
+  grid->node_entities_size = prealloc;
+  
+  grid->inverse_cell_size = 1.0f / grid->u8_cell_size;
+
+  const uint8_t half = grid->u8_cell_size >> 1;
+  grid->f_half_cell_size = half;
+  grid->u8_half_cell_size = half;
+  
+  grid->f_cell_size = grid->u8_cell_size;
 }
 
 void grid_free(const struct grid* const grid) {
@@ -40,11 +46,13 @@ uint16_t grid_get_entity(struct grid* const grid) {
     grid->free_entity = grid->entities[ret].ref;
     return ret;
   }
-  if(grid->entities_used >= grid->entities_size) {
-    if(grid->entities_size >= 32768) {
+  assert(grid->entities_used <= grid->entities_size);
+  if(grid->entities_used == grid->entities_size) {
+    const uint16_t size = grid->entities_size + grid->addon;
+    if(grid->entities_size > size) {
       grid->entities_size = UINT16_MAX;
     } else {
-      grid->entities_size <<= 1;
+      grid->entities_size = size;
     }
     grid->entities = shnet_realloc(grid->entities, sizeof(*grid->entities) * grid->entities_size);
     assert(grid->entities);
@@ -64,8 +72,9 @@ static uint32_t grid_get_node_entity(struct grid* const grid) {
     grid->free_node_entity = grid->node_entities[ret].ref;
     return ret;
   }
-  if(grid->node_entities_used >= grid->node_entities_size) {
-    grid->node_entities_size <<= 1;
+  assert(grid->entities_used <= grid->entities_size);
+  if(grid->node_entities_used == grid->node_entities_size) {
+    grid->node_entities_size += grid->addon << 1;
     grid->node_entities = shnet_realloc(grid->node_entities, sizeof(*grid->node_entities) * grid->node_entities_size);
     assert(grid->node_entities);
   }
@@ -98,12 +107,7 @@ static void grid_remove_raw(struct grid* const grid, const uint16_t id, uint8_t 
   for(; min_x <= max_x; ++min_x) {
     for(min_y = min_y_save; min_y <= max_y; ++min_y) {
       uint32_t* const cell = grid->cells + ((uint16_t) min_x * grid->cells_y + min_y);
-      uint32_t ok = 0;
       for(uint32_t i = *cell, prev = 0; i != 0; prev = i, i = grid->node_entities[i].next) {
-        if(++ok == 10000) {
-          printf("i is %u, prev %u, next %u\n", i, prev, grid->node_entities[i].next);
-          assert(0);
-        }
         if(grid->node_entities[i].ref != id) {
           continue;
         }
@@ -133,27 +137,27 @@ void grid_recalculate(const struct grid* const grid, struct grid_entity* const e
 }
 
 void grid_update(struct grid* const grid) {
-  GRID_FOR(grid, i);
-  struct grid_entity* entity = grid->entities + i;
-  const uint8_t min_x = clamp((entity->x - entity->r) * grid->inverse_cell_size, 0, grid->cells_x_mask);
-  const uint8_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y_mask);
-  const uint8_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x_mask);
-  const uint8_t max_y = clamp((entity->y + entity->r) * grid->inverse_cell_size, 0, grid->cells_y_mask);
-  if(grid->update(grid, i) == 0) {
-    continue;
-  }
-  entity = grid->entities + i;
-  if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
-    grid_remove_raw(grid, i, min_x, min_y, max_x, max_y);
-    for(uint8_t x = entity->min_x; x <= entity->max_x; ++x) {
-      for(uint8_t y = entity->min_y; y <= entity->max_y; ++y) {
-        const uint32_t idx = grid_get_node_entity(grid);
-        uint32_t* const cell = grid->cells + ((uint16_t) x * grid->cells_y + y);
-        grid->node_entities[idx].ref = i;
-        grid->node_entities[idx].next = *cell;
-        *cell = idx;
+  GRID_FOR(grid, i) {
+    struct grid_entity* entity = grid->entities + i;
+    const uint8_t min_x = clamp((entity->x - entity->r) * grid->inverse_cell_size, 0, grid->cells_x_mask);
+    const uint8_t min_y = clamp((entity->y - entity->r) * grid->inverse_cell_size, 0, grid->cells_y_mask);
+    const uint8_t max_x = clamp((entity->x + entity->r) * grid->inverse_cell_size, 0, grid->cells_x_mask);
+    const uint8_t max_y = clamp((entity->y + entity->r) * grid->inverse_cell_size, 0, grid->cells_y_mask);
+    if(ball_tick(grid, i) == 0) {
+      continue;
+    }
+    entity = grid->entities + i;
+    if(min_x != entity->min_x || min_y != entity->min_y || max_x != entity->max_x || max_y != entity->max_y) {
+      grid_remove_raw(grid, i, min_x, min_y, max_x, max_y);
+      for(uint8_t x = entity->min_x; x <= entity->max_x; ++x) {
+        for(uint8_t y = entity->min_y; y <= entity->max_y; ++y) {
+          const uint32_t idx = grid_get_node_entity(grid);
+          uint32_t* const cell = grid->cells + ((uint16_t) x * grid->cells_y + y);
+          grid->node_entities[idx].ref = i;
+          grid->node_entities[idx].next = *cell;
+          *cell = idx;
+        }
       }
     }
-  }
-  GRID_ROF();
+  } GRID_ROF();
 }

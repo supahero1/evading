@@ -9,18 +9,18 @@ const struct area_info area_005 = {
       .type = ball_grey,
       .position_type = position_random,
       .r = 6,
-      .speed = 3,
-      .count = 80
+      .speed = TIME_SCALE(0.75),
+      .count = 75
     },
     {
       .type = ball_teal,
       .position_type = position_random,
       .r = 6,
-      .speed = 3,
-      .count = 80,
+      .speed = TIME_SCALE(0.75),
+      .count = 75,
       .frequency_type = frequency_float_random,
       .frequency_float_min = 0.01f,
-      .frequency_float_max = 0.1f
+      .frequency_float_max = 0.75f
     },
     {0}
   },
