@@ -68,6 +68,8 @@ const cell_size = 40;
 const default_y = height * 0.5 * cell_size;
 let x = 0;
 let y = default_y;
+let tile_pos_x = 0;
+let tile_pos_y = 0;
 let mouse = [0, 0];
 let pressing = 0;
 let counter_pressing = 0;
@@ -84,10 +86,11 @@ let bg_data = {
   strokes: []
 };
 let spawn = 0;
+/** @type {Object<string,!Array>} */
 let spawns = {};
 let resized = true;
 let cached_vals = [];
-let teleports = [];
+let states = [];
 let hidden = 0;
 let c1 = function(){};
 let c2 = function(){};
@@ -99,16 +102,40 @@ function get_move() {
     v = [lerp(v[0], Math.cos(angle) * 10 / fov, 0.1), lerp(v[1], Math.sin(angle) * 10 / fov, 0.1)];
   }
 }
+function save_state() {
+  if(states.length > 16) {
+    states.shift();
+  }
+  states[states.length] = {
+    u8: new Uint8Array(u8),
+    width,
+    height,
+    spawns: JSON.stringify(spawns)
+  };
+}
+function restore_state() {
+  if(states.length == 0) return;
+  const state = states.pop();
+  u8 = state.u8;
+  width = state.width;
+  height = state.height;
+  old_w = width;
+  old_h = height;
+  spawns = /** @type {!Object<string,!Array>} */ (JSON.parse(state.spawns));
+  cached_vals = Object.values(spawns);
+  paint_bg();
+  resized = 1;
+}
 function maybe_add_spawn_point() {
   if(!spawn) return;
-  const _x = (tile_idx / height) | 0;
-  const _y = tile_idx % height;
-  const id = `${_x},${_y}`;
+  const id = `${tile_pos_x},${tile_pos_y}`;
   if(pressing && spawns[id] == undefined) {
-    spawns[id] = [_x, _y];
+    save_state();
+    spawns[id] = [tile_pos_x, tile_pos_y];
     draw_text_at("S", 20 + spawns[id][0] * 40, 20 + spawns[id][1] * 40, 0, false, false);
     cached_vals[cached_vals.length] = spawns[id];
   } else if(counter_pressing && spawns[id] != undefined) {
+    save_state();
     delete spawns[id];
     const old = tile_type;
     tile_type = u8[tile_idx];
@@ -116,6 +143,12 @@ function maybe_add_spawn_point() {
     tile_type = old;
     cached_vals = Object.values(spawns);
   }
+}
+function update_tile() {
+  if(u8[tile_idx] == tile_type) return;
+  save_state();
+  u8[tile_idx] = tile_type;
+  paint_bg_explicit(tile_idx);
 }
 function resize() {
   if(window.innerWidth != c_width || window.innerHeight != c_height || dpr != window.devicePixelRatio) {
@@ -145,9 +178,8 @@ window.onmousemove = function(x) {
   mouse = [x.clientX * dpr, x.clientY * dpr];
   tile_idx = get_tile_idx();
   if(tile_idx != -1) {
-    if(pressing && !spawn && u8[tile_idx] != tile_type) {
-      u8[tile_idx] = tile_type;
-      paint_bg_explicit(tile_idx);
+    if(pressing && !spawn) {
+      update_tile();
     }
     maybe_add_spawn_point();
   }
@@ -156,9 +188,8 @@ canvas.onmousedown = function(x) {
   if(x.button == 0) {
     pressing = 1;
     if(tile_idx != -1) {
-      if(!spawn && u8[tile_idx] != tile_type) {
-        u8[tile_idx] = tile_type;
-        paint_bg_explicit(tile_idx);
+      if(!spawn) {
+        update_tile();
       }
       maybe_add_spawn_point();
     }
@@ -207,6 +238,13 @@ window.onkeydown = function(x) {
     case 39:
     case 68: {
       move.right = 1;
+      break;
+    }
+    case 90: {
+      if(x.ctrlKey) {
+        restore_state();
+      }
+      x.preventDefault();
       break;
     }
     default: break;
@@ -260,8 +298,8 @@ const struct area_info area_000 = {\n
     {0}\n
   },\n
   (struct pos[]){ ${cached_vals.map(r => `{ ${r.join(", ")} }`).join(", ")} },\n
-  (struct teleport[]){ ${teleports.map(r => `{ { ${r.pos.join(", ")} }, { ${r.area_id} } }`).join(", ")} },\n
-  ${cached_vals.length}, ${teleports.length}\n
+  (struct teleport[]){  },\n
+  ${cached_vals.length}, 0\n
 };\n
 \n
 static const struct tile_info t = { ${width}, ${height}, 40, (uint8_t[]){\n`;
@@ -325,6 +363,7 @@ function parse_tiles(config) {
     height = _h;
     old_w = width;
     old_h = height;
+    states = [];
     c1();
     c2();
     spawns = {};
@@ -441,6 +480,8 @@ function get_tile_idx() {
   if(cy < 0 || cy >= height) {
     return -1;
   }
+  tile_pos_x = cx;
+  tile_pos_y = cy;
   return cx * height + cy;
 }
 gen_map();
@@ -476,6 +517,7 @@ gen_map();
   h = createElement("button");
   h[ih] = "Rotate";
   h.onclick = function() {
+    save_state();
     let new_u8 = new Uint8Array(width * height);
     for(let x = 0; x < width; ++x) {
       for(let y = 0; y < height; ++y) {
@@ -505,6 +547,7 @@ gen_map();
   h = createElement("button");
   h[ih] = "Flip X";
   h.onclick = function() {
+    save_state();
     for(let x = 0; x < (width >> 1); ++x) {
       for(let y = 0; y < height; ++y) {
         const temp = u8[x * height + y];
@@ -523,6 +566,7 @@ gen_map();
   h = createElement("button");
   h[ih] = "Flip Y";
   h.onclick = function() {
+    save_state();
     for(let x = 0; x < width; ++x) {
       for(let y = 0; y < (height >> 1); ++y) {
         const temp = u8[x * height + y];
@@ -554,6 +598,7 @@ gen_map();
     this[nes][nes].value = width;
   }.bind(h);
   h.oninput = function() {
+    save_state();
     width = this[van] || 1;
     c1();
     gen_map();
@@ -596,6 +641,7 @@ gen_map();
     this[nes][nes].value = height;
   }.bind(h);
   h.oninput = function() {
+    save_state();
     height = this[van] || 1;
     c2();
     gen_map();
@@ -684,9 +730,8 @@ function draw() {
   y += v[1];
   tile_idx = get_tile_idx();
   if(tile_idx != -1) {
-    if(pressing && !spawn && u8[tile_idx] != tile_type) {
-      u8[tile_idx] = tile_type;
-      paint_bg_explicit(tile_idx);
+    if(pressing && !spawn) {
+      update_tile();
     }
     maybe_add_spawn_point();
   }
@@ -704,11 +749,12 @@ function draw() {
       ctx.globalAlpha = 1;
     }
     if(!hidden) {
-      draw_text_at("WASD or arrow keys to move around, scroll to zoom", -500, default_y - 80, 0, false, false);
-      draw_text_at("Click on the left to pick what type of tile you want to place", -500, default_y - 40, 0, false, false);
-      draw_text_at("Set spawnpoints by clicking LMB and pressing Q at the same time", -500, default_y, 0, false, false);
-      draw_text_at("Unset spawnpoints by clicking RMB and pressing Q at the same time", -500, default_y + 40, 0, false, false);
-      draw_text_at("Press E to hide this message", -500, default_y + 80, 0, false, false);
+      draw_text_at("WASD or arrow keys to move around, scroll to zoom", -500, default_y - 100, 0, false, false);
+      draw_text_at("Click on the left to pick what type of tile you want to place", -500, default_y - 60, 0, false, false);
+      draw_text_at("Set spawnpoints by clicking LMB and pressing Q at the same time", -500, default_y - 20, 0, false, false);
+      draw_text_at("Unset spawnpoints by clicking RMB and pressing Q at the same time", -500, default_y + 20, 0, false, false);
+      draw_text_at("Use Ctrl+Z to undo your last action", -500, default_y + 60, 0, false, false);
+      draw_text_at("Press E to hide this message", -500, default_y + 100, 0, false, false);
     }
     for(const val of cached_vals) {
       draw_text_at("S", 20 + val[0] * 40, 20 + val[1] * 40, 0, false, false);
