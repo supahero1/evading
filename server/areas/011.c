@@ -6,7 +6,7 @@ const struct area_info area_011 = {
   &t,
   (struct ball_info[]) {
     {
-      .type = ball_teal,
+      .type = ball_dark_green,
       .position_type = position_fixed,
       .tile_x = 31,
       .tile_y = 4,
@@ -20,7 +20,7 @@ const struct area_info area_011 = {
       .frequency_float = 0.05f
     },
     {
-      .type = ball_teal,
+      .type = ball_dark_green,
       .position_type = position_fixed,
       .tile_x = 31,
       .tile_y = 4,
@@ -34,7 +34,7 @@ const struct area_info area_011 = {
       .frequency_float = -0.05f
     },
     {
-      .type = ball_teal,
+      .type = ball_dark_green,
       .radius_type = radius_random,
       .r_min = 5,
       .r_max = 15,
@@ -45,7 +45,7 @@ const struct area_info area_011 = {
       .frequency_float_max = 0.1f
     },
     {
-      .type = ball_teal,
+      .type = ball_dark_green,
       .radius_type = radius_random,
       .r_min = 15,
       .r_max = 40,

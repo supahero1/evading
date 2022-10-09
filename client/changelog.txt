@@ -1,31 +1,12 @@
-Last modified: Oct 3 2022
+Last modified: Oct 9 2022
 <br>
 <br>
-* Fixed a bug where resetting settings
-<br>
-wouldn't apply the changes in-game
-<br>
-* Fixed a bug where death arrow would overlap
-<br>
-player names in a non-transparent way
-<br>
-* Many balance changes
-<br>
-* Added a target arrow showing whenever a
-<br>
-ball targets you, customizable in settings
-<br>
-* Added FlipX and FlipY buttons to the map editor
-<br>
-* Menu is now openable from within the game (M by default)
-<br>
-* Spectating is now available while in-game
-<br>
-* Map editor now allows up to 16 CTRL+Z (undo) operations
-<br>
-* A wide range of minor improvements
+* 2 new maps and 1 new ball type
 <br>
 * Upcoming: free cam, new tutorial, and more!
 <br>
 <br>
 Join our Discord server:
+<br>
+<br>
+Feel free to submit ideas for new balls!

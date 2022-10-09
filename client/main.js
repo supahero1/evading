@@ -195,10 +195,6 @@ function reload_now() {
   _reload();
 }
 
-String.prototype.darken = function() {
-  return "#" + (parseInt(this.substring(1, 3), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(3, 5), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + (parseInt(this.substring(5, 7), 16) * 0.8 >> 0).toString(16).padStart(2, "0") + this.substring(7);
-};
-
 String.prototype.get_server_name = function() {
   const match = this.match(/\/\/(.*?)\.shadam\.xyz/);
   const match2 = this.match(/\/\/(.*?)[\/:]/);
@@ -341,7 +337,7 @@ const CONSTS = {
 const Tile_colors = new Uint32Array([0xddddddff, 0xaaaaaaff, 0x333333ff, 0xfedf78ff]);
 const Tile_colors_str = Array.from(Tile_colors).map(r => "#" + r.toString(16));
 
-const Ball_colors = new Uint32Array([0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff]);
+const Ball_colors = new Uint32Array([0xffffffff, 0x808080ff, 0xfc46aaff, 0x008080ff, 0xff8e06ff, 0x3cdfffff, 0x663a82ff, 0x39e75fff]);
 const Ball_colors_str = Array.from(Ball_colors).map(r => "#" + r.toString(16));
 
 const buffer = new ArrayBuffer(CONSTS.max_balls << 4);

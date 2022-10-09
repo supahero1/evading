@@ -36,7 +36,7 @@ enum game_const {
   max_chat_timestamps = 6, /* in main.js this is -1 */
   max_name_len = 16,
   max_message_len = max_chat_message_len + 1,
-  area_infos_size = 12
+  area_infos_size = 14
 };
 
 #define base_tick_interval (10.0f)
@@ -64,13 +64,14 @@ enum client_opcodes {
 enum ball_type {
   ball_invalid,
   
+  ball_null,
   ball_grey,
   ball_pink,
-  ball_teal,
+  ball_dark_green,
   ball_sandy,
   ball_light_blue,
   ball_purple,
-  ball_null
+  ball_light_green
 };
 
 enum game_tile {

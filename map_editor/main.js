@@ -121,6 +121,8 @@ function restore_state() {
   height = state.height;
   old_w = width;
   old_h = height;
+  c1();
+  c2();
   spawns = /** @type {!Object<string,!Array>} */ (JSON.parse(state.spawns));
   cached_vals = Object.values(spawns);
   paint_bg();
@@ -582,6 +584,7 @@ gen_map();
     paint_bg();
   };
   tiles["a"](h);
+  
   h = createElement("h4");
   h[ih] = "Width";
   h.style[mb] = px2;

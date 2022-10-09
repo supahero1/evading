@@ -283,10 +283,12 @@ const struct area_info area_007 = {
     {0}
   },
   (struct pos[]){ { 3, 2 }, { 5, 2 } },
-  (struct teleport[]){ { { 4, 0 }, { 1 } } },
-  2, 1,
+  (struct teleport[]){ { { 4, 0 }, { 1 } }, { { 7, 55 }, { 12 } } },
+  2, 2,
   .top = 1,
-  .has_top = 1
+  .has_top = 1,
+  .left = 12,
+  .has_left = 1
 };
 
 static const struct tile_info t = { 9, 62, 40, (uint8_t[]){

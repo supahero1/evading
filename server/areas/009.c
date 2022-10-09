@@ -166,7 +166,7 @@ const struct area_info area_009 = {
     },
 #define FAN_V TIME_SCALE(1)
 #define FAN \
-      .type = ball_teal, \
+      .type = ball_dark_green, \
       .position_type = position_fixed, \
       .movement_type = movement_angle, \
       .radius_type = radius_fixed, \

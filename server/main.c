@@ -71,9 +71,8 @@ static struct client clients[max_players] = {0};
 struct ball {
   union {
     uint32_t next;
-    float    angle;
+    float    vx;
   };
-  float      vx;
   float      vy;
   union {
     float    frequency_float;
@@ -227,7 +226,12 @@ static void execute_ball_info_on_area(const struct ball_info* const info, const 
   
   const struct a_pos* const tiles = info->allow_walls ? a_data->wall_tiles : a_data->tiles;
   const uint16_t tiles_len = info->allow_walls ? a_data->wall_tiles_len : a_data->tiles_len;
-  while(1) {
+  const struct area_info* const area_info = area_infos[area->area_info_id];
+  const struct tile_info* const tile_info = area_info->tile_info;
+  const float area_width = (uint16_t) tile_info->width * grid->u8_cell_size;
+  const float area_height = (uint16_t) tile_info->height * grid->u8_cell_size;
+  uint8_t ok = 0;
+  do {
     switch(info->position_type) {
       case position_random: {
         const uint32_t num = fast_rand();
@@ -311,10 +315,9 @@ static void execute_ball_info_on_area(const struct ball_info* const info, const 
       }
       default: assert(0);
     }
+    if(entity->x - entity->r < 0 || entity->y - entity->r < 0 || entity->x + entity->r > area_width || entity->y + entity->r > area_height) continue;
     grid_recalculate(grid, entity);
-    const struct area_info* const area_info = area_infos[area->area_info_id];
-    const struct tile_info* const tile_info = area_info->tile_info;
-    uint8_t ok = 1;
+    ok = 1;
     for(uint8_t cell_x = entity->min_x; cell_x <= entity->max_x; ++cell_x) {
       for(uint8_t cell_y = entity->min_y; cell_y <= entity->max_y; ++cell_y) {
         const enum game_tile type = tile_info->tiles[(uint16_t) cell_x * tile_info->height + cell_y];
@@ -340,15 +343,7 @@ static void execute_ball_info_on_area(const struct ball_info* const info, const 
         ok = 0;
       }
     }
-    if(ok) {
-      break;
-    }
-    if(info->die_on_collision) {
-      grid_return_entity(grid, entity_id);
-      return_ball_idx(area, idx);
-      return;
-    }
-  }
+  } while(!ok);
 
   grid_insert(grid, entity_id);
   switch(info->movement_type) {
@@ -356,25 +351,21 @@ static void execute_ball_info_on_area(const struct ball_info* const info, const 
       const float angle = randf() * M_PI * 2.0f;
       ball->vx = cosf(angle) * info->speed;
       ball->vy = sinf(angle) * info->speed;
-      ball->angle = angle;
       break;
     }
     case movement_velocity: {
       ball->vx = info->vx;
       ball->vy = info->vy;
-      ball->angle = atan2f(ball->vy, ball->vx);
       break;
     }
     case movement_angle: {
       ball->vx = cosf(info->angle) * info->speed;
       ball->vy = sinf(info->angle) * info->speed;
-      ball->angle = info->angle;
       break;
     }
     case movement_relative_velocity: {
       ball->vx = info->vx + relative->vx;
       ball->vy = info->vy + relative->vy;
-      ball->angle = atan2f(ball->vy, ball->vx);
       break;
     }
     case movement_relative_angle: {
@@ -940,18 +931,18 @@ int ball_tick(struct grid* const grid, const uint16_t entity_id) {
       sf *= sf;
       sf += 0.001f;
       sf *= ball->info->speed;
-      ball->angle = atan2f(ball->vy, ball->vx);
-      ball->vx = cosf(ball->angle) * sf;
-      ball->vy = sinf(ball->angle) * sf;
+      const float angle = atan2f(ball->vy, ball->vx);
+      ball->vx = cosf(angle) * sf;
+      ball->vy = sinf(angle) * sf;
       if(val >= M_PI && fmod(val, M_PI) < 0.01f) {
         ball->tick = UINT64_MAX;
       }
       break;
     }
-    case ball_teal: {
-      ball->angle = atan2f(ball->vy, ball->vx);
-      ball->vx = cosf(ball->angle + ball->frequency_float * 0.1f) * ball->info->speed;
-      ball->vy = sinf(ball->angle + ball->frequency_float * 0.1f) * ball->info->speed;
+    case ball_dark_green: {
+      const float angle = atan2f(ball->vy, ball->vx);
+      ball->vx = cosf(angle + ball->frequency_float * 0.1f) * ball->info->speed;
+      ball->vy = sinf(angle + ball->frequency_float * 0.1f) * ball->info->speed;
       break;
     }
     case ball_sandy: {
@@ -994,16 +985,22 @@ int ball_tick(struct grid* const grid, const uint16_t entity_id) {
     }
     case ball_purple: {
       const float angle = ANGLE_TO_NEAREST_PLAYER;
-      ball->angle = atan2f(ball->vy, ball->vx);
-      const int dir = angle_diff_turn_dir(ball->angle, angle);
+      float b_angle = atan2f(ball->vy, ball->vx);
+      const int dir = angle_diff_turn_dir(b_angle, angle);
       if(dir) {
-        ball->angle -= ball->frequency_float;
+        b_angle -= ball->frequency_float;
       } else {
-        ball->angle += ball->frequency_float;
+        b_angle += ball->frequency_float;
       }
-      ball->angle = fmodf(ball->angle, M_PI * 2);
-      ball->vx = cosf(ball->angle) * ball->info->speed;
-      ball->vy = sinf(ball->angle) * ball->info->speed;
+      ball->vx = cosf(b_angle) * ball->info->speed;
+      ball->vy = sinf(b_angle) * ball->info->speed;
+      break;
+    }
+    case ball_light_green: {
+      const float s = sinf(ball->tick * ball->frequency_float);
+      const float angle = atan2f(ball->vy, ball->vx) + s * s * s * s * s * 0.02f * time_scale;
+      ball->vx = cosf(angle) * ball->info->speed;
+      ball->vy = sinf(angle) * ball->info->speed;
       break;
     }
     default: assert(0);

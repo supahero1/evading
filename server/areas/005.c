@@ -13,7 +13,7 @@ const struct area_info area_005 = {
       .count = 75
     },
     {
-      .type = ball_teal,
+      .type = ball_dark_green,
       .position_type = position_random,
       .r = 6,
       .speed = TIME_SCALE(0.75),
