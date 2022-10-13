@@ -196,7 +196,7 @@ function reload_now() {
 }
 
 String.prototype.get_server_name = function() {
-  const match = this.match(/\/\/(.*?)\.shadam\.xyz/);
+  const match = this.match(/\/\/(.*?)\.elude\.lol/);
   const match2 = this.match(/\/\/(.*?)[\/:]/);
   return match ? match[1] : (match2 ? match2[1] : this);
 };
