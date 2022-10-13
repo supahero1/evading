@@ -1,7 +1,9 @@
-Last modified: Oct 9 2022
+Last modified: Oct 13 2022
 <br>
 <br>
-* 2 new maps and 1 new ball type
+* The game's URL was changed. For now,
+<br>
+the splash "evading" will remain the same.
 <br>
 * Upcoming: free cam, new tutorial, and more!
 <br>
